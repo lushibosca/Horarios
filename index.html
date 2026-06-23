@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self';
+         script-src 'self'; 
+         style-src 'self';
+         img-src 'self' data: blob:; 
+         font-src 'self' data:; 
+         connect-src 'self' https://api.github.com; 
+         object-src 'none'; 
+         base-uri 'none'; 
+         form-action 'none'; 
+         frame-ancestors 'none'; 
+         upgrade-insecure-requests;">
+    <meta name="referrer" content="no-referrer">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="./icon.svg">
+    <script src="./flash.js"></script>
+    <script src="./fondos.js"></script>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./app.js" defer></script>
+    <title>Horarios</title>
+</head>
+
+<body>
+    <svg class="svg-sprite">
+        <symbol id="icon-moon" viewBox="0 0 24 24">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" class="icon-line" stroke-width="2"
+                stroke="currentColor" fill="none"></path>
+        </symbol>
+        <symbol id="icon-sun" viewBox="0 0 24 24">
+            <g class="icon-line" stroke-width="2" stroke="currentColor">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </g>
+        </symbol>
+        <symbol id="icon-combine" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 6h4l4 6h8" class="icon-line"></path>
+            <path d="M4 18h4l4-6" class="icon-line"></path>
+        </symbol>
+        <symbol id="icon-replace-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="17 4 21 8 17 12"></polyline>
+            <line x1="3" y1="8" x2="21" y2="8"></line>
+            <polyline points="7 20 3 16 7 12"></polyline>
+            <line x1="21" y1="16" x2="3" y2="16"></line>
+        </symbol>
+        <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path
+                d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z">
+            </path>
+        </symbol>
+        <symbol id="icon-clock" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" class="icon-line" stroke="currentColor"></circle>
+            <polyline points="12 6 12 12 16 14" class="icon-line" stroke="currentColor"></polyline>
+        </symbol>
+        <symbol id="icon-trash" viewBox="0 0 24 24">
+            <polyline points="3 6 5 6 21 6" class="icon-line" stroke="currentColor"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" class="icon-line"
+                stroke="currentColor"></path>
+        </symbol>
+        <symbol id="icon-save" viewBox="0 0 24 24">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" class="icon-line"
+                stroke="currentColor"></path>
+            <polyline points="17 21 17 13 7 13 7 21" class="icon-line" stroke="currentColor"></polyline>
+            <polyline points="7 3 7 8 15 8" class="icon-line" stroke="currentColor"></polyline>
+        </symbol>
+        <symbol id="icon-clock-in" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" class="icon-line" stroke="currentColor" fill="none" stroke-width="2">
+            </circle>
+            <path d="M10 8l6 4-6 4V8z" class="icon-line" fill="currentColor"></path>
+        </symbol>
+        <symbol id="icon-clock-out" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" class="icon-line" stroke="currentColor" fill="none" stroke-width="2">
+            </circle>
+            <rect x="9" y="9" width="6" height="6" rx="1" class="icon-line" fill="currentColor"></rect>
+        </symbol>
+        <symbol id="icon-broom" viewBox="0 0 24 24">
+            <path class="icon-line"
+                d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM8 11v6M12 11v6M16 11v6M10 3L9 6h6l-1-3" />
+        </symbol>
+        <symbol id="icon-download" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" class="icon-line" stroke="currentColor"></path>
+            <polyline points="7 10 12 15 17 10" class="icon-line" stroke="currentColor"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-upload" viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" class="icon-line" stroke="currentColor"></path>
+            <polyline points="17 8 12 3 7 8" class="icon-line" stroke="currentColor"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-edit" viewBox="0 0 24 24">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" class="icon-line"
+                stroke="currentColor"></path>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" class="icon-line" stroke="currentColor">
+            </path>
+        </symbol>
+        <symbol id="icon-list" viewBox="0 0 24 24">
+            <line x1="8" y1="6" x2="21" y2="6" class="icon-line" stroke="currentColor"></line>
+            <line x1="8" y1="12" x2="21" y2="12" class="icon-line" stroke="currentColor"></line>
+            <line x1="8" y1="18" x2="21" y2="18" class="icon-line" stroke="currentColor"></line>
+            <line x1="3" y1="6" x2="3.01" y2="6" class="icon-line" stroke="currentColor"></line>
+            <line x1="3" y1="12" x2="3.01" y2="12" class="icon-line" stroke="currentColor"></line>
+            <line x1="3" y1="18" x2="3.01" y2="18" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-cancelar" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18" class="icon-line" stroke="currentColor"></line>
+            <line x1="6" y1="6" x2="18" y2="18" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-undo" viewBox="0 0 24 24">
+            <path d="M3 7v6h6" class="icon-line" stroke="currentColor"></path>
+            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" class="icon-line" stroke="currentColor"></path>
+        </symbol>
+        <symbol id="icon-grid-group" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+        </symbol>
+        <symbol id="icon-redo" viewBox="0 0 24 24">
+            <path d="M21 7v6h-6" class="icon-line" stroke="currentColor"></path>
+            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13" class="icon-line" stroke="currentColor"></path>
+        </symbol>
+        <symbol id="icon-calendar-simple" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" class="icon-line" stroke="currentColor"></rect>
+            <line x1="16" y1="2" x2="16" y2="6" class="icon-line" stroke="currentColor"></line>
+            <line x1="8" y1="2" x2="8" y2="6" class="icon-line" stroke="currentColor"></line>
+            <line x1="3" y1="10" x2="21" y2="10" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-filter" viewBox="0 0 24 24">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" class="icon-line" stroke="currentColor">
+            </polygon>
+        </symbol>
+        <symbol id="icon-help" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" class="icon-line" stroke="currentColor"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" class="icon-line" stroke="currentColor"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17" class="icon-line" stroke-width="3" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-install" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="14" rx="2" ry="2"></rect>
+            <line x1="8" y1="21" x2="16" y2="21"></line>
+            <line x1="12" y1="17" x2="12" y2="21"></line>
+            <polyline points="9 10 12 13 15 10"></polyline>
+            <line x1="12" y1="6" x2="12" y2="13"></line>
+        </symbol>
+        <symbol id="icon-landscape" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="17" cy="6" r="2" />
+            <polyline points="1,20 7,10 11,15" />
+            <polyline points="9,20 14,9 19,20" />
+            <line x1="1" y1="20" x2="23" y2="20" />
+        </symbol>
+        <symbol id="icon-stats" viewBox="0 0 24 24">
+            <line x1="18" y1="20" x2="18" y2="10" class="icon-line" stroke="currentColor"></line>
+            <line x1="12" y1="20" x2="12" y2="4" class="icon-line" stroke="currentColor"></line>
+            <line x1="6" y1="20" x2="6" y2="14" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-plus" viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19" class="icon-line" stroke="currentColor"></line>
+            <line x1="5" y1="12" x2="19" y2="12" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-chevron-down" viewBox="0 0 24 24">
+            <polyline points="6 9 12 15 18 9" class="icon-line" stroke="currentColor" stroke-width="2" fill="none">
+            </polyline>
+        </symbol>
+        <symbol id="icon-chevron-right" viewBox="0 0 24 24">
+            <polyline points="9 6 15 12 9 18" class="icon-line" stroke="currentColor" stroke-width="2" fill="none">
+            </polyline>
+        </symbol>
+        <symbol id="icon-lock" viewBox="0 0 24 24">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" class="icon-line" stroke="currentColor"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" class="icon-line" stroke="currentColor"></path>
+        </symbol>
+        <symbol id="icon-lock-open" viewBox="0 0 24 24">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" class="icon-line" stroke="currentColor"></rect>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" class="icon-line" stroke="currentColor"></path>
+        </symbol>
+        <symbol id="icon-briefcase" viewBox="0 0 24 24">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2" class="icon-line" stroke="currentColor"></rect>
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" class="icon-line" stroke="currentColor"></path>
+        </symbol>
+        <symbol id="icon-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
+        </symbol>
+        <symbol id="icon-cloud-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 16 12 12 8 16" />
+            <line x1="12" y1="12" x2="12" y2="21" />
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+        </symbol>
+        <symbol id="icon-cloud-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="8 16 12 20 16 16" />
+            <line x1="12" y1="20" x2="12" y2="11" />
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+        </symbol>
+        <symbol id="icon-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+        </symbol>
+        <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+            <line x1="19" y1="12" x2="5" y2="12" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"></line>
+            <polyline points="12 19 5 12 12 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round"></polyline>
+        </symbol>
+        <symbol id="icon-arrow-right" viewBox="0 0 24 24">
+            <line x1="5" y1="12" x2="19" y2="12" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"></line>
+            <polyline points="12 5 19 12 12 19" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"></polyline>
+        </symbol>
+        <symbol id="icon-external-link" viewBox="0 0 24 24">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+            <polyline points="15 3 21 3 21 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round"></polyline>
+            <line x1="10" y1="14" x2="21" y2="3" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round"></line>
+        </symbol>
+        <symbol id="icon-gist" viewBox="0 0 24 24">
+            <path
+                d="M12 2C6.477 2 2 6.484 2 12.021c0 4.428 2.865 8.184 6.839 9.504.5.092.682-.217.682-.483 0-.237-.009-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.021C22 6.484 17.522 2 12 2z" />
+        </symbol>
+        <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+        </symbol>
+        <symbol id="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+        </symbol>
+        <symbol id="icon-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l4-4m-4 4l4 4" />
+            <path d="M3 9h13a5 5 0 010 10h-4" />
+        </symbol>
+        <symbol id="icon-dot" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="5" fill="currentColor" />
+        </symbol>
+    </svg>
+    <div class="header">
+        <h1>Horarios</h1>
+        <div class="header-actions">
+            <button class="icon-btn" id="btn-install" title="Instalar aplicación">
+                <svg class="icon">
+                    <use href="#icon-install" />
+                </svg>
+            </button>
+            <button class="header-profile-btn">
+                <span id="nombre-perfil-header">Cargando...</span>
+                <svg class="icon">
+                    <use href="#icon-briefcase" />
+                </svg>
+
+            </button>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div class="container">
+
+        <div class="left-column">
+            <div class="card stats-card animated-card" id="stats-card">
+                <div class="stats-card-bg" id="stats-card-bg" aria-hidden="true"></div>
+                <div class="stats-card-content" id="stats-card-content">
+                    <h2 id="stats-titulo">Hoy</h2>
+                    <div class="stats-number" id="stats-semana">
+                        <div>0 horas 0 minutos</div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-bar"></div>
+                    </div>
+                    <div id="stats-mensaje" class="card-anim">Faltan 0 horas 0 minutos</div>
+                    <div id="stats-buffer" class="card-anim"></div>
+                    <span class="toggle-hint card-anim" id="toggle-hint">Toca para ver la Semana</span>
+                </div>
+            </div>
+            <div class="card animated-card" id="card-registrar">
+                <h2 class="no-margin card-registrar-header">
+                    <button class="filter-btn timer-btn" id="btn-timer-main" title="Tiempo Fuera">
+                        <svg class="icon">
+                            <use href="#icon-exit" />
+                        </svg>
+                    </button>
+                    <button id="btn-agregar" class="btn-register">
+                        <svg class="icon">
+                            <use href="#icon-save" />
+                        </svg> <span id="btn-registrar-texto">Fichar</span>
+                    </button>
+                    <svg class="icon chevron" id="icon-indicator-form">
+                        <use href="#icon-chevron-down" />
+                    </svg>
+                </h2>
+                <div class="form-collapsible collapsible" id="form-registro">
+                    <div id="modo-contenedor">
+                        <div id="modo-normal">
+                            <div class="form-group form-group-pt">
+                                <label>Fecha</label>
+                                <div class="input-with-btn">
+                                    <input type="date" id="fecha" />
+                                    <button class="time-btn flex-shrink-0" id="btn-ir-modo-lote"
+                                        title="Ir al modo lote/especial">
+                                        <svg class="icon">
+                                            <use href="#icon-arrow-right" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="contenedor-horas">
+                                <div class="form-group">
+                                    <label>Entrada</label>
+                                    <div class="input-with-btn">
+                                        <input type="text" id="entrada" inputmode="numeric" maxlength="5"
+                                            placeholder="hh:mm" />
+                                        <button class="time-btn" id="btn-pegar-entrada"
+                                            title="Pegar hora actual o limpiar">
+                                            <svg class="icon">
+                                                <use href="#icon-clock" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Salida</label>
+                                    <div class="input-with-btn">
+                                        <input type="text" id="salida" inputmode="numeric" maxlength="5"
+                                            placeholder="hh:mm" />
+                                        <button class="time-btn" id="btn-pegar-salida"
+                                            title="Pegar hora actual o limpiar">
+                                            <svg class="icon">
+                                                <use href="#icon-clock" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="modo-lote" class="fade-out">
+                            <div class="form-group form-group-pt">
+                                <label>Tipo de registro</label>
+                                <div class="input-with-btn">
+                                    <select id="lote-tipo">
+                                        <option value="normal">🕒 Jornadas (borrar)</option>
+                                    </select>
+                                    <button class="time-btn flex-shrink-0" id="btn-ir-modo-normal"
+                                        title="Ir al modo normal">
+                                        <svg class="icon">
+                                            <use href="#icon-arrow-left" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="contenedor-fechas">
+                                <div class="form-group">
+                                    <label>Desde</label>
+                                    <div class="input-with-btn">
+                                        <input type="date" id="lote-fecha-desde" />
+                                        <button class="time-btn" id="btn-lote-desde" title="Pegar hoy / Limpiar">
+                                            <svg class="icon">
+                                                <use href="#icon-calendar-simple" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Hasta</label>
+                                    <div class="input-with-btn">
+                                        <input type="date" id="lote-fecha-hasta" />
+                                        <button class="time-btn" id="btn-lote-hasta" title="Pegar hoy / Limpiar">
+                                            <svg class="icon">
+                                                <use href="#icon-calendar-simple" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div><!-- #modo-lote -->
+
+                    </div><!-- #modo-contenedor -->
+                </div><!-- #form-registro -->
+            </div>
+            <div class="card animated-card" id="card-estadisticas">
+                <h2 class="no-margin card-header-clickable">
+                    <span class="card-section-title">
+                        <svg class="icon">
+                            <use href="#icon-stats" />
+                        </svg> Estadísticas
+                    </span>
+                    <svg class="icon chevron" id="icon-indicator-stats">
+                        <use href="#icon-chevron-down" />
+                    </svg>
+                </h2>
+                <div class="form-collapsible collapsible" id="form-stats">
+                    <div class="stats-inner">
+                        <div class="form-group">
+                            <label>Período</label>
+                            <div class="stats-periodo-row">
+                                <select id="select-mes-stats"></select>
+                                <select id="select-anio-stats" class="hidden"></select>
+                                <select id="select-semana-stats" class="hidden"></select>
+                                <button id="btn-toggle-periodo" class="time-btn"
+                                    title="Alternar vista mensual / anual / semanal">
+                                    <svg class="icon">
+                                        <use href="#icon-calendar-simple" />
+                                    </svg>
+                                    <span id="label-periodo-toggle">Mensual</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-label">Tiempo Total</div>
+                                <div class="stat-value" id="stat-tiempo-total">--:--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Promedio Diario</div>
+                                <div class="stat-value" id="stat-promedio-diario">--:--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Entrada Promedio</div>
+                                <div class="stat-value" id="stat-entrada-promedio">--:--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Salida Promedio</div>
+                                <div class="stat-value" id="stat-salida-promedio">--:--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Entrada Regular</div>
+                                <div class="stat-value" id="stat-regularidad-entrada">--:--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Jornada Regular</div>
+                                <div class="stat-value" id="stat-regularidad-jornada">--:--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Tiempo Fuera</div>
+                                <div class="stat-value" id="stat-tiempo-fuera-total">--:--</div>
+                            </div>
+                            <div class="stat-item" id="stat-item-saldo">
+                                <div class="stat-label">Saldo</div>
+                                <div class="stat-value" id="stat-saldo">--</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-label">Jornadas</div>
+                                <div class="stat-value" id="stat-dias-trabajados">0</div>
+                            </div>
+                            <div id="stat-items-tipos-anchor" class="hidden"></div>
+                            <div class="stat-item">
+                                <div class="stat-label">Salidas Temprano</div>
+                                <div class="stat-value" id="stat-compensaciones">0</div>
+                            </div>
+                        </div>
+
+                        <div class="btn-group">
+                            <button class="btn-agregar" id="btn-reporte">
+                                <svg class="icon">
+                                    <use href="#icon-download" />
+                                </svg>
+                                Reporte
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card animated-card" id="card-historico">
+            <h2 class="no-margin card-header-clickable">
+                <span class="card-section-title">
+                    <svg class="icon">
+                        <use href="#icon-list" />
+                    </svg> Registros
+                </span>
+                <svg class="icon chevron" id="icon-indicator-historico">
+                    <use href="#icon-chevron-down" />
+                </svg>
+            </h2>
+
+            <div class="form-collapsible collapsible" id="contenido-historico">
+                <div id="botones-historico" class="collapsible">
+                    <div class="botones-historico-inner">
+                        <div class="botones-historico-group">
+                            <button class="filter-btn" id="btn-vista-calendario" title="Vista">
+                                <svg class="icon">
+                                    <use href="#icon-calendar-simple" />
+                                </svg>
+                            </button>
+                            <button class="filter-btn" id="btn-filtro" title="Filtrar">
+                                <svg class="icon">
+                                    <use href="#icon-filter" />
+                                </svg>
+                            </button>
+                            <button class="filter-btn" id="btn-hist-restaurar" title="Restaurar">
+                                <svg class="icon">
+                                    <use href="#icon-upload" />
+                                </svg>
+                            </button>
+                            <button class="filter-btn" id="btn-hist-respaldar" title="Respaldar">
+                                <svg class="icon">
+                                    <use href="#icon-download" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="botones-historico-group">
+                            <button class="filter-btn" id="btn-undo" title="Deshacer">
+                                <svg class="icon">
+                                    <use href="#icon-undo" />
+                                </svg>
+                            </button>
+                            <button class="filter-btn" id="btn-redo" title="Rehacer">
+                                <svg class="icon">
+                                    <use href="#icon-redo" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div id="lista-registros" class="custom-scroll"></div>
+                <div id="vista-calendario-historico" class="hidden">
+                    <div class="calendario-nav">
+                        <span class="calendario-titulo" id="calendario-titulo-mes" title="Mostrar meses"></span>
+                        <div id="calendario-nav-botones">
+                            <button class="btn-hoy-calendario" title="Ir al mes actual">Hoy</button>
+                            <button title="Mes anterior">
+                                <svg class="icon icon-rotate-90">
+                                    <use href="#icon-chevron-down" />
+                                </svg>
+                            </button>
+                            <button title="Mes siguiente">
+                                <svg class="icon icon-rotate-neg90">
+                                    <use href="#icon-chevron-down" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="calendario-grid" id="calendario-grid"></div>
+                    <div id="calendario-selector-meses" class="custom-scroll">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal modal-scrollable" id="modal-config">
+        <div class="modal-content">
+            <div class="modal-panel-header">
+                <h3>
+                    <span class="modal-title-block">
+                        <svg class="icon">
+                            <use href="#icon-settings" />
+                        </svg>
+                        Ajustes
+                    </span>
+                    <span class="version-text">LUSHIBOSCA-v260622</span>
+                </h3>
+            </div>
+            <div class="modal-panel-body custom-scroll">
+                <div class="modal-config-cols">
+
+                    <div>
+                        <div class="form-group">
+                            <label>Horas Diarias</label>
+                            <div class="input-number-group">
+                                <input type="number" id="config-horas-diarias" min="0" max="24" step="0.5" readonly />
+                                <button class="btn-increment" title="Incrementar tiempo">+</button>
+                                <button class="btn-increment" title="Disminuir tiempo">-</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Días Laborales</label>
+                            <div class="week-selector">
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="1">
+                                    <span>Lu</span>
+                                </label>
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="2">
+                                    <span>Ma</span>
+                                </label>
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="3">
+                                    <span>Mi</span>
+                                </label>
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="4">
+                                    <span>Ju</span>
+                                </label>
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="5">
+                                    <span>Vi</span>
+                                </label>
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="6">
+                                    <span>Sa</span>
+                                </label>
+                                <label class="day-checkbox">
+                                    <input type="checkbox" name="dia-habil" value="0"> <span>Do</span>
+                                </label>
+                            </div>
+                            <div id="config-total-feedback" class="config-hint-text">(Total semanal: --hs)</div>
+                        </div>
+                        <div class="config-actions form-group">
+                            <label>Interfaz</label>
+                            <button id="btn-toggle-fondo">
+                                <svg class="icon">
+                                    <use href="#icon-landscape" />
+                                </svg>
+                                <span id="hint-fondo-label">Golden Gate</span>
+                            </button>
+                            <button id="btn-toggle-hover-popup">
+                                <svg class="icon">
+                                    <use href="#icon-calendar-simple" />
+                                </svg>
+                                <span>Popup hover calendario (PC)</span>
+                            </button>
+                            <button id="btn-toggle-persistir-tarjetas">
+                                <svg class="icon">
+                                    <use href="#icon-save" />
+                                </svg>
+                                <span>Recordar estado de tarjetas</span>
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label>Tarjetas y posición</label>
+                            <div id="lista-orden-cards">
+                                <div class="orden-card-item" id="orden-item-registrar">
+                                    <button id="btn-toggle-card-registrar" class="drag-handle flex-1"
+                                        data-card="registrar">
+                                        <svg class="icon">
+                                            <use href="#icon-save" />
+                                        </svg>
+                                        <span>Fichar</span>
+                                    </button>
+                                </div>
+                                <div class="orden-card-item" id="orden-item-estadisticas">
+                                    <button id="btn-toggle-card-estadisticas" class="drag-handle flex-1"
+                                        data-card="estadisticas">
+                                        <svg class="icon">
+                                            <use href="#icon-stats" />
+                                        </svg>
+                                        <span>Estadísticas</span>
+                                    </button>
+                                </div>
+                                <div class="orden-card-item" id="orden-item-historico">
+                                    <button id="btn-toggle-card-historico" class="drag-handle flex-1"
+                                        data-card="historico">
+                                        <svg class="icon">
+                                            <use href="#icon-list" />
+                                        </svg>
+                                        <span>Registros</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="config-actions form-group">
+                            <label>Estadísticas</label>
+                            <button id="btn-toggle-ignorar-tf">
+                                <svg class="icon">
+                                    <use href="#icon-exit" />
+                                </svg>
+                                <span>Ignorar cálculo tiempo fuera</span>
+                            </button>
+                            <button id="btn-toggle-saldo-enero">
+                                <svg class="icon">
+                                    <use href="#icon-calendar-simple" />
+                                </svg>
+                                <span>Saldo desde 1° día del año</span>
+                            </button>
+                            <button id="btn-toggle-saldo-primero-mes">
+                                <svg class="icon">
+                                    <use href="#icon-calendar-simple" />
+                                </svg>
+                                <span>Saldo desde 1° día del mes</span>
+                            </button>
+                        </div>
+                        <div class="config-actions">
+                            <label>Datos</label>
+                            <button class="btn-gist">
+                                <svg class="icon">
+                                    <use href="#icon-gist" />
+                                </svg>
+                                GitHub Gist
+                            </button>
+                            <button class="btn-backup">
+                                <svg class="icon">
+                                    <use href="#icon-upload" />
+                                </svg>
+                                Restaurar
+                            </button>
+                            <button class="btn-export">
+                                <svg class="icon">
+                                    <use href="#icon-download" />
+                                </svg>
+                                Respaldar
+                            </button>
+                            <button class="btn-delete">
+                                <svg class="icon">
+                                    <use href="#icon-trash" />
+                                </svg>
+                                Restablecer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-panel-footer">
+                <div class="btn-group">
+                    <button class="btn-cancel">
+                        <svg class="icon">
+                            <use href="#icon-back" />
+                        </svg> Volver
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-scrollable" id="modal-gist">
+        <div class="modal-content">
+            <div class="modal-panel-header">
+                <h3>
+                    <span class="modal-title-block">
+                        <svg class="icon">
+                            <use href="#icon-gist" />
+                        </svg>
+                        GitHub Gist
+                    </span>
+                </h3>
+            </div>
+            <div class="modal-panel-body custom-scroll">
+                <div class="form-group">
+                    <label>Personal Access Token</label>
+                    <div class="input-with-btn">
+                        <input type="password" id="gist-token" placeholder="ghp_xxxxxxxxxxxx" maxlength="100"
+                            autocomplete="off" />
+                        <button class="time-btn" id="btn-toggle-token" title="Mostrar/ocultar token">
+                            <svg class="icon">
+                                <use href="#icon-eye" />
+                            </svg>
+                        </button>
+                        <button class="time-btn" id="btn-crear-token" title="Crear token en GitHub">
+                            <svg class="icon">
+                                <use href="#icon-plus" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Gist ID</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="gist-id" placeholder="Dejar vacío para crear uno nuevo" maxlength="40"
+                            autocomplete="off" />
+                        <button class="time-btn" id="btn-gist-abrir" title="Abrir en GitHub">
+                            <svg class="icon">
+                                <use href="#icon-external-link" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="config-actions">
+                    <label>Acciones</label>
+                    <div class="flex-row">
+                        <button class="btn-export flex-1" id="btn-gist-subir">
+                            <svg class="icon">
+                                <use href="#icon-cloud-upload" />
+                            </svg> Subir
+                        </button>
+                        <button class="btn-backup flex-1" id="btn-gist-bajar">
+                            <svg class="icon">
+                                <use href="#icon-cloud-download" />
+                            </svg> Bajar
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group form-group-mt-half">
+                    <label>Automatización</label>
+                    <div class="flex-row">
+                        <button id="btn-toggle-gist-backup" class="flex-1">
+                            <span id="label-gist-backup">Sin automatizar</span>
+                            <span id="hint-gist-backup">—</span>
+                        </button>
+                        <button id="btn-toggle-gist-merge">
+                            <svg class="icon" id="icon-gist-merge">
+                                <use href="#icon-replace-swap" />
+                            </svg>
+                            <span id="hint-gist-merge">Reemplazar</span>
+                        </button>
+                    </div>
+                    <div id="gist-limite-sync">
+                        <div class="form-group form-group-mb-half">
+                            <label id="gist-limite-label">Límite por hora</label>
+                            <div class="input-number-group">
+                                <input type="number" id="gist-limite-valor" min="0" max="99" step="1" readonly />
+                                <button class="btn-increment">+</button>
+                                <button class="btn-increment">-</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="gist-rango-horario">
+                        <span>Desde</span>
+                        <input type="text" id="gist-rango-desde" inputmode="numeric" maxlength="5" />
+                        <span>Hasta</span>
+                        <input type="text" id="gist-rango-hasta" inputmode="numeric" maxlength="5" />
+                    </div>
+                </div>
+                <div class="config-hint-text" id="gist-ultima-sync">Sin sincronizar</div>
+            </div>
+            <div class="modal-panel-footer">
+                <div class="btn-group">
+                    <button class="btn-export" id="btn-gist-guardar">
+                        <svg class="icon">
+                            <use href="#icon-save" />
+                        </svg>
+                        Guardar
+                    </button>
+                    <button class="btn-cancel" id="btn-gist-volver">
+                        <svg class="icon">
+                            <use href="#icon-back" />
+                        </svg>
+                        Volver
+                    </button>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-gist-merge">
+        <div class="modal-content">
+            <div class="modal-panel-header">
+                <h3>
+                    <span class="modal-title-block">
+                        <svg class="icon">
+                            <use href="#icon-cloud-download" />
+                        </svg>
+                        Resumen de datos
+                    </span>
+                </h3>
+            </div>
+            <div class="modal-panel-body custom-scroll">
+                <div id="gist-merge-resumen"></div>
+            </div>
+            <div class="modal-panel-footer">
+                <div class="btn-group">
+                    <button class="btn-backup" id="btn-gist-merge-combinar">
+                        <svg class="icon">
+                            <use href="#icon-combine" />
+                        </svg>
+                        Combinar
+                    </button>
+                    <button class="btn-export" id="btn-gist-merge-reemplazar">
+                        <svg class="icon">
+                            <use href="#icon-replace-swap" />
+                        </svg>
+                        Reemplazar
+                    </button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-cancel" id="btn-gist-merge-cancelar">
+                        <svg class="icon">
+                            <use href="#icon-cancelar" />
+                        </svg>
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-scrollable" id="modal-editar">
+        <div class="modal-content">
+            <div class="modal-panel-header">
+                <h3>
+                    <span class="modal-title-block">
+                        <svg class="icon">
+                            <use href="#icon-edit" />
+                        </svg>Editar Registro
+                    </span>
+                    <span id="edit-hint-resumen" class="config-hint-text"></span>
+                </h3>
+            </div>
+            <div class="modal-panel-body custom-scroll">
+                <div class="form-group">
+                    <label>Fecha</label>
+                    <div class="input-with-btn">
+                        <input type="date" id="edit-fecha" />
+                        <button id="btn-toggle-credito" class="time-btn" title="Asueto | Salida temprano">
+                            <svg class="icon">
+                                <use href="#icon-exit" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Entrada</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="edit-entrada" inputmode="numeric" maxlength="5" />
+                        <button class="time-btn" id="btn-edit-entrada" title="Pegar hora actual o limpiar"><svg
+                                class="icon">
+                                <use href="#icon-clock" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Salida</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="edit-salida" inputmode="numeric" maxlength="5" />
+                        <button class="time-btn" id="btn-edit-salida" title="Pegar hora actual o limpiar"><svg
+                                class="icon">
+                                <use href="#icon-clock" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Tiempo Fuera</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="edit-tiempo-fuera" inputmode="numeric" maxlength="5" />
+                        <button class="time-btn" id="btn-edit-tf" title="Limpiar">
+                            <svg class="icon">
+                                <use href="#icon-broom" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Comentarios</label>
+                    <div class="input-with-btn">
+                        <input type="text" id="edit-notas" maxlength="35" autocomplete="off" />
+                        <button class="time-btn" id="btn-edit-notas" title="Limpiar">
+                            <svg class="icon">
+                                <use href="#icon-broom" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-panel-footer">
+                <div class="btn-group">
+                    <button class="btn-edit"><svg class="icon">
+                            <use href="#icon-save" />
+                        </svg> Guardar</button>
+                    <button class="btn-delete"><svg class="icon">
+                            <use href="#icon-trash" />
+                        </svg> Eliminar</button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-cancel"><svg class="icon">
+                            <use href="#icon-cancelar" />
+                        </svg> Cancelar</button>
+                    <button class="time-btn" id="btn-lock-toggle" title="Desbloquear edición">
+                        <svg class="icon">
+                            <use href="#icon-lock" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="modal-importar">
+        <div class="modal-content">
+            <h3><svg class="icon">
+                    <use href="#icon-upload" />
+                </svg> Restaurar Registros</h3>
+            <div class="form-group">
+                <input type="file" id="file-import" accept=".json" />
+                <button type="button" class="btn-backup" id="btn-seleccionar-archivo">
+                    <svg class="icon">
+                        <use href="#icon-upload" />
+                    </svg>
+                    Seleccionar archivo
+                </button>
+                <div id="nombre-archivo-seleccionado" class="config-hint-text">
+                </div>
+                <hr class="modal-hr">
+            </div>
+            <div class="importar-btns">
+                <button class="btn-backup" id="btn-combinar" disabled>
+                    <svg class="icon">
+                        <use href="#icon-combine" />
+                    </svg>
+                    Combinar
+                </button>
+                <button class="btn-merge" id="btn-reemplazar" disabled>
+                    <svg class="icon">
+                        <use href="#icon-replace-swap" />
+                    </svg>
+                    Reemplazar
+                </button>
+                <button class="btn-cancel" id="btn-volver-importar">
+                    <svg class="icon">
+                        <use href="#icon-back" />
+                    </svg>
+                    Volver
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="modal-exportar">
+        <div class="modal-content">
+            <h3>
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-download" />
+                    </svg>
+                    Respaldar Registros
+                </span>
+            </h3>
+            <div class="form-group">
+                <select id="tipo-exportacion">
+                    <option value="todo">📦 Todo el perfil</option>
+                    <option value="mes-actual">📅 Mes actual</option>
+                    <option value="rango">📊 Rango personalizado</option>
+                </select>
+            </div>
+            <div id="campos-rango-exportar" class="collapsible">
+                <div class="form-group">
+                    <label>Desde</label>
+                    <input type="date" id="export-fecha-desde" />
+                </div>
+                <div class="form-group">
+                    <label>Hasta</label>
+                    <input type="date" id="export-fecha-hasta" />
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-export">
+                    <svg class="icon">
+                        <use href="#icon-download" />
+                    </svg>
+                    Descargar
+                </button>
+                <button class="btn-cancel" id="btn-volver-exportar">
+                    <svg class="icon">
+                        <use href="#icon-back" />
+                    </svg>
+                    Volver
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="modal-filtros">
+        <div class="modal-content">
+            <h3>
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-filter" />
+                    </svg>
+                    Filtrar Registros
+                </span>
+            </h3>
+            <div class="form-group">
+                <label>Desde</label>
+                <input type="date" id="filtro-fecha-desde" />
+            </div>
+            <div class="form-group">
+                <label>Hasta</label>
+                <input type="date" id="filtro-fecha-hasta" />
+            </div>
+            <div class="form-group">
+                <label>Tipo de registro</label>
+                <select id="filtro-tipo">
+                    <option value="">Todos</option>
+                    <option value="normal">🕒 Jornadas</option>
+                </select>
+            </div>
+            <div class="btn-group">
+                <button class="btn-cancel">
+                    <svg class="icon">
+                        <use href="#icon-cancelar" />
+                    </svg> Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="modal-selector-perfiles">
+        <div class="modal-content">
+            <h3>
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-briefcase" />
+                    </svg>
+                    Perfiles
+                </span>
+            </h3>
+            <div id="lista-perfiles-botones" class="perfil-list-container custom-scroll"></div>
+            <div class="form-group form-group-border-top">
+                <label>Agregar perfil</label>
+                <div class="input-with-btn">
+                    <input type="text" id="nombre-nuevo-perfil-selector" placeholder="Nombre del perfil, lugar..."
+                        maxlength="30" />
+                    <button class="time-btn" id="btn-crear-perfil" title="Crear perfil">
+                        <svg class="icon">
+                            <use href="#icon-plus" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="btn-group">
+                <button class="btn-settings flex-1">
+                    <svg class="icon">
+                        <use href="#icon-settings" />
+                    </svg>
+                    Ajustes
+                </button>
+                <button class="time-btn" id="theme-toggle-modal" title="Cambiar Tema">
+                    <svg class="icon">
+                        <use href="#icon-moon" />
+                    </svg>
+                </button>
+            </div>
+            <div class="btn-group">
+                <button class="btn-cancel">
+                    <svg class="icon">
+                        <use href="#icon-cancelar" />
+                    </svg>Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="modal-editar-perfil">
+        <div class="modal-content">
+            <h3>
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-edit" />
+                    </svg>
+                    Editar Perfil
+                </span>
+            </h3>
+
+            <div class="form-group">
+                <label>Nombre del Perfil</label>
+                <input type="text" id="nombre-perfil-editar" placeholder="Nombre del perfil, lugar..." maxlength="30" />
+            </div>
+
+            <input type="hidden" id="id-perfil-editar" />
+
+            <div class="btn-group">
+                <button class="btn-edit">
+                    <svg class="icon">
+                        <use href="#icon-save" />
+                    </svg>
+                    Guardar
+                </button>
+                <button class="btn-delete" id="btn-eliminar-perfil-editor">
+                    <svg class="icon">
+                        <use href="#icon-trash" />
+                    </svg>
+                    Eliminar
+                </button>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-cancel">
+                    <svg class="icon">
+                        <use href="#icon-back" />
+                    </svg>
+                    Volver
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-scrollable" id="modal-editar-grupo">
+        <div class="modal-content">
+            <div class="modal-panel-header">
+                <h3>
+                    <span class="modal-title-block">
+                        <svg class="icon">
+                            <use href="#icon-edit" />
+                        </svg>Editar Grupo
+                    </span>
+                    <span id="edit-grupo-hint" class="config-hint-text"></span>
+                </h3>
+            </div>
+            <div class="modal-panel-body custom-scroll">
+                <div class="form-group">
+                    <label>Tipo de registro</label>
+                    <div class="input-with-btn">
+                        <select id="edit-grupo-tipo">
+                        </select>
+                        <div class="time-btn flex-shrink-0 btn-fantasma"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Desde</label>
+                    <div class="input-with-btn">
+                        <input type="date" id="edit-grupo-desde" />
+                        <button class="time-btn" id="btn-grupo-desde" title="Pegar hoy / Limpiar">
+                            <svg class="icon">
+                                <use href="#icon-calendar-simple" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Hasta</label>
+                    <div class="input-with-btn">
+                        <input type="date" id="edit-grupo-hasta" />
+                        <button class="time-btn" id="btn-grupo-hasta" title="Pegar hoy / Limpiar">
+                            <svg class="icon">
+                                <use href="#icon-calendar-simple" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-panel-footer">
+                <div class="btn-group">
+                    <button class="btn-edit">
+                        <svg class="icon">
+                            <use href="#icon-save" />
+                        </svg> Guardar
+                    </button>
+                    <button class="btn-delete">
+                        <svg class="icon">
+                            <use href="#icon-trash" />
+                        </svg> Eliminar
+                    </button>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-cancel">
+                        <svg class="icon">
+                            <use href="#icon-cancelar" />
+                        </svg> Cancelar
+                    </button>
+                    <button class="time-btn" id="btn-lock-grupo-toggle" title="Desbloquear edición">
+                        <svg class="icon">
+                            <use href="#icon-lock" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="modal-confirmar">
+        <div class="modal-content">
+            <div class="modal-panel-header">
+                <h3>
+                    <span class="modal-title-block">
+                        <svg class="icon">
+                            <use href="#icon-help" />
+                        </svg>
+                        <span id="modal-confirmar-titulo">Atención</span>
+                    </span>
+                </h3>
+            </div>
+            <div class="modal-panel-body">
+                <p id="modal-confirmar-texto"></p>
+            </div>
+            <div class="modal-panel-footer">
+                <div class="btn-group">
+                    <button class="btn-edit" id="modal-confirmar-ok">
+                        <svg class="icon">
+                            <use href="#icon-trash" />
+                        </svg>
+                        <span id="modal-confirmar-label-ok">Confirmar</span>
+                    </button>
+                    <button class="btn-cancel" id="modal-confirmar-cancel">
+                        <svg class="icon">
+                            <use href="#icon-cancelar" />
+                        </svg>
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+<!-- lushibosca-->
+
+</html>
