@@ -8130,9 +8130,72 @@ Generado por Sistema Lushibosca
         return { chequearYNotificar };
     })();
 
+    // ====================================================================
+    // MÓDULO TEMPORAL DE MIGRACIÓN / MUDANZA
+    // ====================================================================
+    async function chequearMigracionYNotificar() {
+        const registros = DataManagement.registros();
+        if (!registros || registros.length === 0) return;
+
+        const elTitulo = document.getElementById('modal-confirmar-titulo');
+        const btnCancel = document.getElementById('modal-confirmar-cancel');
+        const btnGroup = btnCancel ? btnCancel.parentElement : null;
+        
+        const cancelTextNode = btnCancel
+            ? [...btnCancel.childNodes].find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim())
+            : null;
+        const labelCancelOriginal = cancelTextNode ? cancelTextNode.textContent : null;
+
+        if (elTitulo) elTitulo.textContent = 'Cambio de dirección 🚀';
+        if (cancelTextNode) cancelTextNode.textContent = ' Ignorar';
+
+        // 1. Creamos el nuevo botón para redirigir
+        let btnIrNuevaWeb = null;
+        if (btnGroup) {
+            btnIrNuevaWeb = document.createElement('button');
+            btnIrNuevaWeb.className = 'btn-backup'; 
+            btnIrNuevaWeb.style.backgroundColor = 'var(--c-green)'; // Aseguramos el color verde
+            btnIrNuevaWeb.style.color = '#fff';
+            btnIrNuevaWeb.innerHTML = '<svg class="icon"><use href="#icon-external-link" /></svg> Ir a la pagina';
+            
+            // Evento: Al hacer clic, abre la nueva URL en una pestaña nueva
+            btnIrNuevaWeb.onclick = () => {
+                window.open('https://lushibosca.github.io/Horarios/', '_blank');
+            };
+            
+            // Lo insertamos en el medio
+            btnGroup.insertBefore(btnIrNuevaWeb, btnCancel);
+        }
+
+        const texto = 'Se creó un nuevo repositorio/dirección con un nombre mas descriptivo de la pagina, crear un respaldo para restaurarlos en caso de falla al ir a la nueva dirección';
+
+        // Esperamos la respuesta del modal
+        const confirmo = await confirmarModal(texto, 'Crear Backup', '#icon-download');
+
+        // 2. Limpieza de UI
+        if (elTitulo) elTitulo.textContent = 'Atención';
+        if (cancelTextNode && labelCancelOriginal !== null) cancelTextNode.textContent = labelCancelOriginal;
+        if (btnIrNuevaWeb) btnIrNuevaWeb.remove();
+
+        // 3. Si el usuario clickeó en Crear Backup
+        if (confirmo) {
+            // Se inicia la descarga del archivo
+            DataManagement.exportarJSON();
+            
+            // 4. NUEVO: Volvemos a abrir el modal medio segundo después
+            // Le damos tiempo al navegador a procesar la descarga y abrimos la alerta de nuevo
+            setTimeout(() => chequearMigracionYNotificar(), 500);
+        }
+    }
+
+    // Inicializar lógica de la UI
     UILogic.init();
 
-    setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
+    // Lanzar aviso de migración a los 2 segundos de cargar la página
+    setTimeout(() => chequearMigracionYNotificar(), 2000);
+
+    // Retrasamos el chequeo de feriados a los 7 segundos
+    setTimeout(() => FeriadosAR.chequearYNotificar(), 7000);
 })();
 
 if ('serviceWorker' in navigator) {
