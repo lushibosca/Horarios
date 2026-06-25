@@ -576,7 +576,7 @@
         function _getAccionVolver(modalId) {
             const acciones = {
                 'modal-gist': () => window.UILogic?.cerrarModalGist(),
-                'modal-gist-merge': () => window.UILogic?.gistMergeCancelar(true),
+                'modal-gist-merge': () => window.UILogic?.gistMergeCancelar(),
                 'modal-config': () => window.UILogic && UILogic.cerrarConfig(),
                 'modal-selector-perfiles': () => window.UILogic && UILogic.cerrarSelectorPerfiles(),
                 'modal-editar': () => window.UILogic && UILogic.cerrarEdicion(),
@@ -658,6 +658,7 @@
             const modal = document.getElementById(modalId);
             if (!modal) return;
 
+            const estabaAbierto = modal.classList.contains('show');
             modal.classList.remove('show');
 
             if (document.querySelectorAll('.modal.show').length === 0) {
@@ -667,7 +668,7 @@
             modal.removeEventListener('mousedown', _handleOverlayMousedown);
             modal.removeEventListener('click', handleOutsideClick);
 
-            if (!_navegandoHaciaAtras && !_enAlternanciaHaciaAdelante) {
+            if (estabaAbierto && !_navegandoHaciaAtras && !_enAlternanciaHaciaAdelante) {
                 _ignorandoPopstate = true;
                 history.back();
             }
@@ -4156,6 +4157,7 @@
             if (v !== undefined) _animarCambioStats(() => actualizarEstadisticas(v));
         }
 
+        // ── Helpers privados de generarReporte ───────────────────────
         function _sumarHorasEfectivas(regs, horasDiarias) {
             return regs.reduce((sum, r) => {
                 const t = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
@@ -4273,6 +4275,7 @@
             });
             return semanas;
         }
+        // ─────────────────────────────────────────────────────────────
 
         function generarReporte() {
             const esAnual = modoEstadisticas === 'anual';
@@ -5576,6 +5579,7 @@ Generado por Sistema Lushibosca
             actualizarEstadoBotonesGist();
             ModalManager.cerrarTodos();
             ModalManager.abrir('modal-gist');
+            if (_gistModalPadre) ModalManager.setPadre('modal-gist', _gistModalPadre);
             _gistLimitesTemp = null;
             _actualizarCampoLimite();
             _gistLimitesOrig = { bajar: GistSync.getSyncLimite('bajar'), subir: GistSync.getSyncLimite('subir') };
@@ -5678,14 +5682,19 @@ Generado por Sistema Lushibosca
             _gistAutoSyncTemp = null;
             _gistLimitesTemp = null;
             _gistLimitesOrig = null;
-            ModalManager.cerrar('modal-gist');
             if (_gistModalPadre) {
-                ModalManager.abrir(_gistModalPadre);
-                if (_gistModalPadre === 'modal-config') {
+                const padre = _gistModalPadre;
+                _gistModalPadre = null;
+                // alternar detecta esHaciaAtras=true gracias al setPadre en abrirModalGist,
+                // por lo que hace history.back() sin pushState extra → evita entrada duplicada
+                ModalManager.alternar('modal-gist', padre);
+                if (padre === 'modal-config') {
                     ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
                 }
+            } else {
+                ModalManager.cerrar('modal-gist');
+                _gistModalPadre = null;
             }
-            _gistModalPadre = null;
             actualizarBotonesHistorico();
         }
 
@@ -5774,18 +5783,14 @@ Generado por Sistema Lushibosca
             if (btn) btn.disabled = false;
         }
 
-        function gistMergeCancelar(desdePopstate = false) {
+        function gistMergeCancelar() {
             _gistMergeData = null;
             ModalManager.cerrar('modal-gist-merge');
             const btn = document.getElementById('btn-gist-bajar');
             if (btn) btn.disabled = false;
             if (_gistMergeDesdeModal) {
                 _gistMergeDesdeModal = false;
-                if (desdePopstate) {
-                    setTimeout(() => ModalManager.abrir('modal-gist'), 60);
-                } else {
-                    ModalManager.abrir('modal-gist');
-                }
+                ModalManager.abrir('modal-gist');
             }
         }
 
@@ -6051,7 +6056,7 @@ Generado por Sistema Lushibosca
                         footer.appendChild(document.createTextNode(`: usa los ${registrosNormalizados.length} registros del Gist`));
                         resumenEl.appendChild(footer);
                     }
-                    if (_gistMergeDesdeModal) ModalManager.cerrar('modal-gist');
+                    ModalManager.cerrar('modal-gist');
                     ModalManager.abrir('modal-gist-merge');
                 }
             } catch (e) {
@@ -7369,7 +7374,9 @@ Generado por Sistema Lushibosca
             const headerEl = document.querySelector('.header');
             const headerH = headerEl ? headerEl.offsetHeight : 0;
             const margen = headerH + 8;
+            // Si la tarjeta ya es completamente visible, no scrollear
             if (rect.top >= margen && rect.bottom <= window.innerHeight) return;
+            // Scroll manual para que el borde superior de la tarjeta quede justo bajo el header
             window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: 'smooth' });
         }
 
