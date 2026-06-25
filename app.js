@@ -706,7 +706,57 @@
             document.body.classList.remove('modal-open');
         }
 
-        return { abrir, cerrar, alternar, cerrarTodos, getPadre: (id) => _padres[id] || null, setPadre: (id, padreId) => { if (id && padreId) _padres[id] = padreId; } };
+        function confirmar(texto, labelOk = 'Confirmar', icono = '#icon-trash') {
+            return new Promise((resolve) => {
+                const elTexto = document.getElementById('modal-confirmar-texto');
+                const elLabel = document.getElementById('modal-confirmar-label-ok');
+                const elIcono = document.querySelector('#modal-confirmar-ok svg use');
+                const btnOk = document.getElementById('modal-confirmar-ok');
+                const btnCancel = document.getElementById('modal-confirmar-cancel');
+                if (!elTexto || !btnOk || !btnCancel) { resolve(false); return; }
+
+                elTexto.textContent = texto;
+                if (elLabel) elLabel.textContent = labelOk;
+                if (elIcono) elIcono.setAttribute('href', icono);
+
+                const modalPadre = document.querySelector('.modal.show');
+                const modalPadreId = modalPadre ? modalPadre.id : null;
+
+                function ok() { cleanup(); resolve(true); }
+                function cancel() { cleanup(); resolve(false); }
+
+                function onPopstate() {
+                    _removeListeners();
+                    resolve(false);
+                }
+
+                function _removeListeners() {
+                    btnOk.removeEventListener('click', ok);
+                    btnCancel.removeEventListener('click', cancel);
+                    window.removeEventListener('popstate', onPopstate);
+                }
+
+                function cleanup() {
+                    _removeListeners();
+                    if (modalPadreId) {
+                        alternar('modal-confirmar', modalPadreId);
+                    } else {
+                        cerrar('modal-confirmar');
+                    }
+                }
+
+                btnOk.addEventListener('click', ok);
+                btnCancel.addEventListener('click', cancel);
+                window.addEventListener('popstate', onPopstate, { once: true });
+                if (modalPadreId) {
+                    alternar(modalPadreId, 'modal-confirmar');
+                } else {
+                    abrir('modal-confirmar');
+                }
+            });
+        }
+
+        return { abrir, cerrar, alternar, cerrarTodos, confirmar, getPadre: (id) => _padres[id] || null, setPadre: (id, padreId) => { if (id && padreId) _padres[id] = padreId; } };
     })();
 
     // ====================================================================
@@ -816,56 +866,6 @@
             saveToLocalStorage, loadFromLocalStorage, getCurrentState
         };
     })();
-
-    function confirmarModal(texto, labelOk = 'Confirmar', icono = '#icon-trash') {
-        return new Promise((resolve) => {
-            const elTexto = document.getElementById('modal-confirmar-texto');
-            const elLabel = document.getElementById('modal-confirmar-label-ok');
-            const elIcono = document.querySelector('#modal-confirmar-ok svg use');
-            const btnOk = document.getElementById('modal-confirmar-ok');
-            const btnCancel = document.getElementById('modal-confirmar-cancel');
-            if (!elTexto || !btnOk || !btnCancel) { resolve(false); return; }
-
-            elTexto.textContent = texto;
-            if (elLabel) elLabel.textContent = labelOk;
-            if (elIcono) elIcono.setAttribute('href', icono);
-
-            const modalPadre = document.querySelector('.modal.show');
-            const modalPadreId = modalPadre ? modalPadre.id : null;
-
-            function ok() { cleanup(); resolve(true); }
-            function cancel() { cleanup(); resolve(false); }
-
-            function onPopstate() {
-                _removeListeners();
-                resolve(false);
-            }
-
-            function _removeListeners() {
-                btnOk.removeEventListener('click', ok);
-                btnCancel.removeEventListener('click', cancel);
-                window.removeEventListener('popstate', onPopstate);
-            }
-
-            function cleanup() {
-                _removeListeners();
-                if (modalPadreId) {
-                    ModalManager.alternar('modal-confirmar', modalPadreId);
-                } else {
-                    ModalManager.cerrar('modal-confirmar');
-                }
-            }
-
-            btnOk.addEventListener('click', ok);
-            btnCancel.addEventListener('click', cancel);
-            window.addEventListener('popstate', onPopstate, { once: true });
-            if (modalPadreId) {
-                ModalManager.alternar(modalPadreId, 'modal-confirmar');
-            } else {
-                ModalManager.abrir('modal-confirmar');
-            }
-        });
-    }
 
     // ====================================================================
     // TIPOS DE REGISTRO MODULE
@@ -1563,7 +1563,7 @@
 
         async function borrarTodoHistorial() {
             const totalRegistros = registros.length;
-            const confirmar = await confirmarModal(`Esto restablecerá el perfil activo: se eliminarán ${totalRegistros} registro${totalRegistros !== 1 ? 's' : ''} y la configuración volverá a los valores por defecto. No afecta otros perfiles.`, 'Restablecer');
+            const confirmar = await ModalManager.confirmar(`Esto restablecerá el perfil activo: se eliminarán ${totalRegistros} registro${totalRegistros !== 1 ? 's' : ''} y la configuración volverá a los valores por defecto. No afecta otros perfiles.`, 'Restablecer');
             if (!confirmar) return;
 
             diasHabiles = [1, 2, 3, 4, 5];
@@ -1670,10 +1670,10 @@
                     if (data.hash) {
                         if (await S.calcularHashSHA256(data.registros) !== data.hash) {
                             UILogic.mostrarToast('⚠️ El archivo puede estar corrupto o modificado', 'warning');
-                            if (!(await confirmarModal('El hash de integridad no coincide. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload'))) return;
+                            if (!(await ModalManager.confirmar('El hash de integridad no coincide. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload'))) return;
                         }
                     } else {
-                        if (!(await confirmarModal('Este archivo no tiene verificación de integridad. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload'))) return;
+                        if (!(await ModalManager.confirmar('Este archivo no tiene verificación de integridad. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload'))) return;
                     }
                     if (data.registros.length > S.SECURITY_LIMITS.MAX_REGISTROS) { UILogic.mostrarToast(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS} registros permitidos`, 'error'); return; }
 
@@ -5001,7 +5001,7 @@ Generado por Sistema Lushibosca
                 return;
             }
 
-            const confirmacion = await confirmarModal(`¿Estás seguro de que querés eliminar el perfil "${perfil.nombre}"? Esta acción no se puede deshacer.`, 'Eliminar');
+            const confirmacion = await ModalManager.confirmar(`¿Estás seguro de que querés eliminar el perfil "${perfil.nombre}"? Esta acción no se puede deshacer.`, 'Eliminar');
 
             if (!confirmacion) return;
 
@@ -5785,12 +5785,15 @@ Generado por Sistema Lushibosca
 
         function gistMergeCancelar() {
             _gistMergeData = null;
-            ModalManager.cerrar('modal-gist-merge');
             const btn = document.getElementById('btn-gist-bajar');
             if (btn) btn.disabled = false;
             if (_gistMergeDesdeModal) {
                 _gistMergeDesdeModal = false;
-                ModalManager.abrir('modal-gist');
+                // alternar detecta esHaciaAtras=true (padres[gist-merge]=gist) y hace history.back()
+                // sin pushState, tanto desde botón cancelar como desde popstate (mobile back)
+                ModalManager.alternar('modal-gist-merge', 'modal-gist');
+            } else {
+                ModalManager.cerrar('modal-gist-merge');
             }
         }
 
@@ -5947,7 +5950,7 @@ Generado por Sistema Lushibosca
                 if (hasInvalidKeys) throw new Error('Estructura del Gist sospechosa');
 
                 if (data._hashNoCoincide) {
-                    const continuar = await confirmarModal('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
+                    const continuar = await ModalManager.confirmar('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
                     if (!continuar) {
                         if (btn) btn.disabled = false;
                         return;
@@ -6056,8 +6059,7 @@ Generado por Sistema Lushibosca
                         footer.appendChild(document.createTextNode(`: usa los ${registrosNormalizados.length} registros del Gist`));
                         resumenEl.appendChild(footer);
                     }
-                    ModalManager.cerrar('modal-gist');
-                    ModalManager.abrir('modal-gist-merge');
+                    ModalManager.alternar('modal-gist', 'modal-gist-merge');
                 }
             } catch (e) {
                 console.error('Gist bajar error:', e);
@@ -8081,7 +8083,7 @@ Generado por Sistema Lushibosca
                 if (elTitulo) elTitulo.textContent = esGrupal ? 'Feriados Próximos' : 'Feriado Próximo';
                 if (cancelTextNode) cancelTextNode.textContent = ' No';
 
-                const confirmo = await confirmarModal(texto, 'Sí', '#icon-save');
+                const confirmo = await ModalManager.confirmar(texto, 'Sí', '#icon-save');
 
                 grupo.forEach(f => _marcarProcesado(f.fecha));
 
