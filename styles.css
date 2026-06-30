@@ -1224,6 +1224,12 @@ button:disabled {
     color: var(--text-muted);
 }
 
+.empty-state__btn-restaurar {
+    width: auto;
+    margin: 1rem auto 0;
+    font-size: 0.9rem;
+}
+
 .empty-state--calendario {
     grid-column: span 3;
     padding: 1rem;
@@ -1591,7 +1597,7 @@ input.campo-flash {
     :is([id^="btn-toggle-"],
         #btn-reporte,
         .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist,
-        .btn-delete, .btn-cancel, .btn-export, .btn-backup, .btn-edit,
+        .btn-delete, .btn-cancel, .btn-export, .btn-merge,  .btn-backup, .btn-edit,
         .calendario-nav button):hover:not(:disabled) {
         filter: var(--hover);
     }
