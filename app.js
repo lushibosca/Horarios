@@ -385,6 +385,13 @@
             return trim ? r.trim() : r;
         }
 
+        function escapeHtml(s) {
+            return s == null ? '' : String(s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function generarIDSeguro() {
             if (window.crypto && window.crypto.getRandomValues) {
                 const array = new Uint32Array(4);
@@ -442,6 +449,7 @@
             REGEX_PATTERNS,
             sanitizeString,
             sanitizeNotas,
+            escapeHtml,
             generarIDSeguro,
             calcularHashSHA256,
             validarRegistroSeguro,
@@ -515,8 +523,6 @@
             return guardarPerfiles();
         }
 
-        function cargarDatosPerfilActual() { return perfiles[perfilActual]; }
-
         function actualizarSelector() {
             const btnTexto = document.getElementById('nombre-perfil-header');
             if (btnTexto && perfiles[perfilActual]) {
@@ -555,7 +561,7 @@
         }
 
         return {
-            inicializar, cambiarPerfil, guardarDatosPerfilActual, cargarDatosPerfilActual,
+            inicializar, cambiarPerfil, guardarDatosPerfilActual,
             obtenerPerfilActual, obtenerDatosPerfil, obtenerListaPerfiles, obtenerTodosPerfiles,
             guardarPerfiles, perfilKey, MAX_PERFILES
         };
@@ -590,6 +596,12 @@
             return acciones[modalId] || null;
         }
 
+        function _ejecutarAccionCierre(modalId) {
+            const accionVolver = _getAccionVolver(modalId);
+            if (accionVolver) accionVolver();
+            else cerrar(modalId);
+        }
+
         window.addEventListener('popstate', (event) => {
             if (_ignorandoPopstate) {
                 _ignorandoPopstate = false;
@@ -601,13 +613,7 @@
             const modalesAbiertos = Array.from(document.querySelectorAll('.modal.show'));
             if (modalesAbiertos.length > 0) {
                 const topModal = modalesAbiertos[modalesAbiertos.length - 1];
-                const accionVolver = _getAccionVolver(topModal.id);
-
-                if (accionVolver) {
-                    accionVolver();
-                } else {
-                    cerrar(topModal.id);
-                }
+                _ejecutarAccionCierre(topModal.id);
             }
 
             setTimeout(() => { _navegandoHaciaAtras = false; }, 50);
@@ -626,12 +632,7 @@
                 if (modalId === 'modal-confirmar') {
                     return;
                 }
-                const accionVolver = _getAccionVolver(modalId);
-                if (accionVolver) {
-                    accionVolver();
-                } else {
-                    cerrar(modalId);
-                }
+                _ejecutarAccionCierre(modalId);
             }
         }
 
@@ -706,10 +707,12 @@
             document.body.classList.remove('modal-open');
         }
 
-        function confirmar(texto, labelOk = 'Confirmar', icono = '#icon-trash') {
+        function confirmar(texto, labelOk = 'Confirmar', icono = '#icon-trash', opciones = {}) {
             return new Promise((resolve) => {
                 const elTexto = document.getElementById('modal-confirmar-texto');
                 const elLabel = document.getElementById('modal-confirmar-label-ok');
+                const elLabelCancel = document.getElementById('modal-confirmar-label-cancel');
+                const elTitulo = document.getElementById('modal-confirmar-titulo');
                 const elIcono = document.querySelector('#modal-confirmar-ok svg use');
                 const btnOk = document.getElementById('modal-confirmar-ok');
                 const btnCancel = document.getElementById('modal-confirmar-cancel');
@@ -717,6 +720,8 @@
 
                 elTexto.textContent = texto;
                 if (elLabel) elLabel.textContent = labelOk;
+                if (elLabelCancel) elLabelCancel.textContent = opciones.labelCancel || 'Cancelar';
+                if (elTitulo) elTitulo.textContent = opciones.titulo || 'Atención';
                 if (elIcono) elIcono.setAttribute('href', icono);
 
                 const modalPadre = document.querySelector('.modal.show');
@@ -756,7 +761,7 @@
             });
         }
 
-        return { abrir, cerrar, alternar, cerrarTodos, confirmar, getPadre: (id) => _padres[id] || null, setPadre: (id, padreId) => { if (id && padreId) _padres[id] = padreId; } };
+        return { abrir, cerrar, alternar, cerrarTodos, confirmar, ejecutarAccionCierre: _ejecutarAccionCierre, getPadre: (id) => _padres[id] || null, setPadre: (id, padreId) => { if (id && padreId) _padres[id] = padreId; } };
     })();
 
     // ====================================================================
@@ -770,7 +775,11 @@
         function deepClone(obj) {
             if (obj === null || obj === undefined) return obj;
             try { return structuredClone(obj); }
-            catch (e) { return JSON.parse(JSON.stringify(obj)); }
+            catch (e) {
+                return JSON.parse(JSON.stringify(obj), (k, v) =>
+                    ['__proto__', 'constructor', 'prototype'].includes(k) ? undefined : v
+                );
+            }
         }
 
         function saveState(registros) {
@@ -832,10 +841,8 @@
                 if (tiempoTranscurrido < limiteEnMs) {
                     _stack = historyData.history || [];
                     currentIndex = historyData.currentIndex !== undefined ? historyData.currentIndex : -1;
-                    console.log(`✓ Historial restaurado: ${_stack.length} estados, índice actual: ${currentIndex}`);
                     return _stack.length > 0 && currentIndex >= 0;
                 } else {
-                    console.log('Historial expirado (más de 24hs), limpiando...');
                     StorageHelper.removeItem(STORAGE_KEYS.HISTORY, true);
                 }
             }
@@ -1229,7 +1236,6 @@
             return valido;
         }
 
-        // ── Helpers privados de agregarRegistro ──────────────────────
         function _mensajeExitoSalida(reg, usaHoraActual, timerDetenido, s) {
             if (timerDetenido && usaHoraActual) {
                 return `Salida registrada con hora actual \nTiempo fuera: +${reg.tiempoFuera || '00:00'} \n(entrada: ${reg.entrada})`;
@@ -1283,7 +1289,6 @@
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('entrada').value = ''; $('salida').value = '';
         }
-        // ─────────────────────────────────────────────────────────────
 
         async function agregarRegistro() {
             if (!validarFormulario()) { UILogic.mostrarToast('Verifica los campos', 'error'); return; }
@@ -1450,7 +1455,6 @@
             return null;
         }
 
-        // ── Helpers privados de guardarEdicion ───────────────────────
         function _calcularCredito(e, s, tf) {
             const btn = document.getElementById('btn-toggle-credito');
             if (!btn || btn.dataset.activo !== 'true') return null;
@@ -1458,8 +1462,7 @@
             if (!calc) return null;
             const diferencia = horasDiarias - calc.total;
             if (diferencia <= 0.01) return null;
-            let h = Math.floor(diferencia), m = Math.round((diferencia - h) * 60);
-            if (m === 60) { h++; m = 0; }
+            const { horas: h, minutos: m } = TimeUtils.descomponerHorasDecimales(diferencia);
             return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
         }
 
@@ -1476,7 +1479,6 @@
             UILogic.restaurarBotonGuardarEdicion(btnGuardar);
             if (saved) { UILogic.mostrarToast('Registro eliminado (vacío)', 'info'); UILogic.cerrarEdicion(); }
         }
-        // ─────────────────────────────────────────────────────────────
 
         async function guardarEdicion() {
             const r = registros.find(x => x.id === editandoId);
@@ -1607,8 +1609,6 @@
             }
         }
 
-
-        // ── Helpers privados de importarDatos ────────────────────────
         async function _validarDatosImport(data) {
             if (!data || typeof data !== 'object' || Array.isArray(data)) { UILogic.mostrarToast('Estructura de archivo inválida', 'error'); return false; }
             if (!data.registros || !Array.isArray(data.registros)) { UILogic.mostrarToast('Archivo inválido o corrupto', 'error'); return false; }
@@ -1658,7 +1658,6 @@
             if (complementarios.length > 0) partes.push(p(complementarios.length, 'registro completado'));
             finalizarImportacionAndSave(`Combinado: ${partes.join(', ')}`);
         }
-        // ─────────────────────────────────────────────────────────────
 
         function importarDatos(modo = 'replace') {
             const fileInput = $('file-import');
@@ -2398,6 +2397,9 @@
 
             const detalleMesActual = document.createElement('div');
             detalleMesActual.className = 'registro-mes-detalle';
+            const innerMesActual = document.createElement('div');
+            innerMesActual.className = 'detalle-inner';
+            detalleMesActual.appendChild(innerMesActual);
 
             let debeEstarExpandido = false;
             try {
@@ -2421,10 +2423,10 @@
                 if (semanaAnterior && semanaActual !== semanaAnterior) {
                     const sep = document.createElement('div');
                     sep.className = 'separador-semana';
-                    detalleMesActual.appendChild(sep);
+                    innerMesActual.appendChild(sep);
                 }
 
-                detalleMesActual.appendChild(
+                innerMesActual.appendChild(
                     esGrupo
                         ? crearGrupoExpandible(grupo, horasDiarias, idNuevo)
                         : crearItemRegistroIndividual(r, horasDiarias, idNuevo, hoy)
@@ -2437,8 +2439,6 @@
             return contenedorMesActual;
         }
 
-
-        // ── Helpers privados de actualizarListaRegistros ─────────────
         function _renderEmptyStateLista(lista) {
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'empty-state';
@@ -2468,19 +2468,20 @@
             header.appendChild(document.createTextNode(' ' + anio));
 
             const detalle = Object.assign(document.createElement('div'), { className: 'registro-mes-detalle' });
+            const innerAnio = Object.assign(document.createElement('div'), { className: 'detalle-inner' });
+            detalle.appendChild(innerAnio);
             let expandido = false;
             try { expandido = StorageHelper.getItem(STORAGE_KEYS.ANIO_EXPANDIDO(anio)) === 'true'; } catch (e) { }
             if (expandido) { detalle.classList.add('expanded'); chevron.style.transform = 'rotate(180deg)'; }
 
             mesesDelAnio.forEach((registrosDelMes, claveMes) =>
-                detalle.appendChild(crearContenedorMes(claveMes, registrosDelMes, horasDiarias, idNuevo, mesHoy, hoy))
+                innerAnio.appendChild(crearContenedorMes(claveMes, registrosDelMes, horasDiarias, idNuevo, mesHoy, hoy))
             );
 
             contenedor.appendChild(header);
             contenedor.appendChild(detalle);
             return contenedor;
         }
-        // ─────────────────────────────────────────────────────────────
 
         function actualizarListaRegistros(registros, idNuevo = null) {
             const lista = $('lista-registros');
@@ -2780,7 +2781,7 @@
                 const [a, m] = r.fecha.split('-').map(Number);
                 return a === añoActual && m === mesActual + 1;
             });
-            const primerDiaMes = `${añoActual}-${String(mesActual + 1).padStart(2, '0')}-01`;
+            const primerDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual, 1));
             const ultimoDia = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual + 1, 0));
             let fechaDesde = primerDiaMes;
             const desdePrimeroDia = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false);
@@ -2987,9 +2988,7 @@
             const objetivoSemana = Math.max(0, horasSemanales - D.calcularHorasFeriadoEnRango(ini, fn));
             const todosEspeciales = _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias);
 
-            const tipoEspecialHoy = (regHoy?.salida && regHoy.entrada === regHoy.salida)
-                ? TiposRegistro.obtenerTipoPorCodigo(regHoy.entrada, regHoy.salida)
-                : null;
+            const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
 
             let tiempoHoy = 0;
             const regActivo = (ayerAbierto && !regHoy) ? regAyer
@@ -3371,7 +3370,6 @@
             }
         }
 
-        // ── Utilidades de animación ──────────────────────────────────────────
         function _getCSSdur(varName) {
             const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
             if (!raw) return 300;
@@ -3380,7 +3378,6 @@
         const DUR_ANIM = () => _getCSSdur('--dur-anim');
         const DUR_CALENDARIO = () => _getCSSdur('--dur-calendario');
 
-        // Patrón genérico: fade-out → fn() → fade-in, sincronizado con --dur-anim
         function _animarFadeSwap(el, fn) {
             if (!el) { fn(); return; }
             el.classList.add('fade-out');
@@ -3450,8 +3447,6 @@
             }
         }
 
-        // ─── TOGGLES DE UI Y STORAGE ───────────────────────────────────────
-
         /**
          * Factory para pares toggle/actualizarEstado de configuraciones booleanas.
          *
@@ -3508,7 +3503,6 @@
             if (btn) btn.classList.toggle('btn-activo', activo);
         }
 
-        // ── ignorarTiempoFuera ──────────────────────────────────────────────
         const { toggle: toggleIgnorarTiempoFuera, actualizarEstado: actualizarEstadoBotonIgnorarTF } =
             _crearToggleConfig({
                 getVal: () => D.getIgnorarTiempoFuera(),
@@ -3519,7 +3513,6 @@
                 onAfterToggle: () => { D.recalcularTotalesEnMemoria(); actualizarUI(); },
             });
 
-        // ── hoverPopupCalendario ────────────────────────────────────────────
         const { toggle: toggleHoverPopupCalendario, actualizarEstado: actualizarEstadoBotonHoverPopup } =
             _crearToggleConfig({
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.HOVER_POPUP, true),
@@ -3529,7 +3522,6 @@
                 mensajeOff: 'Popup desactivado',
             });
 
-        // ── saldoDesdeEnero ──────────────────────────────────────────────────
         const { toggle: toggleSaldoDesdeEnero, actualizarEstado: actualizarEstadoBotonSaldoDesdeEnero } =
             _crearToggleConfig({
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false),
@@ -3540,7 +3532,6 @@
                 onAfterToggle: () => { actualizarUI(); }
             });
 
-        // ── saldoDesdePrimeroDiaMes ──────────────────────────────────────────
         const { toggle: toggleSaldoDesdePrimeroDiaMes, actualizarEstado: actualizarEstadoBotonSaldoDesdePrimeroDiaMes } =
             _crearToggleConfig({
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false),
@@ -3551,7 +3542,6 @@
                 onAfterToggle: () => { actualizarUI(); }
             });
 
-        // ── persistirTarjetas ───────────────────────────────────────────────
         const { toggle: togglePersistirTarjetas, actualizarEstado: actualizarEstadoBotonPersistir } =
             _crearToggleConfig({
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true),
@@ -3794,33 +3784,30 @@
             return opt;
         }
 
-        function _poblarSelectAgrupado(selectId, items, getLabel, selDefault, actualizarFn) {
+        function _poblarSelect(selectId, items, getLabel, selDefault, actualizarFn, agruparFn = null) {
             const select = $(selectId);
             if (!select) return;
             const selActual = select.value;
             select.innerHTML = '';
             if (!items.length) { select.appendChild(_crearOpcion('', 'Sin registros')); actualizarFn(null); return; }
             const sel = (selActual && items.includes(selActual)) ? selActual : (items.includes(selDefault) ? selDefault : items[0]);
-            _agruparMesesPorAnio(items).forEach((claves, anio) => {
-                const grp = document.createElement('optgroup');
-                grp.label = anio;
-                claves.forEach(k => grp.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
-                select.appendChild(grp);
-            });
+            if (agruparFn) {
+                agruparFn(items).forEach((claves, grupo) => {
+                    const grp = document.createElement('optgroup');
+                    grp.label = grupo;
+                    claves.forEach(k => grp.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
+                    select.appendChild(grp);
+                });
+            } else {
+                items.forEach(k => select.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
+            }
             actualizarFn(sel);
         }
 
         function poblarSelectorAnios() {
-            const select = $('select-anio-stats');
-            if (!select) return;
-            const selActual = select.value;
             const anios = [...new Set(D.registros().map(r => r.fecha.substring(0, 4)))].sort().reverse();
-            select.innerHTML = '';
-            if (!anios.length) { select.appendChild(_crearOpcion('', 'Sin registros')); actualizarEstadisticasAnio(null); return; }
             const anioActual = String(new Date().getFullYear());
-            const sel = (selActual && anios.includes(selActual)) ? selActual : (anios.includes(anioActual) ? anioActual : anios[0]);
-            anios.forEach(a => select.appendChild(_crearOpcion(a, a, a === sel)));
-            actualizarEstadisticasAnio(sel);
+            _poblarSelect('select-anio-stats', anios, a => a, anioActual, actualizarEstadisticasAnio);
         }
 
         function actualizarEstadisticasAnio(anio) {
@@ -3885,7 +3872,7 @@
         function poblarSelectorSemanas() {
             const semanas = _obtenerSemanas();
             const lunesISO = TimeUtils.formatearFechaLocal(_getLunes());
-            _poblarSelectAgrupado('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana);
+            _poblarSelect('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana, _agruparMesesPorAnio);
         }
 
         function calcularEstadisticasSemana(lunesISO) {
@@ -3968,7 +3955,7 @@
         function poblarSelectorMeses() {
             const meses = [...new Set(D.registros().map(r => r.fecha.substring(0, 7)))].sort().reverse();
             const mesActual = TimeUtils.formatearFechaLocal(new Date()).slice(0, 7);
-            _poblarSelectAgrupado('select-mes-stats', meses, _nombreMesCapitalizado, mesActual, actualizarEstadisticas);
+            _poblarSelect('select-mes-stats', meses, _nombreMesCapitalizado, mesActual, actualizarEstadisticas, _agruparMesesPorAnio);
         }
 
         function cambiarMesStats() {
@@ -3976,7 +3963,6 @@
             if (v !== undefined) _animarCambioStats(() => actualizarEstadisticas(v));
         }
 
-        // ── Helpers privados de generarReporte ───────────────────────
         function _sumarHorasEfectivas(regs, horasDiarias) {
             return regs.reduce((sum, r) => {
                 const t = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
@@ -4094,7 +4080,6 @@
             });
             return semanas;
         }
-        // ─────────────────────────────────────────────────────────────
 
         function generarReporte() {
             const esAnual = modoEstadisticas === 'anual';
@@ -4142,9 +4127,8 @@ ${lineasTipos}
                 totalesPorSemana: () => {
                     if (esAnual || !mesSeleccionado) return '';
                     const [añoActual, mesActual] = mesSeleccionado.split('-').map(Number);
-                    const pad = n => String(n).padStart(2, '0');
-                    const primerDiaMes = `${añoActual}-${pad(mesActual)}-01`;
-                    const ultimaDiaMes = `${añoActual}-${pad(mesActual)}-${pad(new Date(añoActual, mesActual, 0).getDate())}`;
+                    const primerDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual - 1, 1));
+                    const ultimaDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual, 0));
 
                     const semanas = _agruparRegistrosPorSemana(registrosPeriodo);
                     const semanasOrdenadas = [...semanas.entries()].sort((a, b) => new Date(a[0]) - new Date(b[0]));
@@ -4375,10 +4359,8 @@ Generado por Sistema Lushibosca
             actualizarEstadoBotonTimerMain();
         }
 
-        function setBloqueoEdicion(bloqueado) {
-            edicionBloqueada = bloqueado;
-
-            const btnLock = $('btn-lock-toggle');
+        function _setBloqueoEdicionGenerico(bloqueado, { btnLockId, inputIds, modalId, excluirBotones }) {
+            const btnLock = $(btnLockId);
             if (btnLock) {
                 const icon = btnLock.querySelector('use');
                 icon.setAttribute('href', bloqueado ? '#icon-lock' : '#icon-lock-open');
@@ -4387,19 +4369,28 @@ Generado por Sistema Lushibosca
                 btnLock.style.background = bloqueado ? 'var(--c-red)' : 'var(--c-green)';
             }
 
-            const inputs = ['edit-fecha', 'edit-entrada', 'edit-salida', 'edit-tiempo-fuera', 'edit-notas'];
-            inputs.forEach(id => {
+            inputIds.forEach(id => {
                 const el = $(id);
                 if (el) el.disabled = bloqueado;
             });
 
-            const modal = $('modal-editar');
+            const modal = $(modalId);
             if (modal) {
-                const botones = modal.querySelectorAll('button:not(#btn-lock-toggle):not(.btn-cancel):not(#btn-toggle-credito)');
+                const botones = modal.querySelectorAll(excluirBotones);
                 botones.forEach(btn => {
                     btn.disabled = bloqueado;
                 });
             }
+        }
+
+        function setBloqueoEdicion(bloqueado) {
+            edicionBloqueada = bloqueado;
+            _setBloqueoEdicionGenerico(bloqueado, {
+                btnLockId: 'btn-lock-toggle',
+                inputIds: ['edit-fecha', 'edit-entrada', 'edit-salida', 'edit-tiempo-fuera', 'edit-notas'],
+                modalId: 'modal-editar',
+                excluirBotones: 'button:not(#btn-lock-toggle):not(.btn-cancel):not(#btn-toggle-credito)'
+            });
             verificarBloqueoCredito();
         }
 
@@ -4763,7 +4754,6 @@ Generado por Sistema Lushibosca
             }
         }
 
-        // ── Helpers privados de registrarLoteDesdeCard ───────────────
         function _limpiarCamposLote() {
             document.getElementById('lote-fecha-desde').value = '';
             document.getElementById('lote-fecha-hasta').value = '';
@@ -4793,7 +4783,6 @@ Generado por Sistema Lushibosca
                 _limpiarCamposLote();
             } catch (e) { console.error('Error al registrar:', e); }
         }
-        // ─────────────────────────────────────────────────────────────
 
         async function registrarLoteDesdeCard() {
             const inputDesde = document.getElementById('lote-fecha-desde');
@@ -4862,8 +4851,6 @@ Generado por Sistema Lushibosca
             });
         }
 
-
-        // ── Helpers privados de actualizarBotonLote ──────────────────
         function _setBtnError(btn, btnTexto, mensaje) {
             btnTexto.textContent = mensaje;
             btn.style.color = 'var(--c-red)';
@@ -4910,7 +4897,6 @@ Generado por Sistema Lushibosca
             }
             setIconoBtn(btn, '#icon-save');
         }
-        // ─────────────────────────────────────────────────────────────
 
         function actualizarBotonLote() {
             const tipo    = document.getElementById('lote-tipo').value;
@@ -5056,9 +5042,7 @@ Generado por Sistema Lushibosca
             const registrosFiltrados = _filtrarRegistrosRango(desde, hasta, esMes);
             if (registrosFiltrados.length === 0) { mostrarToast('No hay registros en ese rango', 'warning'); return; }
 
-            const ahora = new Date();
-            const pad = n => String(n).padStart(2, '0');
-            const fechaLocal = `${ahora.getFullYear()}-${pad(ahora.getMonth()+1)}-${pad(ahora.getDate())} ${pad(ahora.getHours())}:${pad(ahora.getMinutes())}:${pad(ahora.getSeconds())}`;
+            const fechaLocal = TimeUtils.fechaLocalISOFull();
             const fechaHoy   = fechaLocal.substring(0, 10);
 
             const data = {
@@ -5236,8 +5220,6 @@ Generado por Sistema Lushibosca
             if (_gistModalPadre) {
                 const padre = _gistModalPadre;
                 _gistModalPadre = null;
-                // alternar detecta esHaciaAtras=true gracias al setPadre en abrirModalGist,
-                // por lo que hace history.back() sin pushState extra → evita entrada duplicada
                 ModalManager.alternar('modal-gist', padre);
                 if (padre === 'modal-config') {
                     ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
@@ -5340,8 +5322,6 @@ Generado por Sistema Lushibosca
             if (btn) btn.disabled = false;
             if (_gistMergeDesdeModal) {
                 _gistMergeDesdeModal = false;
-                // alternar detecta esHaciaAtras=true (padres[gist-merge]=gist) y hace history.back()
-                // sin pushState, tanto desde botón cancelar como desde popstate (mobile back)
                 ModalManager.alternar('modal-gist-merge', 'modal-gist');
             } else {
                 ModalManager.cerrar('modal-gist-merge');
@@ -5482,7 +5462,6 @@ Generado por Sistema Lushibosca
 
         let _gistMergeData = null;
 
-        // ── Helpers privados de gistBajar ────────────────────────────
         async function _validarDatosGist(data) {
             if (!data.registros || !Array.isArray(data.registros)) throw new Error('Datos inválidos en el Gist');
             const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', '_hashNoCoincide'];
@@ -5574,7 +5553,6 @@ Generado por Sistema Lushibosca
             footer.appendChild(document.createTextNode(`: usa los ${registrosNormalizados.length} registros del Gist`));
             resumenEl.appendChild(footer);
         }
-        // ─────────────────────────────────────────────────────────────
 
         async function gistBajar(modoAutomatico = false) {
             _gistGuardarCredencialesSiModalAbierto();
@@ -5607,9 +5585,6 @@ Generado por Sistema Lushibosca
                 if (btn) btn.disabled = false;
             }
         }
-
-
-        // ── Helpers privados de init ──────────────────────────────────
 
         function _actualizarHintEdicion() {
             const hint = document.getElementById('edit-hint-resumen');
@@ -5772,7 +5747,6 @@ Generado por Sistema Lushibosca
                 const estadoActual = HistoryManager.getCurrentState();
                 if (estadoActual !== null && estadoActual !== undefined) {
                     D.registros().splice(0, D.registros().length, ...estadoActual);
-                    console.log('Registros restaurados desde historial');
                 } else {
                     console.warn('Historial corrupto, descartado. Usando registros del perfil.');
                     HistoryManager.clear();
@@ -5781,7 +5755,6 @@ Generado por Sistema Lushibosca
             D.recalcularTotalesEnMemoria();
             if (!historialCargado) {
                 HistoryManager.saveState(D.registros());
-                console.log('Nuevo historial inicializado');
             }
             HistoryManager.updateButtons();
         }
@@ -5847,19 +5820,7 @@ Generado por Sistema Lushibosca
                 const modal = document.querySelector('.modal.show');
                 if (!modal) return;
                 e.preventDefault();
-                ({
-                    'modal-gist':              () => cerrarModalGist(),
-                    'modal-gist-merge':        () => gistMergeCancelar(),
-                    'modal-config':            () => UILogic.cerrarConfig(),
-                    'modal-selector-perfiles': () => UILogic.cerrarSelectorPerfiles(),
-                    'modal-editar':            () => UILogic.cerrarEdicion(),
-                    'modal-importar':          () => UILogic.cerrarImportar(),
-                    'modal-exportar':          () => UILogic.cerrarExportar(),
-                    'modal-filtros':           () => UILogic.cerrarFiltros(),
-                    'modal-editar-perfil':     () => UILogic.cerrarEditorPerfil(),
-                    'modal-editar-grupo':      () => UILogic.cerrarEdicionGrupo(),
-                    'modal-confirmar':         () => document.getElementById('modal-confirmar-cancel')?.click(),
-                })[modal.id]?.();
+                ModalManager.ejecutarAccionCierre(modal.id);
             });
         }
 
@@ -5936,16 +5897,21 @@ Generado por Sistema Lushibosca
                 const detalleAnioPadre = contenedor.parentElement?.closest('.registro-mes-detalle') || null;
                 const otrosMesesAbiertos = lista.querySelectorAll('.registro-mes-detalle.expanded');
 
-                otrosMesesAbiertos.forEach(otro => {
-                    if (!esContenedorAnio(otro) || otro === detalleAnioPadre) return;
+                const _colapsarContenedor = (otro, { datasetKey, storageKeyFn }) => {
                     otro.classList.remove('expanded');
                     const oc = otro.closest('.registro-mes-container');
                     const och = oc?.querySelector('.chevron-mes');
                     const oHeader = oc?.querySelector('.registro-mes-header');
                     if (och) och.style.transform = 'rotate(0deg)';
-                    if (oHeader?.dataset.anioId) {
-                        try { StorageHelper.setItem(STORAGE_KEYS.ANIO_EXPANDIDO(oHeader.dataset.anioId), 'false'); } catch (e) { }
+                    const id = oHeader?.dataset[datasetKey];
+                    if (id) {
+                        try { StorageHelper.setItem(storageKeyFn(id), 'false'); } catch (e) { }
                     }
+                };
+
+                otrosMesesAbiertos.forEach(otro => {
+                    if (!esContenedorAnio(otro) || otro === detalleAnioPadre) return;
+                    _colapsarContenedor(otro, { datasetKey: 'anioId', storageKeyFn: STORAGE_KEYS.ANIO_EXPANDIDO });
                 });
 
                 const _abrirDetalle = () => {
@@ -5959,21 +5925,10 @@ Generado por Sistema Lushibosca
                 if (hayOtrosAbiertos) {
                     otrosMesesAbiertos.forEach(otro => {
                         if (otro === detalle || esContenedorAnio(otro)) return;
-                        otro.style.minHeight = `${otro.scrollHeight}px`;
-                        otro.classList.remove('expanded');
-                        const oc = otro.closest('.registro-mes-container');
-                        const och = oc?.querySelector('.chevron-mes');
-                        const oHeader = oc?.querySelector('.registro-mes-header');
-                        if (och) och.style.transform = 'rotate(0deg)';
-                        if (oHeader?.dataset.mesId) {
-                            try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(oHeader.dataset.mesId), 'false'); } catch (e) { }
-                        }
-                        setTimeout(() => { otro.style.minHeight = ''; }, 350);
+                        _colapsarContenedor(otro, { datasetKey: 'mesId', storageKeyFn: STORAGE_KEYS.MES_EXPANDIDO });
                     });
-                    setTimeout(_abrirDetalle, 300);
-                } else {
-                    _abrirDetalle();
                 }
+                _abrirDetalle();
             });
         }
 
@@ -6009,7 +5964,6 @@ Generado por Sistema Lushibosca
             }
         }
 
-        // ─────────────────────────────────────────────────────────────
         async function init() {
             if (typeof Storage === 'undefined') { alert('Tu navegador no soporta localStorage.'); return; }
 
@@ -6035,7 +5989,6 @@ Generado por Sistema Lushibosca
 
             _initAutoSync();
             setInterval(() => actualizarUI(null, true), 20000);
-            console.log('Sistema iniciado correctamente');
 
             _initListenerEscape();
             const lista = document.getElementById('lista-registros');
@@ -6377,27 +6330,19 @@ Generado por Sistema Lushibosca
 
         let _popupCalendarioEl = null;
 
-        // ── Helpers compartidos de popups de calendario ───────────────
-        function _escHtml(s) {
-            return s == null ? '' : String(s)
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
         function _buildInfoHtmlRegistro(reg, horasDiarias) {
             const esEspecial = TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
             if (esEspecial) {
                 const tipoConfig = TiposRegistro.obtenerTipoPorCodigo(reg.entrada, reg.salida);
-                const emoji = _escHtml(tipoConfig?.emoji ?? '');
-                const label = tipoConfig ? _escHtml(tipoConfig.label) : _escHtml(reg.entrada);
+                const emoji = S.escapeHtml(tipoConfig?.emoji ?? '');
+                const label = tipoConfig ? S.escapeHtml(tipoConfig.label) : S.escapeHtml(reg.entrada);
                 const colorSafe = /^[a-z]+$/.test(tipoConfig?.color || '') ? tipoConfig.color : 'purple';
                 return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>`;
             }
             if (reg.entrada && !reg.salida) {
                 const esHoy = reg.fecha === obtenerFechaHoy();
                 return `<div class="cal-popup-info cal-popup-info--${esHoy ? 'blue">En curso' : 'gold">Incompleto'}</div>
-                    <div class="cal-popup-3l">Entrada: ${_escHtml(reg.entrada)}</div>`;
+                    <div class="cal-popup-3l">Entrada: ${S.escapeHtml(reg.entrada)}</div>`;
             }
             const totalHoras = reg.total || 0;
             const h = Math.floor(totalHoras);
@@ -6415,8 +6360,8 @@ Generado por Sistema Lushibosca
                 diffColor = totalHoras >= horasDiarias ? 'var(--c-green)' : 'var(--c-red)';
             }
             return `<div class="cal-popup-info${diffColor ? ' cal-popup-info--dynamic' : ''}"${diffColor ? ` data-color="${diffColor}"` : ''}>${totalConDiff}</div>
-                <div class="cal-popup-3l">${_escHtml(reg.entrada)} – ${_escHtml(reg.salida)}</div>
-                ${tfStr ? `<div class="cal-popup-3l">${_escHtml(tfStr)}</div>` : ''}`;
+                <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} – ${S.escapeHtml(reg.salida)}</div>
+                ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
         }
 
         function _posicionarPopup(popup, event) {
@@ -6438,25 +6383,24 @@ Generado por Sistema Lushibosca
             });
         }
 
-        function _registrarCierrePopup(popup, esMismoDia) {
+        function _registrarCierrePopup(popup, selectorTrigger, esMismoTrigger, alCerrar) {
             const cerrar = () => {
                 popup.remove();
-                _popupCalendarioEl = null;
+                if (alCerrar) alCerrar();
                 document.removeEventListener('click', onClick, true);
                 document.removeEventListener('scroll', cerrar, true);
             };
             const onClick = (e) => {
-                const dia = e.target.closest('.calendario-dia');
-                if (dia && esMismoDia(dia)) return;
+                const trigger = e.target.closest(selectorTrigger);
+                if (trigger && esMismoTrigger(trigger)) return;
                 if (!popup.contains(e.target)) cerrar();
             };
             setTimeout(() => {
-                document.addEventListener('click', onClick, true);
-                document.addEventListener('scroll', cerrar, true);
+                document.addEventListener('click', onClick, { capture: true, passive: true });
+                document.addEventListener('scroll', cerrar, { capture: true, passive: true });
             }, 10);
             return cerrar;
         }
-        // ─────────────────────────────────────────────────────────────
 
         function _popupCalendario(event, registroId) {
             event.stopPropagation();
@@ -6471,7 +6415,7 @@ Generado por Sistema Lushibosca
             const grupos = agruparRegistrosConsecutivos(registrosDelMes);
             const grupoDelRegistro = grupos.find(g => g.tipo === 'grupo' && g.registros.some(r => r.id === registroId));
 
-            const fechaLabel = _escHtml(new Date(reg.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+            const fechaLabel = S.escapeHtml(new Date(reg.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
             const infoHtml = _buildInfoHtmlRegistro(reg, D.horasDiarias());
             const btnGrupoHtml = grupoDelRegistro ? `
                 <button class="cal-popup-btn-edit" id="_cal-popup-btn-grupo">
@@ -6518,7 +6462,7 @@ Generado por Sistema Lushibosca
                 }
             });
 
-            _registrarCierrePopup(popup, dia => dia.dataset.regId === reg.id);
+            _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.regId === reg.id, () => { _popupCalendarioEl = null; });
             _posicionarPopup(popup, event);
         }
 
@@ -6538,7 +6482,7 @@ Generado por Sistema Lushibosca
             }
 
             const esFechaFutura = fecha > TimeUtils.obtenerFechaHoy();
-            const fechaLabel = _escHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+            const fechaLabel = S.escapeHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
 
             const popup = document.createElement('div');
             popup.className = 'cal-popup';
@@ -6560,7 +6504,7 @@ Generado por Sistema Lushibosca
             document.body.appendChild(popup);
             _popupCalendarioEl = popup;
 
-            const cerrarPopup = _registrarCierrePopup(popup, dia => dia.dataset.fecha === fecha);
+            const cerrarPopup = _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.fecha === fecha, () => { _popupCalendarioEl = null; });
             popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrarPopup(); _irAFicharConFecha(fecha, false); });
             popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrarPopup(); _irAFicharConFecha(fecha, true); });
 
@@ -6578,7 +6522,7 @@ Generado por Sistema Lushibosca
             });
         }
 
-        const _FLASH_SCROLL_DELAY = 380;
+        const _FLASH_SCROLL_DELAY = 500;
 
         function _irAFicharConFecha(fecha, esEspecial) {
             const tarjeta = document.getElementById('card-registrar');
@@ -6591,37 +6535,27 @@ Generado por Sistema Lushibosca
 
             const retraso = estaExpandido ? 0 : DUR_ANIM() + 80;
 
-            setTimeout(() => {
+            const aplicarFecha = () => {
                 if (esEspecial) {
-                    if (!modoLoteActivo) {
-                        toggleModoLote();
-                        setTimeout(() => {
-                            const desde = document.getElementById('lote-fecha-desde');
-                            const hasta = document.getElementById('lote-fecha-hasta');
-                            if (desde) desde.value = fecha;
-                            if (hasta) hasta.value = fecha;
-                            setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta'), _FLASH_SCROLL_DELAY);
-                        }, DUR_ANIM() + 50);
-                    } else {
-                        const desde = document.getElementById('lote-fecha-desde');
-                        const hasta = document.getElementById('lote-fecha-hasta');
-                        if (desde) desde.value = fecha;
-                        if (hasta) hasta.value = fecha;
-                        setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta'), _FLASH_SCROLL_DELAY);
-                    }
+                    const desde = document.getElementById('lote-fecha-desde');
+                    const hasta = document.getElementById('lote-fecha-hasta');
+                    if (desde) desde.value = fecha;
+                    if (hasta) hasta.value = fecha;
+                    setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta', 'lote-tipo'), _FLASH_SCROLL_DELAY);
                 } else {
-                    if (modoLoteActivo) {
-                        toggleModoLote();
-                        setTimeout(() => {
-                            const input = document.getElementById('fecha');
-                            if (input) input.value = fecha;
-                            setTimeout(() => _flashCampo('fecha'), _FLASH_SCROLL_DELAY);
-                        }, DUR_ANIM() + 50);
-                    } else {
-                        const input = document.getElementById('fecha');
-                        if (input) input.value = fecha;
-                        setTimeout(() => _flashCampo('fecha'), _FLASH_SCROLL_DELAY);
-                    }
+                    const input = document.getElementById('fecha');
+                    if (input) input.value = fecha;
+                    setTimeout(() => _flashCampo('fecha', 'entrada', 'salida'), _FLASH_SCROLL_DELAY);
+                }
+            };
+
+            setTimeout(() => {
+                const necesitaCambiarModo = esEspecial ? !modoLoteActivo : modoLoteActivo;
+                if (necesitaCambiarModo) {
+                    toggleModoLote();
+                    setTimeout(aplicarFecha, DUR_ANIM() + 50);
+                } else {
+                    aplicarFecha();
                 }
             }, retraso);
         }
@@ -6632,9 +6566,7 @@ Generado por Sistema Lushibosca
             const headerEl = document.querySelector('.header');
             const headerH = headerEl ? headerEl.offsetHeight : 0;
             const margen = headerH + 8;
-            // Si la tarjeta ya es completamente visible, no scrollear
             if (rect.top >= margen && rect.bottom <= window.innerHeight) return;
-            // Scroll manual para que el borde superior de la tarjeta quede justo bajo el header
             window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: 'smooth' });
         }
 
@@ -6689,7 +6621,6 @@ Generado por Sistema Lushibosca
             }, 500);
         }
 
-        // ── Popup descriptivo de stat-item ─────────────────────────────────
         const DESCRIPCIONES_STATS = {
             'stat-tiempo-total': { titulo: 'Tiempo Total', desc: 'Suma de todas las horas trabajadas en el período seleccionado.' },
             'stat-promedio-diario': { titulo: 'Promedio Diario', desc: 'Promedio de horas trabajadas por jornada en el período.' },
@@ -6704,24 +6635,6 @@ Generado por Sistema Lushibosca
         };
 
         let _popupStatEl = null;
-
-        function _registrarCierreStatPopup(popup) {
-            const cerrar = () => {
-                popup.remove();
-                _popupStatEl = null;
-                document.removeEventListener('click', onClick, true);
-                document.removeEventListener('scroll', cerrar, true);
-            };
-            const onClick = (e) => {
-                const item = e.target.closest('.stat-item');
-                if (item && item.dataset.statId === popup.dataset.statId) return;
-                if (!popup.contains(e.target)) cerrar();
-            };
-            setTimeout(() => {
-                document.addEventListener('click', onClick, true);
-                document.addEventListener('scroll', cerrar, true);
-            }, 10);
-        }
 
         function _popupStat(event, statId) {
             event.stopPropagation();
@@ -6758,9 +6671,9 @@ Generado por Sistema Lushibosca
                 const label = valueEl?.closest('.stat-item')?.querySelector('.stat-label');
                 const tipoMatch = TiposRegistro.obtenerTodosLosTipos().find(t => statId === `stat-${t.labelPlural.toLowerCase()}`);
                 info = {
-                    titulo: _escHtml(label ? label.textContent : 'Estadística'),
+                    titulo: S.escapeHtml(label ? label.textContent : 'Estadística'),
                     desc: tipoMatch
-                        ? `Cantidad de jornadas registradas como "${_escHtml(tipoMatch.label)}" en el período.`
+                        ? `Cantidad de jornadas registradas como "${S.escapeHtml(tipoMatch.label)}" en el período.`
                         : 'Detalle de esta estadística.'
                 };
             }
@@ -6770,13 +6683,13 @@ Generado por Sistema Lushibosca
             popup.id = '_stat-popup';
             popup.dataset.statId = statId;
             popup.innerHTML = `
-                <div class="stat-popup-titulo">${_escHtml(info.titulo)}</div>
+                <div class="stat-popup-titulo">${S.escapeHtml(info.titulo)}</div>
                 <div class="stat-popup-desc">${info.desc}</div>`;
             popup.style.visibility = 'hidden';
             document.body.appendChild(popup);
             _popupStatEl = popup;
 
-            _registrarCierreStatPopup(popup);
+            _registrarCierrePopup(popup, '.stat-item', item => item.dataset.statId === popup.dataset.statId, () => { _popupStatEl = null; });
             _posicionarPopup(popup, event);
         }
 
@@ -6969,29 +6882,12 @@ Generado por Sistema Lushibosca
 
         function setBloqueoEdicionGrupo(bloqueado) {
             edicionGrupoBloqueada = bloqueado;
-
-            const btnLock = $('btn-lock-grupo-toggle');
-            if (btnLock) {
-                const icon = btnLock.querySelector('use');
-                icon.setAttribute('href', bloqueado ? '#icon-lock' : '#icon-lock-open');
-                btnLock.title = bloqueado ? "Desbloquear edición" : "Bloquear edición";
-                btnLock.style.color = 'var(--text-main)';
-                btnLock.style.background = bloqueado ? 'var(--c-red)' : 'var(--c-green)';
-            }
-
-            const inputs = ['edit-grupo-tipo', 'edit-grupo-desde', 'edit-grupo-hasta'];
-            inputs.forEach(id => {
-                const el = $(id);
-                if (el) el.disabled = bloqueado;
+            _setBloqueoEdicionGenerico(bloqueado, {
+                btnLockId: 'btn-lock-grupo-toggle',
+                inputIds: ['edit-grupo-tipo', 'edit-grupo-desde', 'edit-grupo-hasta'],
+                modalId: 'modal-editar-grupo',
+                excluirBotones: 'button:not(#btn-lock-grupo-toggle):not(.btn-cancel)'
             });
-
-            const modal = $('modal-editar-grupo');
-            if (modal) {
-                const botones = modal.querySelectorAll('button:not(#btn-lock-grupo-toggle):not(.btn-cancel)');
-                botones.forEach(btn => {
-                    btn.disabled = bloqueado;
-                });
-            }
         }
 
         function toggleBloqueoEdicionGrupo() {
@@ -7136,32 +7032,7 @@ Generado por Sistema Lushibosca
         'use strict';
 
         const SK_PROCESADOS = 'feriadosAR_procesados';
-        const FERIADOS = {
-            2026: [
-                { fecha: '2026-01-01', nombre: 'Año Nuevo' },
-                { fecha: '2026-02-16', nombre: 'Carnaval' },
-                { fecha: '2026-02-17', nombre: 'Carnaval' },
-                { fecha: '2026-03-23', nombre: 'Puente Turístico' },
-                { fecha: '2026-03-24', nombre: 'Día Nac. de la Memoria' },
-                { fecha: '2026-04-02', nombre: 'Día del Veterano y los Caídos en Malvinas' },
-                { fecha: '2026-04-03', nombre: 'Viernes Santo' },
-                { fecha: '2026-05-01', nombre: 'Día del Trabajador' },
-                { fecha: '2026-05-25', nombre: 'Día de la Revolución de Mayo' },
-                { fecha: '2026-06-15', nombre: 'Paso a la Inmortalidad del Gral. Güemes' },
-                { fecha: '2026-06-20', nombre: 'Paso a la Inmortalidad del Gral. Belgrano' },
-                { fecha: '2026-07-09', nombre: 'Día de la Independencia' },
-                { fecha: '2026-07-10', nombre: 'Puente turístico' },
-                { fecha: '2026-08-17', nombre: 'Paso a la Inmortalidad del Gral. San Martín' },
-                { fecha: '2026-10-12', nombre: 'Día del Respeto a la Diversidad Cultural' },
-                { fecha: '2026-11-23', nombre: 'Día de la Soberanía Nacional' },
-                { fecha: '2026-12-07', nombre: 'Puente Turístico' },
-                { fecha: '2026-12-08', nombre: 'Inmaculada Concepción de María' },
-                { fecha: '2026-12-25', nombre: 'Navidad' },
-            ],
-            2027: [
-                { fecha: '2027-01-01', nombre: 'Año Nuevo' },
-            ],
-        };
+        const FERIADOS = window.FERIADOS_AR || {};
 
         function _cargarProcesados() {
             const raw = StorageHelper.getItem(SK_PROCESADOS, null);
@@ -7289,14 +7160,10 @@ Generado por Sistema Lushibosca
                 const descripcionFechas = _describirFechasGrupo(grupo);
                 const texto = `🎉 ${nombres} — ${descripcionFechas}\n¿Querés agregar ${esGrupal ? `estos ${grupo.length} días` : 'este día'} como Feriado?`;
 
-                const elTitulo = document.getElementById('modal-confirmar-titulo');
-                const btnCancel = document.getElementById('modal-confirmar-cancel');
-                const cancelTextNode = btnCancel ? [...btnCancel.childNodes].find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()) : null;
-                const labelCancelOriginal = cancelTextNode?.textContent ?? null;
-                if (elTitulo) elTitulo.textContent = esGrupal ? 'Feriados Próximos' : 'Feriado Próximo';
-                if (cancelTextNode) cancelTextNode.textContent = ' No';
-
-                const confirmo = await ModalManager.confirmar(texto, 'Sí', '#icon-save');
+                const confirmo = await ModalManager.confirmar(texto, 'Sí', '#icon-check', {
+                    titulo: esGrupal ? 'Feriados Próximos' : 'Feriado Próximo',
+                    labelCancel: 'No'
+                });
                 grupo.forEach(f => _marcarProcesado(f.fecha));
 
                 if (confirmo) {
@@ -7305,8 +7172,6 @@ Generado por Sistema Lushibosca
                     }
                 }
 
-                if (elTitulo) elTitulo.textContent = 'Atención';
-                if (cancelTextNode && labelCancelOriginal !== null) cancelTextNode.textContent = labelCancelOriginal;
                 if (i < grupos.length - 1) await _delay(100);
             }
         }
@@ -7472,7 +7337,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76,85,83,72,73,66,79,83,67,65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260627';
+        const _v = '-v260704';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

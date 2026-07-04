@@ -22,7 +22,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/svg+xml" href="./icon.svg">
     <script src="./flash.js"></script>
-    <script src="./fondos.js"></script>
+    <script src="./fondos.js" defer></script>
+    <script src="./feriados.js" defer></script>
     <link rel="stylesheet" href="./styles.css">
     <script src="./app.js" defer></script>
     <title>Horarios</title>
@@ -79,6 +80,9 @@
                 stroke="currentColor"></path>
             <polyline points="17 21 17 13 7 13 7 21" class="icon-line" stroke="currentColor"></polyline>
             <polyline points="7 3 7 8 15 8" class="icon-line" stroke="currentColor"></polyline>
+        </symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24">
+            <polyline points="20 6 9 17 4 12" class="icon-line" stroke="currentColor"></polyline>
         </symbol>
         <symbol id="icon-clock-in" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" class="icon-line" stroke="currentColor" fill="none" stroke-width="2">
@@ -1288,7 +1292,7 @@
                         <svg class="icon">
                             <use href="#icon-cancelar" />
                         </svg>
-                        Cancelar
+                        <span id="modal-confirmar-label-cancel">Cancelar</span>
                     </button>
                 </div>
             </div>

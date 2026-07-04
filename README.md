@@ -1,8 +1,25 @@
-### BUGS ACTUALES
---Bug al tocar el boton bajar de gist y cancelar el gist merge, e ir para atras hasta ajustes,
-la pagina llama a "ir para atras" en el navegador
-
 ## (Changelog)
+
+### BUGS ACTUALES:
+--
+
+### VERSION:
+
+### 260701
+* **Fix:** Se actualiza el estilo de animacion de colapso de meses / años en la vista de lista, para quitar el glitch al expandir meses con pocos registros
+* **Mejora:** varios refactores menores de funciones, eliminando logica duplicada y creando helpers reutilizables
+
+### 260701
+* **Mejora:** Se centraliza como helper en modal manager el arreglo del modal confirmar de feriadosAR, ahora es una funcion helper de modal manager que puede utilizarse con distintos atributos
+
+### 260630
+* **Mantenimiento:** Fin refactor se pasa de ~8000 lineas a ~7500 en js
+
+### 260627
+Refactores varios
+
+### 260626
+Refactor de async function init, se parte en varios helper y la funcion init como orquestador
 
 ### 260625
 * **Fix:** ir para atras al quitar filtro, gist merge desde registros, gist merge desde modal gist 
