@@ -468,9 +468,11 @@ button:disabled {
     border: 1px solid transparent;
     border-left: 4px solid transparent;
     transition: transform 0.15s ease-out, opacity 0.15s ease-out, box-shadow 0.3s, border-color 0.3s;
-    min-height: 14rem;
+    min-height: 15rem;
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .stats-card-bg {
@@ -495,6 +497,17 @@ button:disabled {
     position: relative;
     z-index: 1;
     transition: var(--transition-anim);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+/* El hint siempre queda pegado abajo de la tarjeta, sin importar si
+   #stats-mensaje / #stats-buffer están visibles u ocultos (día no hábil,
+   objetivo en 0, etc.). Antes, al ocultarse esos elementos, el flujo normal
+   del documento hacía que el hint "subiera" dentro de la tarjeta. */
+#toggle-hint {
+    margin-top: auto;
 }
 
 .stats-card.border-blue      { border-left-color: var(--c-blue); }
