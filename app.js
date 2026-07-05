@@ -6109,7 +6109,7 @@ Generado por Sistema Lushibosca
 
         function _setIconHistorico(icon, estado) {
             if (!icon) return;
-            icon.classList.toggle('rotated', estado !== 'completo');
+            icon.classList.toggle('rotated', estado === 'meses');
             icon.style.transform = estado === 'completo' ? 'rotate(-90deg)' : '';
         }
 
