@@ -4569,7 +4569,11 @@ Generado por Sistema Lushibosca
 
         function mostrarconfig() {
             ModalManager.alternar('modal-selector-perfiles', 'modal-config', null, () => {
-                $('config-horas-diarias').value = D.horasDiarias();
+                {
+                    const elHoras = $('config-horas-diarias');
+                    elHoras.dataset.valor = D.horasDiarias();
+                    elHoras.textContent = TimeUtils.horasATexto(D.horasDiarias(), 'short');
+                }
 
                 const diasActivos = D.diasHabiles();
                 const checkboxes = document.querySelectorAll('input[name="dia-habil"]');
@@ -5405,7 +5409,7 @@ Generado por Sistema Lushibosca
             const limite = _gistLimitesTemp ? _gistLimitesTemp[tipo] : GistSync.getSyncLimite(tipo);
             const input = document.getElementById('gist-limite-valor');
             const label = document.getElementById('gist-limite-label');
-            if (input) input.value = limite;
+            if (input) input.textContent = limite;
             if (label) label.textContent = tipo === 'bajar' ? 'Límite bajadas por hora (0 = sin límite)' : 'Límite subidas por hora (0 = sin límite)';
             contenedor.classList.remove('disabled');
         }
@@ -5438,8 +5442,9 @@ Generado por Sistema Lushibosca
             _gistGuardarCredencialesSiModalAbierto();
             const btn = document.getElementById('btn-gist-subir');
             if (btn) btn.disabled = true;
-            mostrarToast('Subiendo...', 'info');
-
+            const iconoPerfil = document.getElementById('header-profile-icon');
+            iconoPerfil?.classList.add('icono-spin');
+            _flashCampo('header-profile-btn');
 
             try {
                 const nuevoId = await GistSync.subir(
@@ -5457,6 +5462,7 @@ Generado por Sistema Lushibosca
                 mostrarToast('Error al subir', 'error');
             } finally {
                 if (btn) btn.disabled = false;
+                iconoPerfil?.classList.remove('icono-spin');
             }
         }
 
@@ -5559,7 +5565,9 @@ Generado por Sistema Lushibosca
             _gistMergeDesdeModal = document.getElementById('modal-gist')?.classList.contains('show') ?? false;
             const btn = document.getElementById('btn-gist-bajar');
             if (btn) btn.disabled = true;
-            mostrarToast('Bajando...', 'info');
+            const iconoPerfil = document.getElementById('header-profile-icon');
+            iconoPerfil?.classList.add('icono-spin');
+            _flashCampo('header-profile-btn');
 
             try {
                 const data = await GistSync.bajar();
@@ -5583,6 +5591,7 @@ Generado por Sistema Lushibosca
                 mostrarToast('Error al bajar', 'error');
             } finally {
                 if (btn) btn.disabled = false;
+                iconoPerfil?.classList.remove('icono-spin');
             }
         }
 
@@ -6940,13 +6949,13 @@ Generado por Sistema Lushibosca
         function actualizarFeedbackConfig() {
             const checkboxes = document.querySelectorAll('input[name="dia-habil"]:checked');
             const seleccionados = checkboxes.length;
-            const horas = parseFloat($('config-horas-diarias').value) || 0;
+            const horas = parseFloat($('config-horas-diarias').dataset.valor) || 0;
             const total = seleccionados * horas;
 
             const el = $('config-total-feedback');
             if (el) {
                 if (horas === 0) el.textContent = `(Registro libre sin objetivos)`;
-                else el.textContent = `(Total semanal: ${total}hs)`;
+                else el.textContent = `(Total semanal: ${TimeUtils.horasATexto(total, 'short')})`;
             }
 
             if (seleccionados > 0) {
@@ -6976,12 +6985,14 @@ Generado por Sistema Lushibosca
         }
 
         function cambiarHorasDiarias(incremento) {
-            let valorActual = parseFloat($('config-horas-diarias').value);
+            let valorActual = parseFloat($('config-horas-diarias').dataset.valor);
             if (isNaN(valorActual)) valorActual = D.horasDiarias();
             let nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
             if (isNaN(nuevoValor)) return;
 
-            $('config-horas-diarias').value = nuevoValor;
+            const elHoras = $('config-horas-diarias');
+            elHoras.dataset.valor = nuevoValor;
+            elHoras.textContent = TimeUtils.horasATexto(nuevoValor, 'short');
             actualizarFeedbackConfig();
             D.setHorasDiarias(nuevoValor);
 
@@ -7337,7 +7348,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76,85,83,72,73,66,79,83,67,65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260704';
+        const _v = '-v260705';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

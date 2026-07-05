@@ -298,6 +298,14 @@ input.error {
     text-align: center;
 }
 
+.input-number-display {
+    flex: 1;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
 /* ─── BUTTONS ────────────────────────────────────────────────────────────────── */
 
 button {
@@ -1560,8 +1568,18 @@ button:disabled {
 }
 
 input.campo-flash,
-select.campo-flash {
+select.campo-flash,
+button.campo-flash {
     animation: campo-flash 500ms ease-in-out 2;
+}
+
+@keyframes icono-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+.icono-spin {
+    animation: icono-spin 900ms linear infinite;
 }
 
 /* ─── HOVER (pointer: fine) ──────────────────────────────────────────────────── */
@@ -1658,5 +1676,30 @@ select.campo-flash {
 
     #calendario-selector-meses {
         grid-template-columns: repeat(4, 1fr);
+    }
+
+    .registro-info {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: baseline;
+        column-gap: 0.75rem;
+    }
+
+    .registro-fecha {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .registro-horas {
+        grid-column: 2;
+        grid-row: 1;
+        text-align: right;
+    }
+
+    .registro-total {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        margin-top: 0.25rem;
+        justify-self: start;
     }
 }
