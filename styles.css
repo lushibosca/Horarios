@@ -31,7 +31,7 @@
     --dur-calendario: 320ms;
     --ease-anim: ease;
     --transition-anim: opacity var(--dur-anim) var(--ease-anim), transform var(--dur-anim) var(--ease-anim);
-    --transition-collapse: max-height var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
+    --transition-collapse: grid-template-rows var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
     --transition-ui: 0.3s ease;
     --modal-overlay: rgba(0, 0, 0, 0.5);
     --touch-target: 48px;
@@ -416,10 +416,25 @@ button:disabled {
 /* ─── COLLAPSIBLE ────────────────────────────────────────────────────────────── */
 
 .collapsible {
-    max-height: 0;
-    overflow: hidden;
+    display: grid;
+    grid-template-rows: 0fr;
     opacity: 0;
     transition: var(--transition-collapse);
+}
+
+.form-collapsible>#modo-contenedor,
+.form-collapsible>.detalle-inner,
+#botones-historico>.botones-historico-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.form-collapsible>.stats-inner {
+    overflow: hidden;
+}
+
+.form-collapsible:not(.expanded)>.stats-inner {
+    min-height: 0;
 }
 
 /* ─── GIST ───────────────────────────────────────────────────────────────────── */
@@ -457,7 +472,7 @@ button:disabled {
     gap: 0.75rem;
 }
 
-.config-actions > label {
+.config-actions>label {
     margin-bottom: -0.5rem;
 }
 
@@ -468,7 +483,7 @@ button:disabled {
     border: 1px solid transparent;
     border-left: 4px solid transparent;
     transition: transform 0.15s ease-out, opacity 0.15s ease-out, box-shadow 0.3s, border-color 0.3s;
-    min-height: 15rem;
+    height: 15rem;
     position: relative;
     overflow: hidden;
     display: flex;
@@ -510,14 +525,34 @@ button:disabled {
     margin-top: auto;
 }
 
-.stats-card.border-blue      { border-left-color: var(--c-blue); }
-.stats-card.border-green     { border-left-color: var(--c-green); }
+.stats-card.border-blue {
+    border-left-color: var(--c-blue);
+}
+
+.stats-card.border-green {
+    border-left-color: var(--c-green);
+}
+
 .stats-card.border-red,
-#stats-card.timer-running    { border-left-color: var(--c-red); }
-.stats-card.border-purple    { border-left-color: var(--c-purple); }
-.stats-card.border-gold      { border-left-color: var(--c-gold); }
-.stats-card.border-orange    { border-left-color: var(--c-orange); }
-.stats-card.border-transparent { border-left-color: transparent; }
+#stats-card.timer-running {
+    border-left-color: var(--c-red);
+}
+
+.stats-card.border-purple {
+    border-left-color: var(--c-purple);
+}
+
+.stats-card.border-gold {
+    border-left-color: var(--c-gold);
+}
+
+.stats-card.border-orange {
+    border-left-color: var(--c-orange);
+}
+
+.stats-card.border-transparent {
+    border-left-color: transparent;
+}
 
 .stats-number,
 .card-anim,
@@ -536,6 +571,7 @@ button:disabled {
     min-height: 30rem;
     display: flex;
     flex-direction: column;
+    transition: min-height var(--dur-collapse) ease-out;
 }
 
 .stats-inner .btn-group {
@@ -661,7 +697,7 @@ button:disabled {
     transition: grid-template-rows var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
 }
 
-.registro-mes-detalle > .detalle-inner {
+.registro-mes-detalle>.detalle-inner {
     overflow: hidden;
     min-height: 0;
 }
@@ -764,7 +800,7 @@ button:disabled {
     will-change: transform, opacity;
 }
 
-.modal-scrollable > .modal-content {
+.modal-scrollable>.modal-content {
     display: flex;
     flex-direction: column;
     max-height: 90vh;
@@ -1119,7 +1155,7 @@ button:disabled {
 /* ─── COLLAPSIBLE SECTIONS ───────────────────────────────────────────────────── */
 
 .form-collapsible.expanded {
-    max-height: 700px;
+    grid-template-rows: 1fr;
     opacity: 1;
 }
 
@@ -1130,14 +1166,10 @@ button:disabled {
 }
 
 #botones-historico.expanded {
-    max-height: 100px;
+    grid-template-rows: 1fr;
     opacity: 1;
     padding-top: 0.5rem;
     margin-bottom: 0.5rem;
-}
-
-#contenido-historico.expanded {
-    max-height: 5000px;
 }
 
 /* ─── ANIMACIONES ────────────────────────────────────────────────────────────── */
@@ -1411,7 +1443,7 @@ button:disabled {
     transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s;
 }
 
-.day-checkbox input:checked ~ span {
+.day-checkbox input:checked~span {
     background: var(--c-green-bg);
     color: var(--c-green);
     border: 1px solid var(--c-green);
@@ -1428,6 +1460,7 @@ button:disabled {
 #modo-lote {
     display: none;
 }
+
 #modo-normal,
 #campos-rango-exportar,
 #gist-limite-sync,
@@ -1526,6 +1559,7 @@ button:disabled {
         opacity: 0;
         transform: translateY(-20px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -1537,6 +1571,7 @@ button:disabled {
         opacity: 0;
         transform: translateY(24px) scale(0.96);
     }
+
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
@@ -1544,12 +1579,29 @@ button:disabled {
 }
 
 @keyframes llamarAtencion {
-    0%   { transform: scale(1, 1); }
-    5%   { transform: scale(1.25, 0.75); }
-    10%  { transform: scale(0.75, 1.25); }
-    15%  { transform: scale(1.15, 0.85); }
-    20%  { transform: scale(1, 1); }
-    100% { transform: scale(1, 1); }
+    0% {
+        transform: scale(1, 1);
+    }
+
+    5% {
+        transform: scale(1.25, 0.75);
+    }
+
+    10% {
+        transform: scale(0.75, 1.25);
+    }
+
+    15% {
+        transform: scale(1.15, 0.85);
+    }
+
+    20% {
+        transform: scale(1, 1);
+    }
+
+    100% {
+        transform: scale(1, 1);
+    }
 }
 
 @keyframes fade-blur {
@@ -1557,6 +1609,7 @@ button:disabled {
         opacity: 0;
         filter: blur(5px);
     }
+
     to {
         opacity: 1;
         filter: blur(0);
@@ -1564,20 +1617,46 @@ button:disabled {
 }
 
 @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 var(--c-red-pulse); }
-    70%  { box-shadow: 0 0 0 10px rgba(192, 93, 118, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(192, 93, 118, 0); }
+    0% {
+        box-shadow: 0 0 0 0 var(--c-red-pulse);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(192, 93, 118, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(192, 93, 118, 0);
+    }
 }
 
 @keyframes shimmer {
-    0%   { left: -80%; }
-    20%  { left: 130%; }
-    100% { left: 130%; }
+    0% {
+        left: -80%;
+    }
+
+    20% {
+        left: 130%;
+    }
+
+    100% {
+        left: 130%;
+    }
 }
 
 @keyframes campo-flash {
-    0%, 100% { border-color: var(--text-main); box-shadow: none; }
-    30%, 70% { border-color: var(--input-focus); box-shadow: var(--shadow); }
+
+    0%,
+    100% {
+        border-color: var(--text-main);
+        box-shadow: none;
+    }
+
+    30%,
+    70% {
+        border-color: var(--input-focus);
+        box-shadow: var(--shadow);
+    }
 }
 
 input.campo-flash,
@@ -1587,8 +1666,13 @@ button.campo-flash {
 }
 
 @keyframes icono-spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .icono-spin {
@@ -1598,10 +1682,11 @@ button.campo-flash {
 /* ─── HOVER (pointer: fine) ──────────────────────────────────────────────────── */
 
 @media (hover: hover) and (pointer: fine) {
+
     :is([id^="btn-toggle-"],
         #btn-reporte,
         .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist,
-        .btn-delete, .btn-cancel, .btn-export, .btn-merge,  .btn-backup, .btn-edit,
+        .btn-delete, .btn-cancel, .btn-export, .btn-merge, .btn-backup, .btn-edit,
         .calendario-nav button):hover:not(:disabled) {
         filter: var(--hover);
     }
