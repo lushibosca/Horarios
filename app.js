@@ -2088,19 +2088,6 @@
         let _modalAbiertoDesdeLista = false;
         let _timerAutoVista = null;
 
-        // ─── PROXIES A TIMEUTILS ───────────────────────────────────────────
-        const obtenerFechaHoy = TimeUtils.obtenerFechaHoy;
-        const obtenerHoraActual = TimeUtils.obtenerHoraActual;
-        const minutosAHora = TimeUtils.minutosAHora;
-        const obtenerNombreDia = TimeUtils.obtenerNombreDia;
-        const horasATexto = TimeUtils.horasATexto;
-        const _esCantidadSingular = TimeUtils._esCantidadSingular;
-        const horasATextoCorto = (t) => TimeUtils.horasATexto(t, 'short');
-        const formatoTituloMes = TimeUtils.formatoTituloMes;
-        const obtenerLunesSemana = TimeUtils.obtenerLunesSemanaISO;
-        const _getLunes = TimeUtils.obtenerLunes;
-        const obtenerSemanaActual = TimeUtils.obtenerSemanaRangoActual;
-
         function formatoDiferencia(tiempoTotal) {
             return TimeUtils.formatoDiferencia(tiempoTotal, D.horasDiarias());
         }
@@ -2151,10 +2138,6 @@
             if (input) input.classList.remove('error');
             if (error) error.style.display = 'none';
         }
-
-        // ----------------------------------------------------------------
-        // HELPERS COMPARTIDOS DE EXPORTACIÓN
-        // ----------------------------------------------------------------
 
         function obtenerNombrePerfilSafe() {
             let nombre = 'Backup';
@@ -2307,7 +2290,7 @@
             return svg;
         }
 
-        function crearItemRegistroIndividual(r, horasDiarias, idResaltar = null, hoy = obtenerFechaHoy()) {
+        function crearItemRegistroIndividual(r, horasDiarias, idResaltar = null, hoy = TimeUtils.obtenerFechaHoy()) {
             const item = document.createElement('div');
 
             let className = r.fecha === hoy ? 'registro-item hoy' : 'registro-item';
@@ -2324,7 +2307,7 @@
             const fechaEl = document.createElement('div');
             fechaEl.className = 'registro-fecha';
             const etiqueta = tipoEspecial ? ` ${tipoEspecial.emoji} (${tipoEspecial.label})` : '';
-            fechaEl.textContent = `${obtenerNombreDia(r.fecha)} ${r.fecha.substring(8)}${etiqueta}`;
+            fechaEl.textContent = `${TimeUtils.obtenerNombreDia(r.fecha)} ${r.fecha.substring(8)}${etiqueta}`;
 
             const tfText = (() => {
                 if (!r.tiempoFuera || r.tiempoFuera === '' || r.tiempoFuera === '00:00') return '';
@@ -2349,19 +2332,22 @@
                 totalEl.classList.add(`${tipoEspecial.color}-text`);
             } else if (r.entrada && r.salida) {
                 totalText = `${r.horas}h ${r.minutos}m`;
-                if (horasDiarias > 0) {
+                if (horasDiarias > 0 && _esFechaHabil(r.fecha, D.diasHabiles())) {
                     const diffText = formatoDiferencia(r.total);
-                    totalEl.classList.add(r.total >= horasDiarias ? 'green-text' : 'red-text');
-                    if (diffText) totalText += ` (${diffText})`;
+                    if (r.total >= horasDiarias) {
+                        totalEl.classList.add('green-text');
+                        if (diffText) totalText += ` (${diffText})`;
+                    } else if (_cubiertoPorSaldo(r.fecha)) {
+                        totalEl.classList.add('gold-text');
+                        totalText += ` (${diffText}) Cubierto`;
+                    } else {
+                        totalEl.classList.add('red-text');
+                        if (diffText) totalText += ` (${diffText})`;
+                    }
                 }
             } else if (r.entrada && !r.salida) {
-                if (r.fecha === hoy) {
-                    totalText = 'En curso . . .';
-                    totalEl.classList.add('blue-text');
-                } else {
-                    totalText = 'Incompleto';
-                    totalEl.classList.add('yellow-text');
-                }
+                totalText = r.fecha === hoy ? 'En curso . . .' : 'Incompleto';
+                totalEl.classList.add('blue-text');
             } else {
                 totalText = 'Sin datos';
             }
@@ -2389,7 +2375,7 @@
 
             const chevron = _crearChevron();
             headerMes.appendChild(chevron);
-            headerMes.appendChild(document.createTextNode(' ' + formatoTituloMes(claveMes)));
+            headerMes.appendChild(document.createTextNode(' ' + TimeUtils.formatoTituloMes(claveMes)));
 
             const detalleMesActual = document.createElement('div');
             detalleMesActual.className = 'registro-mes-detalle';
@@ -2414,7 +2400,7 @@
             grupos.forEach(grupo => {
                 const esGrupo = grupo.tipo === 'grupo';
                 const r = esGrupo ? grupo.registros[grupo.registros.length - 1] : grupo.registros[0];
-                const semanaActual = obtenerLunesSemana(r.fecha);
+                const semanaActual = TimeUtils.obtenerLunesSemanaISO(r.fecha);
 
                 if (semanaAnterior && semanaActual !== semanaAnterior) {
                     const sep = document.createElement('div');
@@ -2487,7 +2473,7 @@
             if (registrosAMostrar.length === 0) { _renderEmptyStateLista(lista); return; }
 
             const horasDiarias = D.horasDiarias();
-            const hoy = obtenerFechaHoy();
+            const hoy = TimeUtils.obtenerFechaHoy();
             const mesHoy = hoy.substring(0, 7);
             const anioHoy = hoy.substring(0, 4);
             const gruposPorMes = agruparRegistrosPorMes(registrosAMostrar);
@@ -2626,7 +2612,7 @@
         function _calcularBufferPeriodo(registrosRango, desde, hasta, horasDiariasObj) {
             const diasHabilesConfig = D.diasHabiles();
             const regsPorFecha = new Map(registrosRango.map(r => [r.fecha, r]));
-            const hoy = obtenerFechaHoy();
+            const hoy = TimeUtils.obtenerFechaHoy();
             const { ayerStr, ayerAbierto } = D.detectarAyerAbierto(hoy, regsPorFecha);
 
             let objetivo = 0, hechas = 0;
@@ -2758,7 +2744,7 @@
                 } else {
                     itemSaldo.style.display = '';
                     const b = stats.bufferPeriodo;
-                    elSaldo.textContent = b === 0 ? '0h' : horasATextoCorto(b);
+                    elSaldo.textContent = b === 0 ? '0h' : TimeUtils.horasATexto(b, 'short');
                     elSaldo.style.color = b > 0 ? 'var(--c-green)' : b < 0 ? 'var(--c-red)' : 'var(--text-main)';
                 }
             }
@@ -2931,20 +2917,76 @@
 
 
         function _estadoDiasHabiles(diasHabiles) {
+            const hoy = TimeUtils.obtenerFechaHoy();
             const diaSemana = new Date().getDay();
             const hoyIndex = diaSemana === 0 ? 7 : diaSemana;
-            let esDiaHabil, quedanDiasFuturos;
+            const esDiaHabil = _esFechaHabil(hoy, diasHabiles);
+            let quedanDiasFuturos;
             if (Array.isArray(diasHabiles)) {
-                esDiaHabil = diasHabiles.includes(diaSemana);
                 quedanDiasFuturos = false;
                 for (let d = hoyIndex + 1; d <= 7; d++) {
                     if (diasHabiles.includes(d === 7 ? 0 : d)) { quedanDiasFuturos = true; break; }
                 }
             } else {
-                esDiaHabil = diaSemana === 0 ? (diasHabiles === 7) : (diaSemana <= diasHabiles);
                 quedanDiasFuturos = hoyIndex < diasHabiles;
             }
             return { esDiaHabil, quedanDiasFuturos };
+        }
+
+        function _esFechaHabil(fecha, diasHabiles) {
+            const diaSemana = TimeUtils.parsearFechaLocal(fecha).getDay();
+            if (Array.isArray(diasHabiles)) return diasHabiles.includes(diaSemana);
+            return diaSemana === 0 ? (diasHabiles === 7) : (diaSemana <= diasHabiles);
+        }
+
+        function _cubiertoPorSaldo(fecha) {
+            const lunes = TimeUtils.obtenerLunesSemanaISO(fecha);
+            const lunesDate = TimeUtils.parsearFechaLocal(lunes);
+            lunesDate.setDate(lunesDate.getDate() + 6);
+            const domingo = TimeUtils.formatearFechaLocal(lunesDate);
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const topeCalendario = domingo < hoy ? domingo : hoy;
+
+            const registrosSemana = D.registros().filter(r => r.fecha >= lunes && r.fecha <= topeCalendario);
+            let limite = fecha;
+            for (const r of registrosSemana) {
+                if (r.fecha > limite) limite = r.fecha;
+            }
+
+            const registrosMap = new Map(registrosSemana.map(r => [r.fecha, r]));
+            const diasHabilesObj = D.diasHabiles();
+            const horasDiariasObj = D.horasDiarias();
+
+            const EPS = 1e-6;
+            const pendientes = [];
+            let pool = 0;
+
+            for (const isoDate of TimeUtils.generarRangoFechas(lunes, limite)) {
+                const r = registrosMap.get(isoDate);
+                const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
+                const esRemoto = esEspecial && TiposRegistro.obtenerTipoPorCodigo(r?.entrada, r?.salida)?.id === 'remoto';
+                let delta = 0;
+                if (esRemoto) {
+                    delta = 0;
+                } else if (r && !esEspecial && r.salida) {
+                    const objetivo = _esFechaHabil(isoDate, diasHabilesObj) ? horasDiariasObj : 0;
+                    delta = r.total - objetivo;
+                }
+
+                if (delta > EPS) pool += delta;
+                else if (delta < -EPS) pendientes.push({ fecha: isoDate, restante: -delta });
+
+                for (const deuda of pendientes) {
+                    if (pool <= EPS) break;
+                    if (deuda.restante <= EPS) continue;
+                    const pago = Math.min(pool, deuda.restante);
+                    deuda.restante -= pago;
+                    pool -= pago;
+                }
+            }
+
+            const deuda = pendientes.find(d => d.fecha === fecha);
+            return deuda ? deuda.restante <= EPS : false;
         }
 
         function _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias) {
@@ -2961,8 +3003,8 @@
         }
 
         function calcularEstadoCard() {
-            const hoy = obtenerFechaHoy();
-            const { inicio: ini, fin: fn } = obtenerSemanaActual();
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const { inicio: ini, fin: fn } = TimeUtils.obtenerSemanaRangoActual();
             const registros = D.registros();
             const horasDiarias = D.horasDiarias();
             const horasSemanales = D.horasSemanales();
@@ -2990,7 +3032,7 @@
             const regActivo = (ayerAbierto && !regHoy?.entrada) ? regAyer
                 : (!tipoEspecialHoy && regHoy?.entrada && !regHoy.salida) ? regHoy : null;
             if (regActivo) {
-                const t = D.calcularHoras(regActivo.entrada, obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
+                const t = D.calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
                 tiempoHoy = t ? t.total : 0;
             } else if (!tipoEspecialHoy && regHoy?.salida) {
                 tiempoHoy = regHoy.total;
@@ -3035,7 +3077,7 @@
             if (horasDiarias === 0) {
                 colorBarra = 'blue'; colorBorde = 'transparent';
                 estadoFondo = 'esperando';
-                mensaje = `Total fichado: ${horasATexto(tot)}`;
+                mensaje = `Total fichado: ${TimeUtils.horasATexto(tot)}`;
                 mostrarMensaje = false;
             } else if (todosEspeciales) {
                 colorBarra = 'blue'; colorBorde = 'transparent';
@@ -3046,29 +3088,29 @@
                 colorBarra = 'green'; colorBorde = 'green';
                 estadoFondo = 'finalizado_ok';
                 const dif = tot - objetivoSemana;
-                mensaje = dif === 0 ? 'Perfecto' : `Hiciste ${horasATexto(dif)} de más`;
+                mensaje = dif === 0 ? 'Perfecto' : `Hiciste ${TimeUtils.horasATexto(dif)} de más`;
                 mostrarMensaje = true;
             } else if (semanaAbierta) {
                 colorBarra = 'blue'; colorBorde = 'blue';
                 estadoFondo = 'en_curso';                
-                const diffText = horasATexto(objetivoSemana - tot);
-                const prefijoFalta = _esCantidadSingular(diffText) ? 'Falta' : 'Faltan';
+                const diffText = TimeUtils.horasATexto(objetivoSemana - tot);
+                const prefijoFalta = TimeUtils._esCantidadSingular(diffText) ? 'Falta' : 'Faltan';
                 mensaje = objetivoSemana === 0
-                    ? `${horasATexto(tot)} (Sin objetivo)`
+                    ? `${TimeUtils.horasATexto(tot)} (Sin objetivo)`
                     : `${prefijoFalta} ${diffText}`;
                 mostrarMensaje = true;
             } else {
                 colorBarra = 'red'; colorBorde = 'red';
                 estadoFondo = 'finalizado_fail';                
-                const diffText = horasATexto(objetivoSemana - tot);
-                const prefijoFalto = _esCantidadSingular(diffText) ? 'Faltó' : 'Faltaron';
+                const diffText = TimeUtils.horasATexto(objetivoSemana - tot);
+                const prefijoFalto = TimeUtils._esCantidadSingular(diffText) ? 'Faltó' : 'Faltaron';
                 mensaje = `${prefijoFalto} ${diffText}`;
                 mostrarMensaje = true;
             }
 
             return {
                 titulo: `<svg class="icon"><use href="#icon-calendar-simple" /></svg> Esta Semana`,
-                stats: todosEspeciales ? '🌞' : horasATexto(tot),
+                stats: todosEspeciales ? '🌞' : TimeUtils.horasATexto(tot),
                 mensaje, mostrarMensaje,
                 colorBarra, anchoBarra: prog,
                 colorBorde, estadoFondo,
@@ -3097,7 +3139,7 @@
             const mS = Math.floor(minutosTotal % 60);
             const horaSalida = `${String(hS).padStart(2, '0')}:${String(mS).padStart(2, '0')}`;
 
-            const esLaborable = Array.isArray(diasHabiles) && diasHabiles.includes(new Date().getDay());
+            const esLaborable = _esFechaHabil(reg.fecha, diasHabiles);
             const mostrarBuffer = Math.abs(bufferSemanal) > 0.01 && esLaborable;
 
             if (mostrarBuffer) {
@@ -3123,11 +3165,11 @@
             if (cumplido) {
                 const extra = tiempoHoy - objetivoDiario;
                 if (bufferSemanal < 0 && Math.abs(bufferSemanal) > extra) return 'Te podes ir, pero debés tiempo';
-                return extra > 0 ? `Te podes ir (+${horasATexto(extra)})` : 'Te podes ir';
+                return extra > 0 ? `Te podes ir (+${TimeUtils.horasATexto(extra)})` : 'Te podes ir';
             }
             const faltante = objetivoDiario - tiempoHoy;
-            const textoHoras = horasATexto(faltante);
-            const prefijo = _esCantidadSingular(textoHoras) ? 'Falta' : 'Faltan';
+            const textoHoras = TimeUtils.horasATexto(faltante);
+            const prefijo = TimeUtils._esCantidadSingular(textoHoras) ? 'Falta' : 'Faltan';
             const faltanteTexto = `${prefijo} ${textoHoras}`;
             
             return bufferSemanal >= faltante ? `${faltanteTexto}, pero te podés ir` : faltanteTexto;
@@ -3140,22 +3182,23 @@
             if (!regHoy || !regHoy.entrada) {
 
                 if (est.ayerAbierto) {
-                    const prog = _calcularProgreso(tiempoHoy, objetivoDiario);
-                    const cumplido = _estaCumplido(tiempoHoy, objetivoDiario);
-                    const colorBarra = cumplido ? 'green' : 'blue';
-                    const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiario, bufferSemanal, 'En curso (cruce de medianoche)');
+                    const objetivoDiarioAyerAplica = _esFechaHabil(est.ayerStr, diasHabiles) ? objetivoDiario : 0;
+                    const prog = _calcularProgreso(tiempoHoy, objetivoDiarioAyerAplica);
+                    const cumplido = _estaCumplido(tiempoHoy, objetivoDiarioAyerAplica);
+                    const colorBarra = objetivoDiarioAyerAplica === 0 ? 'blue' : (cumplido ? 'green' : 'blue');
+                    const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAyerAplica, bufferSemanal, 'En curso (cruce de medianoche)');
 
-                    const nombreDiaAyer = obtenerNombreDia(est.ayerStr);
+                    const nombreDiaAyer = TimeUtils.obtenerNombreDia(est.ayerStr);
                     let hint = 'Toca Fichar para registrar salida';
                     let hintEsHTML = false;
                     const regAyer = est.regAyer;
-                    if (regAyer && regAyer.entrada && objetivoDiario > 0 && !TiposRegistro.esRegistroEspecial(regAyer.entrada, regAyer.salida)) {
-                        ({ hint, hintEsHTML } = _calcularHintSalidaEstimada(regAyer, objetivoDiario, bufferSemanal, diasHabiles));
+                    if (regAyer && regAyer.entrada && objetivoDiarioAyerAplica > 0 && !TiposRegistro.esRegistroEspecial(regAyer.entrada, regAyer.salida)) {
+                        ({ hint, hintEsHTML } = _calcularHintSalidaEstimada(regAyer, objetivoDiarioAyerAplica, bufferSemanal, diasHabiles));
                     }
 
                     return {
                         titulo: `${_tituloDia(nombreDiaAyer)} (ayer)`,
-                        stats: horasATexto(tiempoHoy),
+                        stats: TimeUtils.horasATexto(tiempoHoy),
                         mensaje, mostrarMensaje: true,
                         colorBarra, anchoBarra: prog,
                         colorBorde: colorBarra, estadoFondo: 'en_curso', estadoFondoColor: null,
@@ -3164,7 +3207,7 @@
                 }
 
                 return {
-                    titulo: _tituloDia(obtenerNombreDia(obtenerFechaHoy())),
+                    titulo: _tituloDia(TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy())),
                     stats: esDiaHabil ? '🎒' : '🌞',
                     mensaje: esDiaHabil
                         ? (horasDiarias === 0 ? '' : 'Esperando registro...')
@@ -3177,12 +3220,12 @@
             }
 
             const avisoAyerHint = est.ayerAbierto
-                ? { hint: `⚠️ Ayer (${obtenerNombreDia(est.ayerStr)}) quedó un fichaje sin cerrar`, hintEsHTML: false }
+                ? { hint: `⚠️ Ayer (${TimeUtils.obtenerNombreDia(est.ayerStr)}) quedó un fichaje sin cerrar`, hintEsHTML: false }
                 : null;
 
             if (tipoEspecialHoy) {
                 return _conAvisoAyer({
-                    titulo: _tituloDia(obtenerNombreDia(obtenerFechaHoy())),
+                    titulo: _tituloDia(TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy())),
                     stats: `${tipoEspecialHoy.emoji} ${tipoEspecialHoy.label}`,
                     mensaje: `¡${tipoEspecialHoy.descripcion}!`,
                     mostrarMensaje: true,
@@ -3210,11 +3253,11 @@
                 if (dif >= 0) {
                     colorBarra = 'green'; colorBorde = 'green';
                     estadoFondo = 'finalizado_ok';
-                    const difExtraText = horasATexto(dif);
-                    mensaje = dif === 0 ? 'Perfecto' : `${difExtraText} ${_esCantidadSingular(difExtraText) ? 'extra' : 'extras'}`;
+                    const difExtraText = TimeUtils.horasATexto(dif);
+                    mensaje = dif === 0 ? 'Perfecto' : `${difExtraText} ${TimeUtils._esCantidadSingular(difExtraText) ? 'extra' : 'extras'}`;
                 } else {
-                    const difText = horasATexto(Math.abs(dif));
-                    const prefijoFalto = _esCantidadSingular(difText) ? 'Faltó' : 'Faltaron';
+                    const difText = TimeUtils.horasATexto(Math.abs(dif));
+                    const prefijoFalto = TimeUtils._esCantidadSingular(difText) ? 'Faltó' : 'Faltaron';
                     
                     if (bufferSemanal >= 0) {
                         colorBarra = 'gold'; colorBorde = 'gold';
@@ -3243,8 +3286,8 @@
             }
 
             return _conAvisoAyer({
-                titulo: _tituloDia(obtenerNombreDia(obtenerFechaHoy())),
-                stats: horasATexto(tiempoHoy),
+                titulo: _tituloDia(TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy())),
+                stats: TimeUtils.horasATexto(tiempoHoy),
                 mensaje, mostrarMensaje,
                 colorBarra, anchoBarra: prog,
                 colorBorde, estadoFondo, estadoFondoColor,
@@ -3316,14 +3359,13 @@
             _cicloStatsInterval = setTimeout(_cicloTick, _CICLO_DURACION_MS);
         }
 
-        function _renderStats(vista) {
+        function _renderStats(vista, est) {
             const el = $('stats-semana');
             if (!el) return;
 
             const esDiaria = D.vistaActual() !== 'semana';
-            const hoy = obtenerFechaHoy();
-            const regHoy = D.registros().find(r => r.fecha === hoy) ?? null;
-            const esEspecial = regHoy && TiposRegistro.esRegistroEspecial(regHoy.entrada, regHoy.salida);
+            const regHoy = est.regHoy;
+            const esEspecial = !!est.tipoEspecialHoy;
             const entradaHoy = (esDiaria && regHoy && regHoy.entrada && !esEspecial) ? regHoy.entrada : '';
             const salidaHoy = (esDiaria && regHoy && regHoy.salida && !esEspecial) ? regHoy.salida : '';
 
@@ -3379,8 +3421,8 @@
                 const span = document.createElement('span');
                 span.style.color = color;
                 span.style.fontWeight = '500';
-                const textoBuffer = horasATexto(Math.abs(bufferSemanal));
-                const singular = _esCantidadSingular(textoBuffer);
+                const textoBuffer = TimeUtils.horasATexto(Math.abs(bufferSemanal));
+                const singular = TimeUtils._esCantidadSingular(textoBuffer);
                 const adjetivo = esPositivo ? (singular ? 'extra' : 'extras') : (singular ? 'faltante' : 'faltantes');
                 span.textContent = `${textoBuffer} ${adjetivo} esta semana`;
                 span.insertBefore(punto, span.firstChild);
@@ -3477,18 +3519,16 @@
             }
 
             const debeAnimar = animarCard || (idNuevo !== null && !soloReloj);
-            if (debeAnimar) {
-                _animarCambioCard(() => {
-                    _renderStats(vista);
-                    _renderMensaje(vista);
-                    _renderHint(vista);
-                    _renderBuffer(est);
-                });
-            } else {
-                _renderStats(vista);
+            const renderResto = () => {
+                _renderStats(vista, est);
                 _renderMensaje(vista);
                 _renderHint(vista);
                 _renderBuffer(est);
+            };
+            if (debeAnimar) {
+                _animarCambioCard(renderResto);
+            } else {
+                renderResto();
             }
         }
 
@@ -3866,7 +3906,7 @@
             if (input.value.trim() !== '') {
                 input.value = '';
             } else {
-                input.value = obtenerHoraActual();
+                input.value = TimeUtils.obtenerHoraActual();
             }
             input.dispatchEvent(new Event('input'));
         }
@@ -3892,7 +3932,7 @@
             const semanas = new Map();
             D.registros().forEach(r => {
                 const d = new Date(r.fecha + 'T00:00:00');
-                const lunes = _getLunes(d);
+                const lunes = TimeUtils.obtenerLunes(d);
                 const key = TimeUtils.formatearFechaLocal(lunes);
                 if (!semanas.has(key)) semanas.set(key, lunes);
             });
@@ -3916,7 +3956,7 @@
 
         function poblarSelectorSemanas() {
             const semanas = _obtenerSemanas();
-            const lunesISO = TimeUtils.formatearFechaLocal(_getLunes());
+            const lunesISO = TimeUtils.formatearFechaLocal(TimeUtils.obtenerLunes());
             _poblarSelect('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana, _agruparMesesPorAnio);
         }
 
@@ -4066,8 +4106,8 @@
                         return n ? `${n} ${t.labelPlural.toLowerCase()}` : null;
                     })
                     .filter(Boolean);
-                const nombreMes = formatoTituloMes(claveMes).split(' ')[0];
-                seccion += `   ${nombreMes.padEnd(12)} ${horasATextoCorto(_sumarHorasEfectivas(regsM, horasDiariasObjetivo)).padEnd(10)}  (${normales.length} jornadas)`;
+                const nombreMes = TimeUtils.formatoTituloMes(claveMes).split(' ')[0];
+                seccion += `   ${nombreMes.padEnd(12)} ${TimeUtils.horasATexto(_sumarHorasEfectivas(regsM, horasDiariasObjetivo), 'short').padEnd(10)}  (${normales.length} jornadas)`;
                 if (notas.length) seccion += `  [${notas.join(', ')}]`;
                 seccion += '\n';
             });
@@ -4087,14 +4127,14 @@
             ordenados.forEach(r => {
                 const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
                 const fecha = r.fecha.split('-').reverse().join('/');
-                const dia = obtenerNombreDia(r.fecha);
+                const dia = TimeUtils.obtenerNombreDia(r.fecha);
                 let linea;
                 if (tipoEspecial) {
                     linea = `${fecha}  ${dia.padEnd(10)} ${tipoEspecial.label.toUpperCase()}`;
                 } else {
                     const entrada = r.entrada || '--:--';
                     const salida = r.salida || '--:--';
-                    const total = r.salida ? horasATextoCorto(r.total) : 'Incompleto';
+                    const total = r.salida ? TimeUtils.horasATexto(r.total, 'short') : 'Incompleto';
                     const tiempoFuera = r.tiempoFuera ? ` (${r.tiempoFuera} fuera)` : '';
                     const infoAsueto = (r.credito && r.credito !== '00:00') ? ' [SALIDA TEMPRANO]' : '';
                     const indicador = r.salida ? (r.total >= horasDiariasObjetivo ? '✓ ' : '✗ ') : '  ';
@@ -4108,7 +4148,7 @@
         function _agruparRegistrosPorSemana(registros) {
             const semanas = new Map();
             registros.forEach(r => {
-                const lunes = obtenerLunesSemana(r.fecha);
+                const lunes = TimeUtils.obtenerLunesSemanaISO(r.fecha);
                 if (!semanas.has(lunes)) {
                     const base = { trabajados: [] };
                     TiposRegistro.obtenerTodosLosTipos().forEach(t => { base[t.labelPlural.toLowerCase()] = []; });
@@ -4161,8 +4201,8 @@ ${lineasTipos}
    • Salida promedio:        ${stats.salidaPromedio}
    • Promedio diario:        ${stats.promedioDiario}
    
-   • Total horas trabajadas: ${horasATextoCorto(_sumarHorasEfectivas(registrosPeriodo, horasDiariasObjetivo))}
-   • Saldo:                  ${stats.bufferPeriodo !== null ? horasATextoCorto(stats.bufferPeriodo) : 'N/A'}`;
+   • Total horas trabajadas: ${TimeUtils.horasATexto(_sumarHorasEfectivas(registrosPeriodo, horasDiariasObjetivo), 'short')}
+   • Saldo:                  ${stats.bufferPeriodo !== null ? TimeUtils.horasATexto(stats.bufferPeriodo, 'short') : 'N/A'}`;
                 },
 
                 detallePeriodo: () => esAnual
@@ -4216,7 +4256,7 @@ ${lineasTipos}
                         }
 
                         seccion += `   Semana ${index + 1} (${lunes.split('-').reverse().join('/')} - ${fechaFin.split('-').reverse().join('/')})${esIncompleta ? '*' : ''}:\n`;
-                        seccion += `      └─ ${horasATextoCorto(totalSemanal)}`;
+                        seccion += `      └─ ${TimeUtils.horasATexto(totalSemanal, 'short')}`;
 
                         const notasExtras = TiposRegistro.obtenerTodosLosTipos()
                             .map(t => {
@@ -4287,7 +4327,7 @@ Generado por Sistema Lushibosca
             const icono = vistaActual === 'semana'
                 ? '<svg class="icon"><use href="#icon-calendar-simple"/></svg>'
                 : '<svg class="icon"><use href="#icon-clock"/></svg>';
-            const contexto = vistaActual === 'semana' ? 'Esta Semana' : obtenerNombreDia(obtenerFechaHoy());
+            const contexto = vistaActual === 'semana' ? 'Esta Semana' : TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy());
             titulo.innerHTML = `${icono} ${contexto} - <svg class="icon"><use href="#icon-exit"/></svg> Tiempo fuera `;
             const breakCounter = Object.assign(document.createElement('span'), {
                 id: 'break-counter', className: 'break-counter-label'
@@ -4304,7 +4344,7 @@ Generado por Sistema Lushibosca
             if (modoLoteActivo) { btn.style.display = 'none'; return; }
             btn.style.display = '';
 
-            const hoy = obtenerFechaHoy();
+            const hoy = TimeUtils.obtenerFechaHoy();
             const registroHoy = D.registros().find(r => r.fecha === hoy);
             const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
             const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
@@ -4391,7 +4431,7 @@ Generado por Sistema Lushibosca
             const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
             const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
             const storedStart = StorageHelper.getItem(storageKey);
-            const registroHoy = D.registros().find(r => r.fecha === obtenerFechaHoy());
+            const registroHoy = D.registros().find(r => r.fecha === TimeUtils.obtenerFechaHoy());
 
             if (!storedStart && !registroHoy) { mostrarToast('Debes crear un registro para hoy primero', 'warning'); return; }
 
@@ -4994,7 +5034,7 @@ Generado por Sistema Lushibosca
                 if (tipoSelect) tipoSelect.value = 'todo';
 
                 const camposRango = document.getElementById('campos-rango-exportar');
-                if (camposRango) { camposRango.style.maxHeight = '0'; camposRango.style.opacity = '0'; }
+                if (camposRango) camposRango.classList.remove('expanded');
 
                 document.getElementById('export-fecha-desde').value = '';
                 document.getElementById('export-fecha-hasta').value = '';
@@ -5019,13 +5059,7 @@ Generado por Sistema Lushibosca
             const tipo = document.getElementById('tipo-exportacion').value;
             const camposRango = document.getElementById('campos-rango-exportar');
 
-            if (tipo === 'rango') {
-                camposRango.style.maxHeight = '200px';
-                camposRango.style.opacity = '1';
-            } else {
-                camposRango.style.maxHeight = '0';
-                camposRango.style.opacity = '0';
-            }
+            camposRango.classList.toggle('expanded', tipo === 'rango');
         }
 
         async function ejecutarExportacion() {
@@ -5788,8 +5822,7 @@ Generado por Sistema Lushibosca
             UILogic.aplicarOrdenCards(UILogic.obtenerOrdenCards());
             UILogic.iniciarDragOrdenCards();
             UILogic.setFondoCard(config.fondoCard || 'golden-gate');
-            if (config.modoEstadisticas === 'anual') UILogic.togglePeriodoStats();
-            else if (config.modoEstadisticas === 'semanal') { UILogic.togglePeriodoStats(); UILogic.togglePeriodoStats(); }
+            modoEstadisticas = config.modoEstadisticas || 'mensual';
 
             const perfilActual = PerfilManager.obtenerDatosPerfil();
             D.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
@@ -5822,7 +5855,7 @@ Generado por Sistema Lushibosca
                 if (use) use.setAttribute('href', temaOscuro ? '#icon-sun' : '#icon-moon');
             });
 
-            $('fecha').value = obtenerFechaHoy();
+            $('fecha').value = TimeUtils.obtenerFechaHoy();
 
             try {
                 const persistir = StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true);
@@ -6134,7 +6167,7 @@ Generado por Sistema Lushibosca
 
                 $('entrada').value = '';
                 $('salida').value = '';
-                $('fecha').value = obtenerFechaHoy();
+                $('fecha').value = TimeUtils.obtenerFechaHoy();
 
                 const loteDesde = $('lote-fecha-desde');
                 const loteHasta = $('lote-fecha-hasta');
@@ -6273,6 +6306,7 @@ Generado por Sistema Lushibosca
             const regsPorFecha = Object.fromEntries(registrosFiltrados.map(r => [r.fecha, r]));
             const todosRegsPorFecha = Object.fromEntries(todosLosRegistros.map(r => [r.fecha, r]));
             const horasDiariasObj = D.horasDiarias();
+            const diasHabilesObj = D.diasHabiles();
             const filtroActivo = D.obtenerRegistrosFiltrados().length !== D.registros().length;
             const claseDelDia = (fecha) => {
                 const r = regsPorFecha[fecha];
@@ -6282,12 +6316,9 @@ Generado por Sistema Lushibosca
                     const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
                     return `dia-especial-${tipo ? tipo.color : 'purple'}`;
                 }
-                if (r.entrada && !r.salida) {
-                    const fechaHoy = obtenerFechaHoy();
-                    return fecha === fechaHoy ? 'dia-en-curso' : 'dia-sin-salida';
-                }
-                if (r.total >= horasDiariasObj) return 'dia-normal';
-                return 'dia-incompleto';
+                if (r.entrada && !r.salida) return 'dia-en-curso';
+                if (!_esFechaHabil(fecha, diasHabilesObj) || r.total >= horasDiariasObj) return 'dia-normal';
+                return _cubiertoPorSaldo(fecha) ? 'dia-cubierto' : 'dia-incompleto';
             };
 
             const diasNombre = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -6394,8 +6425,8 @@ Generado por Sistema Lushibosca
                 return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>`;
             }
             if (reg.entrada && !reg.salida) {
-                const esHoy = reg.fecha === obtenerFechaHoy();
-                return `<div class="cal-popup-info cal-popup-info--${esHoy ? 'blue">En curso' : 'gold">Incompleto'}</div>
+                const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
+                return `<div class="cal-popup-info cal-popup-info--blue">${esHoy ? 'En curso' : 'Incompleto'}</div>
                     <div class="cal-popup-3l">Entrada: ${S.escapeHtml(reg.entrada)}</div>`;
             }
             const totalHoras = reg.total || 0;
@@ -6408,10 +6439,18 @@ Generado por Sistema Lushibosca
                 tfStr = tfH > 0 ? `${tfH}h${tfM > 0 ? ' ' + tfM + 'm' : ''} fuera` : `${tfM}m fuera`;
             }
             let totalConDiff = totalStr, diffColor = '';
-            if (horasDiarias > 0) {
+            if (horasDiarias > 0 && _esFechaHabil(reg.fecha, D.diasHabiles())) {
                 const diffText = formatoDiferencia(totalHoras);
-                if (diffText) totalConDiff += ` (${diffText})`;
-                diffColor = totalHoras >= horasDiarias ? 'var(--c-green)' : 'var(--c-red)';
+                if (totalHoras >= horasDiarias) {
+                    diffColor = 'var(--c-green)';
+                    if (diffText) totalConDiff += ` (${diffText})`;
+                } else if (_cubiertoPorSaldo(reg.fecha)) {
+                    diffColor = 'var(--c-gold)';
+                    totalConDiff += ` (${diffText}) Cubierto`;
+                } else {
+                    diffColor = 'var(--c-red)';
+                    if (diffText) totalConDiff += ` (${diffText})`;
+                }
             }
             return `<div class="cal-popup-info${diffColor ? ' cal-popup-info--dynamic' : ''}"${diffColor ? ` data-color="${diffColor}"` : ''}>${totalConDiff}</div>
                 <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} – ${S.escapeHtml(reg.salida)}</div>
@@ -6892,7 +6931,7 @@ Generado por Sistema Lushibosca
             if (c.value.trim() !== '') {
                 c.value = '';
             } else {
-                c.value = obtenerFechaHoy();
+                c.value = TimeUtils.obtenerFechaHoy();
             }
 
             actualizarBotonLote();
@@ -7057,7 +7096,7 @@ Generado por Sistema Lushibosca
         }
 
         return {
-            init, obtenerFechaHoy, pegarHoraActual, alternarTema, alternarVista, cerrarConfig, abrirSelectorMesesCalendario,
+            init, obtenerFechaHoy: TimeUtils.obtenerFechaHoy, pegarHoraActual, alternarTema, alternarVista, cerrarConfig, abrirSelectorMesesCalendario,
             cerrarEdicion, mostrarImportar, cerrarImportar, actualizarUI, mostrarToast, mostrarError, actualizarEstadoBotonSaldoDesdeEnero,
             limpiarError, resetearBoton, restaurarBotonGuardarEdicion, toggleFormulario, aplicarOrdenCards, iniciarDragOrdenCards,
             limpiarCampo, mostrarFiltros, cerrarFiltros, registrarLoteDesdeCard, irHoyCalendario, obtenerOrdenCards,
@@ -7393,7 +7432,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76,85,83,72,73,66,79,83,67,65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260705';
+        const _v = '-v260708';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

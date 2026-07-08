@@ -422,6 +422,16 @@ button:disabled {
     transition: var(--transition-collapse);
 }
 
+.collapsible.expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+
+.collapsible-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
 .form-collapsible>#modo-contenedor,
 .form-collapsible>.detalle-inner,
 #botones-historico>.botones-historico-inner {
@@ -679,7 +689,6 @@ button:disabled {
 }
 
 .registro-mes-header {
-    margin: 1rem;
     color: var(--text-muted);
     font-size: 18px;
     transition: color 0.2s;
@@ -688,6 +697,7 @@ button:disabled {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+    padding: 1rem
 }
 
 .registro-mes-detalle {
@@ -741,7 +751,7 @@ button:disabled {
     background: var(--c-orange);
 }
 
-.calendario-dia.dia-sin-salida,
+.calendario-dia.dia-cubierto,
 .registro-total.gold-text,
 .calendario-dia.dia-especial-gold,
 .registro-total.yellow-text,
@@ -1088,10 +1098,6 @@ button:disabled {
 
 .cal-popup-info--blue {
     color: var(--c-blue);
-}
-
-.cal-popup-info--gold {
-    color: var(--c-gold);
 }
 
 .cal-popup-sin-reg {
@@ -1462,7 +1468,6 @@ button:disabled {
 }
 
 #modo-normal,
-#campos-rango-exportar,
 #gist-limite-sync,
 .contenedor-fechas,
 .contenedor-horas {
@@ -1722,6 +1727,10 @@ button.campo-flash {
         gap: 1.5rem;
         align-items: start;
         padding: 1.5rem;
+    }
+
+    .calendario-dia {
+        font-size: 1rem;
     }
 
     .left-column {
