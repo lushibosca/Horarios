@@ -36,6 +36,9 @@
     --modal-overlay: rgba(0, 0, 0, 0.5);
     --touch-target: 48px;
     --input-height: 48px;
+    --app-header-h: 60px;
+    --mes-header-h: 54px;
+    --sticky-mes-top: var(--app-header-h);
 }
 
 html.dark-mode body,
@@ -439,6 +442,14 @@ button:disabled {
     min-height: 0;
 }
 
+/* Al estar expandida la tarjeta, .detalle-inner ya no debe recortar: si conserva
+   overflow:hidden, el navegador lo sigue tomando como "scroll container" y los
+   headers de mes sticky de #lista-registros dejan de pegarse al scroll real de
+   la página. Mientras colapsa/anima sigue oculto por la regla de arriba. */
+.form-collapsible.expanded>.detalle-inner {
+    overflow: visible;
+}
+
 .form-collapsible>.stats-inner {
     overflow: hidden;
 }
@@ -697,7 +708,18 @@ button:disabled {
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
-    padding: 1rem
+    padding: 1rem;
+    position: sticky;
+    top: var(--sticky-mes-top);
+    z-index: 5;
+    background: var(--bg-card);
+    box-shadow: 0 2px 4px -2px rgba(0, 0, 0, 0.15);
+}
+
+/* Header de mes anidado dentro de un año colapsable: se apila debajo del header del año */
+.registro-mes-detalle .registro-mes-header {
+    top: calc(var(--sticky-mes-top) + var(--mes-header-h));
+    z-index: 4;
 }
 
 .registro-mes-detalle {
@@ -710,6 +732,10 @@ button:disabled {
 .registro-mes-detalle>.detalle-inner {
     overflow: hidden;
     min-height: 0;
+}
+
+.registro-mes-detalle.expanded>.detalle-inner {
+    overflow: visible;
 }
 
 .registro-mes-detalle.expanded {
@@ -1207,6 +1233,15 @@ button:disabled {
 #form-stats.fade-out {
     opacity: 0;
     transform: translateY(-10px);
+}
+
+/* #lista-registros trae la clase .custom-scroll (overflow-y:auto) para el modo
+   desktop con altura máxima. Fuera de ese breakpoint no debe tener overflow propio:
+   si lo tiene, aunque no llegue a scrollear, el navegador lo toma como el "scroll
+   container" para position:sticky y los headers de mes dejan de pegarse al
+   scroll real de la página. Se reactiva en el media query de escritorio. */
+#lista-registros {
+    overflow: visible;
 }
 
 /* ─── MISC COMPONENTS ────────────────────────────────────────────────────────── */
@@ -1743,6 +1778,7 @@ button.campo-flash {
         overflow-y: auto;
         padding-right: 0.5rem;
         scrollbar-gutter: stable;
+        --sticky-mes-top: 0px;
     }
 
     .card,

@@ -264,6 +264,14 @@
         <symbol id="icon-dot" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="5" fill="currentColor" />
         </symbol>
+        <symbol id="icon-shield-off" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18" class="icon-line" stroke="currentColor"></path>
+    <path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38" class="icon-line" stroke="currentColor"></path>
+    <line x1="1" y1="1" x2="23" y2="23" class="icon-line" stroke="currentColor"></line>
+</symbol>
+<symbol id="icon-dashboard" viewBox="0 0 24 24">
+                <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
+            </symbol>
     </svg>
     <div class="header">
         <h1>Horarios</h1>
@@ -643,7 +651,7 @@
                             </button>
                             <button id="btn-toggle-persistir-tarjetas">
                                 <svg class="icon">
-                                    <use href="#icon-save" />
+                                    <use href="#icon-dashboard" />
                                 </svg>
                                 <span>Recordar estado de tarjetas</span>
                             </button>
@@ -688,7 +696,13 @@
                                 <svg class="icon">
                                     <use href="#icon-exit" />
                                 </svg>
-                                <span>Ignorar cálculo tiempo fuera</span>
+                                <span>No descontar tiempo fuera</span>
+                            </button>
+                            <button id="btn-toggle-logica-cubierto">
+                                <svg class="icon">
+                                    <use href="#icon-shield-off" />
+                                </svg>
+                                <span>Desactivar lógica de cubierto</span>
                             </button>
                             <button id="btn-toggle-saldo-enero">
                                 <svg class="icon">
@@ -701,7 +715,7 @@
                                     <use href="#icon-calendar-simple" />
                                 </svg>
                                 <span>Saldo desde 1° día del mes</span>
-                            </button>
+                            </button>                            
                         </div>
                         <div class="config-actions">
                             <label>Datos</label>
@@ -840,7 +854,7 @@
                 <div class="btn-group">
                     <button class="btn-export" id="btn-gist-guardar">
                         <svg class="icon">
-                            <use href="#icon-save" />
+                            <use href="#icon-check" />
                         </svg>
                         Guardar
                     </button>
@@ -850,7 +864,6 @@
                         </svg>
                         Volver
                     </button>
-
                 </div>
             </div>
         </div>
@@ -970,7 +983,7 @@
             <div class="modal-panel-footer">
                 <div class="btn-group">
                     <button class="btn-edit"><svg class="icon">
-                            <use href="#icon-save" />
+                            <use href="#icon-check" />
                         </svg> Guardar</button>
                     <button class="btn-delete"><svg class="icon">
                             <use href="#icon-trash" />
@@ -1174,7 +1187,7 @@
             <div class="btn-group">
                 <button class="btn-edit">
                     <svg class="icon">
-                        <use href="#icon-save" />
+                        <use href="#icon-check" />
                     </svg>
                     Guardar
                 </button>
@@ -1245,7 +1258,7 @@
                 <div class="btn-group">
                     <button class="btn-edit">
                         <svg class="icon">
-                            <use href="#icon-save" />
+                            <use href="#icon-check" />
                         </svg> Guardar
                     </button>
                     <button class="btn-delete">

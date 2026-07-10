@@ -5,8 +5,22 @@
 
 ### VERSION:
 
+### 260709
+* **Nuevo:** Se agrega confirm de bienvenida para importacion de datos, en caso que la app se restablezca o no haya datos la primera vez que se abre
+
+### 260708
+* **Mejora:** Se agrega opcion para desactivar la logica de cubierto por saldo
+* **Cambios:** Cambios de etiqueta e iconos en varios toast y opciones
+
+### 260708
+* **Mantenimiento:** Refactores varios
+
+### 260707
+* **Mejora:** Se agrega el estado "cubierto" en base a la semantica agregado aen el cambio anterior, a la tarjeta de registros en ambas vistas con estado dinamico de saldo hasta el dia actual
+
 ### 260705
 * **Mejora:** Cambio de semantica en la tarjeta de estado, para representar el tiempo faltante en mas escenarios y contextos
+* **Cambios:** Cambios en la animacion de tarjetas
 
 ### 260704
 * **Cambios:** cambio de layout en la vista de lista de la tarjeta de registros en dispositivos pc

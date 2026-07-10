@@ -18,6 +18,7 @@
         SALDO_DESDE_ENERO: 'saldoAnualDesdeEnero',
         SALDO_DESDE_PRIMERO_MES: 'saldoMensualDesdePrimero',
         IGNORAR_TF: 'ignorarTiempoFuera',
+        IGNORAR_LOGICA_CUBIERTO: 'ignorarLogicaCubierto',
         FONDO_CARD: 'fondoCard',
         PERSISTIR_TARJETAS: 'persistirTarjetas',
         ORDEN_CARDS: 'ordenCards',
@@ -28,6 +29,7 @@
         PERFILES: 'perfiles',
         HISTORY: 'history',
         GIST_TOKEN: 'gistToken',
+        BIENVENIDA_VISTA: 'bienvenidaVista',
 
         BREAK_TIME: (perfilId) => `breakStartTime_${perfilId}`,
         GIST_LIMITE: (tipo) => `gistSyncLimite_${tipo}`,
@@ -36,6 +38,13 @@
         CARD_VISIBLE: (cual) => `cardVisible_${cual}`,
     });
 
+
+    // ====================================================================
+    // PRECISIÓN NUMÉRICA — helper compartido
+    // ====================================================================
+    const EPS_HORAS = 1e-6;
+    const horasGte = (valor, objetivo) => (valor - objetivo) > -EPS_HORAS;
+    const horasEq = (valor, objetivo) => Math.abs(valor - objetivo) < EPS_HORAS;
 
     function _applyDataColors(root) {
         root.querySelectorAll('[data-color]').forEach(el => {
@@ -709,6 +718,7 @@
                 const elLabelCancel = document.getElementById('modal-confirmar-label-cancel');
                 const elTitulo = document.getElementById('modal-confirmar-titulo');
                 const elIcono = document.querySelector('#modal-confirmar-ok svg use');
+                const elIconoCancel = document.querySelector('#modal-confirmar-cancel svg use');
                 const btnOk = document.getElementById('modal-confirmar-ok');
                 const btnCancel = document.getElementById('modal-confirmar-cancel');
                 if (!elTexto || !btnOk || !btnCancel) { resolve(false); return; }
@@ -718,6 +728,7 @@
                 if (elLabelCancel) elLabelCancel.textContent = opciones.labelCancel || 'Cancelar';
                 if (elTitulo) elTitulo.textContent = opciones.titulo || 'Atención';
                 if (elIcono) elIcono.setAttribute('href', icono);
+                if (elIconoCancel) elIconoCancel.setAttribute('href', opciones.iconoCancel || '#icon-cancelar');
 
                 const modalPadre = document.querySelector('.modal.show');
                 const modalPadreId = modalPadre ? modalPadre.id : null;
@@ -966,26 +977,28 @@
             }
         };
 
+        const TIPOS_ARRAY = Object.values(TIPOS);
+
         function esRegistroEspecial(entrada, salida) {
             if (!entrada || !salida) return false;
-            return entrada === salida && Object.values(TIPOS).some(t => t.codigo === entrada);
+            return entrada === salida && TIPOS_ARRAY.some(t => t.codigo === entrada);
         }
 
         function obtenerTipoPorCodigo(entrada, salida) {
-            if (!esRegistroEspecial(entrada, salida)) return null;
-            return Object.values(TIPOS).find(t => t.codigo === entrada) || null;
+            if (!entrada || !salida || entrada !== salida) return null;
+            return TIPOS_ARRAY.find(t => t.codigo === entrada) || null;
         }
 
         function obtenerTipoPorId(id) {
-            return Object.values(TIPOS).find(t => t.id === id) || null;
+            return TIPOS_ARRAY.find(t => t.id === id) || null;
         }
 
         function validarTipoPermitido(id) {
-            return Object.values(TIPOS).some(t => t.id === id);
+            return TIPOS_ARRAY.some(t => t.id === id);
         }
 
         function obtenerTodosLosTipos() {
-            return Object.values(TIPOS);
+            return TIPOS_ARRAY;
         }
 
         function obtenerCodigosPorTipo(id) {
@@ -1540,7 +1553,7 @@
 
             const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
             StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
-            const keys = [STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS];
+            const keys = [STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS, STORAGE_KEYS.BIENVENIDA_VISTA];
             keys.forEach(k => StorageHelper.removeItem(k, true));
 
             if (window.PerfilManager) {
@@ -1750,35 +1763,26 @@
             return { ayerStr, regAyer, ayerAbierto };
         }
 
-        function calcularBufferSemanal(inicioSemana, fechaHoy) {
-            const horasDiariasLocal = horasDiarias;
-            let buffer = 0;
-            const registrosRango = registros.filter(r => r.fecha >= inicioSemana && r.fecha <= fechaHoy);
-            const registrosMap = new Map(registrosRango.map(r => [r.fecha, r]));
+        function calcularBufferPeriodo(desde, hasta) {
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const registrosRango = registros.filter(r => r.fecha >= desde && r.fecha <= hasta);
+            const regsPorFecha = new Map(registrosRango.map(r => [r.fecha, r]));
+            const { ayerStr, ayerAbierto } = detectarAyerAbierto(hoy, regsPorFecha);
 
-            const { ayerStr, ayerAbierto } = detectarAyerAbierto(fechaHoy, registrosMap);
-
-            for (const isoDate of TimeUtils.generarRangoFechas(inicioSemana, fechaHoy)) {
-                const numDia = TimeUtils.parsearFechaLocal(isoDate).getDay();
-                const esDiaLaboralConfigurado = diasHabiles.includes(numDia);
-                const r = registrosMap.get(isoDate);
-                let horasObjetivoDia = 0, horasHechasDia = 0;
+            let objetivo = 0, hechas = 0;
+            for (const iso of TimeUtils.generarRangoFechas(desde, hasta)) {
+                if (iso > hoy) continue;
+                const esDiaHabil = diasHabiles.includes(TimeUtils.parsearFechaLocal(iso).getDay());
+                const r = regsPorFecha.get(iso);
                 const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
-                const tieneSalida = r && r.salida && !esEspecial;
                 const esRemoto = esEspecial && TiposRegistro.obtenerTipoPorCodigo(r?.entrada, r?.salida)?.id === 'remoto';
+                const diaTerminado = iso === hoy ? !!(r && r.salida) : !(ayerAbierto && iso === ayerStr);
 
-                let diaTerminado = (isoDate === fechaHoy) ? tieneSalida : (ayerAbierto && isoDate === ayerStr ? false : true);
-
-                if (esRemoto) {
-                    if (esDiaLaboralConfigurado) horasObjetivoDia = horasDiariasLocal;
-                    horasHechasDia = horasDiariasLocal;
-                } else {
-                    if (esDiaLaboralConfigurado && !esEspecial && diaTerminado) horasObjetivoDia = horasDiariasLocal;
-                    if (r && !esEspecial && r.salida) horasHechasDia = r.total;
-                }
-                buffer += (horasHechasDia - horasObjetivoDia);
+                if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += horasDiarias;
+                if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
+                if (esRemoto) hechas += horasDiarias;
             }
-            return Math.round(buffer * 1e6) / 1e6;
+            return Math.round((hechas - objetivo) * 1e6) / 1e6;
         }
 
         function limpiarFiltros() {
@@ -1898,7 +1902,7 @@
             editandoId: () => editandoId, setEditandoId: (id) => editandoId = id, vistaActual: () => vistaActual, setVistaActual: (v) => vistaActual = v,
             cargarConfiguracion, calcularHoras, calcularHorasFeriadoEnRango, normalizarRegistrosImportados, guardarYActualizar,
             agregarRegistro, eliminarRegistroActual, editarRegistro, guardarEdicion, borrarTodoHistorial, exportarJSON, importarDatos,
-            calcularBufferSemanal, detectarAyerAbierto, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
+            calcularBufferPeriodo, detectarAyerAbierto, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
             registrarVacacionesDirecto, borrarPeriodoDirecto, registrarDiaEspecial, editarGrupo, guardarEdicionGrupo,
             eliminarGrupoActual, setGrupoEnEdicion: (val) => grupoEnEdicion = val,
             undoAction: function () { _aplicarEstadoHistorial(HistoryManager.undo(), 'Deshecho'); },
@@ -2125,6 +2129,15 @@
             };
         }
 
+        function _actualizarOffsetsStickyMes() {
+            const header = document.querySelector('.header');
+            const mesHeader = document.querySelector('.registro-mes-header');
+            const root = document.documentElement.style;
+            if (header) root.setProperty('--app-header-h', header.getBoundingClientRect().height + 'px');
+            if (mesHeader) root.setProperty('--mes-header-h', mesHeader.getBoundingClientRect().height + 'px');
+        }
+        const actualizarOffsetsStickyMesDebounced = debounce(_actualizarOffsetsStickyMes, 150);
+
         function mostrarError(inputId, errorId) {
             const input = $(inputId);
             const error = $(errorId);
@@ -2334,7 +2347,7 @@
                 totalText = `${r.horas}h ${r.minutos}m`;
                 if (horasDiarias > 0 && _esFechaHabil(r.fecha, D.diasHabiles())) {
                     const diffText = formatoDiferencia(r.total);
-                    if (r.total >= horasDiarias) {
+                    if (horasGte(r.total, horasDiarias)) {
                         totalEl.classList.add('green-text');
                         if (diffText) totalText += ` (${diffText})`;
                     } else if (_cubiertoPorSaldo(r.fecha)) {
@@ -2499,6 +2512,7 @@
             );
 
             lista.appendChild(fragmento);
+            _actualizarOffsetsStickyMes();
         }
 
         function setProgressBarColor(progressEl, status) {
@@ -2609,36 +2623,17 @@
             };
         }
 
-        function _calcularBufferPeriodo(registrosRango, desde, hasta, horasDiariasObj) {
-            const diasHabilesConfig = D.diasHabiles();
-            const regsPorFecha = new Map(registrosRango.map(r => [r.fecha, r]));
-            const hoy = TimeUtils.obtenerFechaHoy();
-            const { ayerStr, ayerAbierto } = D.detectarAyerAbierto(hoy, regsPorFecha);
-
-            let objetivo = 0, hechas = 0;
-            for (const iso of TimeUtils.generarRangoFechas(desde, hasta)) {
-                if (iso > hoy) continue;
-                const esDiaHabil = diasHabilesConfig.includes(TimeUtils.parsearFechaLocal(iso).getDay());
-                const r = regsPorFecha.get(iso);
-                const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
-                const esRemoto = esEspecial && TiposRegistro.obtenerTipoPorCodigo(r?.entrada, r?.salida)?.id === 'remoto';
-                const diaTerminado = iso === hoy ? !!(r && r.salida) : !(ayerAbierto && iso === ayerStr);
-
-                if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += horasDiariasObj;
-                if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
-                if (esRemoto) hechas += horasDiariasObj;
-            }
-            return Math.round((hechas - objetivo) * 1e6) / 1e6;
-        }
-
         function _calcularEstadisticasRango(registrosRango, opciones = {}) {
             const { regularidadPorMes = false } = opciones;
 
             const conteosPorTipo = {};
-            TiposRegistro.obtenerTodosLosTipos().forEach(t => {
-                conteosPorTipo[t.labelPlural.toLowerCase()] = registrosRango.filter(
-                    r => r.entrada === t.codigo && r.salida === t.codigo
-                ).length;
+            const claveTipoPorCodigo = new Map(TiposRegistro.obtenerTodosLosTipos().map(t => [t.codigo, t.labelPlural.toLowerCase()]));
+            claveTipoPorCodigo.forEach(clave => { conteosPorTipo[clave] = 0; });
+            registrosRango.forEach(r => {
+                if (r.entrada && r.entrada === r.salida) {
+                    const clave = claveTipoPorCodigo.get(r.entrada);
+                    if (clave) conteosPorTipo[clave]++;
+                }
             });
 
             const compensaciones = registrosRango.filter(r => r.credito && r.credito !== '00:00').length;
@@ -2684,7 +2679,7 @@
 
             const horasDiariasObj = D.horasDiarias();
             const bufferPeriodo = (horasDiariasObj > 0 && opciones.desde && opciones.hasta)
-                ? _calcularBufferPeriodo(registrosRango, opciones.desde, opciones.hasta, horasDiariasObj)
+                ? D.calcularBufferPeriodo(opciones.desde, opciones.hasta)
                 : null;
 
             return {
@@ -2939,7 +2934,12 @@
             return diaSemana === 0 ? (diasHabiles === 7) : (diaSemana <= diasHabiles);
         }
 
+        function _logicaCubiertoActiva() {
+            return !StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false);
+        }
+
         function _cubiertoPorSaldo(fecha) {
+            if (!_logicaCubiertoActiva()) return false;
             const lunes = TimeUtils.obtenerLunesSemanaISO(fecha);
             const lunesDate = TimeUtils.parsearFechaLocal(lunes);
             lunesDate.setDate(lunesDate.getDate() + 6);
@@ -3014,7 +3014,7 @@
             const { esDiaHabil, quedanDiasFuturos } = _estadoDiasHabiles(diasHabiles);
             const regHoy = registros.find(r => r.fecha === hoy) ?? null;
             const semanaAbierta = quedanDiasFuturos || (esDiaHabil && !(regHoy && regHoy.salida));
-            const bufferSemanal = D.calcularBufferSemanal(ini, hoy);
+            const bufferSemanal = D.calcularBufferPeriodo(ini, hoy);
 
             const fechaLimite = hoy < fn ? hoy : fn;
             const registrosSemana = registros.filter(r => r.fecha >= ini && r.fecha <= fechaLimite);
@@ -3056,7 +3056,7 @@
         }
 
         function _estaCumplido(valor, objetivo) {
-            return objetivo === 0 || valor >= objetivo;
+            return objetivo === 0 || horasGte(valor, objetivo);
         }
 
         function _tituloDia(nombreDia) {
@@ -3084,11 +3084,11 @@
                 estadoFondo = 'esperando';
                 mensaje = 'Semana sin días laborables';
                 mostrarMensaje = true;
-            } else if (tot >= objetivoSemana) {
+            } else if (horasGte(tot, objetivoSemana)) {
                 colorBarra = 'green'; colorBorde = 'green';
                 estadoFondo = 'finalizado_ok';
                 const dif = tot - objetivoSemana;
-                mensaje = dif === 0 ? 'Perfecto' : `Hiciste ${TimeUtils.horasATexto(dif)} de más`;
+                mensaje = horasEq(dif, 0) ? 'Perfecto' : `Hiciste ${TimeUtils.horasATexto(dif)} de más`;
                 mostrarMensaje = true;
             } else if (semanaAbierta) {
                 colorBarra = 'blue'; colorBorde = 'blue';
@@ -3250,16 +3250,16 @@
             } else if (dayClosed) {
                 const dif = tiempoHoy - objetivoDiarioAplica;
                 
-                if (dif >= 0) {
+                if (horasGte(dif, 0)) {
                     colorBarra = 'green'; colorBorde = 'green';
                     estadoFondo = 'finalizado_ok';
                     const difExtraText = TimeUtils.horasATexto(dif);
-                    mensaje = dif === 0 ? 'Perfecto' : `${difExtraText} ${TimeUtils._esCantidadSingular(difExtraText) ? 'extra' : 'extras'}`;
+                    mensaje = horasEq(dif, 0) ? 'Perfecto' : `${difExtraText} ${TimeUtils._esCantidadSingular(difExtraText) ? 'extra' : 'extras'}`;
                 } else {
                     const difText = TimeUtils.horasATexto(Math.abs(dif));
                     const prefijoFalto = TimeUtils._esCantidadSingular(difText) ? 'Faltó' : 'Faltaron';
                     
-                    if (bufferSemanal >= 0) {
+                    if (_logicaCubiertoActiva() && horasGte(bufferSemanal, 0)) {
                         colorBarra = 'gold'; colorBorde = 'gold';
                         estadoFondo = 'especial';
                         estadoFondoColor = 'gold';
@@ -3593,18 +3593,18 @@
                 getVal: () => D.getIgnorarTiempoFuera(),
                 setVal: (v) => { D.setIgnorarTiempoFuera(v); StorageHelper.setItem(STORAGE_KEYS.IGNORAR_TF, v, true); },
                 btnId: 'btn-toggle-ignorar-tf',
-                mensajeOn: 'Tiempo fuera ignorado',
-                mensajeOff: 'Tiempo fuera incluido',
+                mensajeOn: 'No se descuenta el tiempo fuera en los registros',
+                mensajeOff: 'Se descuenta el tiempo fuera en los registros',
                 onAfterToggle: () => { D.recalcularTotalesEnMemoria(); actualizarUI(); },
             });
 
         const { toggle: toggleHoverPopupCalendario, actualizarEstado: actualizarEstadoBotonHoverPopup } =
             _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.HOVER_POPUP, true),
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.HOVER_POPUP, false),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.HOVER_POPUP, v),
                 btnId: 'btn-toggle-hover-popup',
-                mensajeOn: 'Popup activado',
-                mensajeOff: 'Popup desactivado',
+                mensajeOn: 'Se muestra popup automatico en calendario',
+                mensajeOff: 'No se muestra popup automatico en calendario',
             });
 
         const { toggle: toggleSaldoDesdeEnero, actualizarEstado: actualizarEstadoBotonSaldoDesdeEnero } =
@@ -3627,13 +3627,23 @@
                 onAfterToggle: () => { actualizarUI(); }
             });
 
+        const { toggle: toggleLogicaCubierto, actualizarEstado: actualizarEstadoBotonLogicaCubierto } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, v),
+                btnId: 'btn-toggle-logica-cubierto',
+                mensajeOn: 'Lógica de cubierto por saldo en los registros desactivada',
+                mensajeOff: 'Lógica de cubierto por saldo en los registros activada',
+                onAfterToggle: () => { actualizarUI(); }
+            });
+
         const { toggle: togglePersistirTarjetas, actualizarEstado: actualizarEstadoBotonPersistir } =
             _crearToggleConfig({
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.PERSISTIR_TARJETAS, v),
                 btnId: 'btn-toggle-persistir-tarjetas',
-                mensajeOn: 'Estado guardado',
-                mensajeOff: 'Tarjetas no se recuerdan al iniciar',
+                mensajeOn: 'Se recuerda el estado de las tarjetas',
+                mensajeOff: 'No se recuerda el estado de las tarjetas',
             });
 
         function toggleVisibilidadCard(cual) {
@@ -3875,7 +3885,11 @@
             const selActual = select.value;
             select.innerHTML = '';
             if (!items.length) { select.appendChild(_crearOpcion('', 'Sin registros')); actualizarFn(null); return; }
-            const sel = (selActual && items.includes(selActual)) ? selActual : (items.includes(selDefault) ? selDefault : items[0]);
+            const sel = (selActual && items.includes(selActual))
+                ? selActual
+                : (items.includes(selDefault)
+                    ? selDefault
+                    : (items.find(k => k <= selDefault) || items[items.length - 1]));
             if (agruparFn) {
                 agruparFn(items).forEach((claves, grupo) => {
                     const grp = document.createElement('optgroup');
@@ -4137,7 +4151,7 @@
                     const total = r.salida ? TimeUtils.horasATexto(r.total, 'short') : 'Incompleto';
                     const tiempoFuera = r.tiempoFuera ? ` (${r.tiempoFuera} fuera)` : '';
                     const infoAsueto = (r.credito && r.credito !== '00:00') ? ' [SALIDA TEMPRANO]' : '';
-                    const indicador = r.salida ? (r.total >= horasDiariasObjetivo ? '✓ ' : '✗ ') : '  ';
+                    const indicador = r.salida ? (horasGte(r.total, horasDiariasObjetivo) ? '✓ ' : '✗ ') : '  ';
                     linea = `${fecha}  ${dia.padEnd(10)} ${entrada} → ${salida}  [${total}]${tiempoFuera}${infoAsueto} ${indicador}`;
                 }
                 seccion += linea + '\n';
@@ -4424,7 +4438,13 @@ Generado por Sistema Lushibosca
             HistoryManager.saveState(D.registros());
             StorageHelper.removeItem(storageKey);
             await D.guardarYActualizar(registroHoy.id);
-            mostrarToast(minutos === 1 ? 'Se descontó 1 minuto al registro de hoy' : `Se descontaron ${minutos} minutos al registro de hoy`, 'success');
+            const ignorarTF = D.getIgnorarTiempoFuera();
+            const mensajeToast = ignorarTF
+                ? (minutos === 1
+                    ? 'Se registró 1 minuto de tiempo fuera (cálculo ignorado)'
+                    : `Se registraron ${minutos} minutos de tiempo fuera (cálculo ignorado)`)
+                : (minutos === 1 ? 'Se descontó 1 minuto al registro de hoy' : `Se descontaron ${minutos} minutos al registro de hoy`);
+            mostrarToast(mensajeToast, ignorarTF ? 'info' : 'success');
         }
 
         async function toggleTimerBreakMain() {
@@ -5565,12 +5585,14 @@ Generado por Sistema Lushibosca
         }
 
         function _calcularDiffGist(registrosNormalizados) {
-            const fechasLocales = new Set(D.registros().map(r => r.fecha));
-            const soloEnGist = registrosNormalizados.filter(r => !fechasLocales.has(r.fecha));
-            const enAmbos = registrosNormalizados.filter(r => fechasLocales.has(r.fecha));
-            const soloLocal = D.registros().filter(r => !registrosNormalizados.some(g => g.fecha === r.fecha));
+            const localesPorFecha = new Map(D.registros().map(r => [r.fecha, r]));
+            const gistPorFecha = new Map(registrosNormalizados.map(r => [r.fecha, r]));
+
+            const soloEnGist = registrosNormalizados.filter(r => !localesPorFecha.has(r.fecha));
+            const enAmbos = registrosNormalizados.filter(r => localesPorFecha.has(r.fecha));
+            const soloLocal = D.registros().filter(r => !gistPorFecha.has(r.fecha));
             const complementarios = enAmbos.filter(imp => {
-                const local = D.registros().find(r => r.fecha === imp.fecha);
+                const local = localesPorFecha.get(imp.fecha);
                 return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
             });
             return { soloEnGist, enAmbos, soloLocal, complementarios };
@@ -5818,6 +5840,7 @@ Generado por Sistema Lushibosca
             UILogic.actualizarEstadoBotonHoverPopup();
             UILogic.actualizarEstadoBotonSaldoDesdeEnero();
             UILogic.actualizarEstadoBotonSaldoDesdePrimeroDiaMes();
+            UILogic.actualizarEstadoBotonLogicaCubierto();
             UILogic.aplicarVisibilidadCards();
             UILogic.aplicarOrdenCards(UILogic.obtenerOrdenCards());
             UILogic.iniciarDragOrdenCards();
@@ -6085,6 +6108,9 @@ Generado por Sistema Lushibosca
                 _initListenerToggleMes(lista);
             }
             _initListenersOtros();
+
+            _actualizarOffsetsStickyMes();
+            window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
         }
 
         function actualizarHintGrupo() {
@@ -6317,7 +6343,7 @@ Generado por Sistema Lushibosca
                     return `dia-especial-${tipo ? tipo.color : 'purple'}`;
                 }
                 if (r.entrada && !r.salida) return 'dia-en-curso';
-                if (!_esFechaHabil(fecha, diasHabilesObj) || r.total >= horasDiariasObj) return 'dia-normal';
+                if (!_esFechaHabil(fecha, diasHabilesObj) || horasGte(r.total, horasDiariasObj)) return 'dia-normal';
                 return _cubiertoPorSaldo(fecha) ? 'dia-cubierto' : 'dia-incompleto';
             };
 
@@ -6441,7 +6467,7 @@ Generado por Sistema Lushibosca
             let totalConDiff = totalStr, diffColor = '';
             if (horasDiarias > 0 && _esFechaHabil(reg.fecha, D.diasHabiles())) {
                 const diffText = formatoDiferencia(totalHoras);
-                if (totalHoras >= horasDiarias) {
+                if (horasGte(totalHoras, horasDiarias)) {
                     diffColor = 'var(--c-green)';
                     if (diffText) totalConDiff += ` (${diffText})`;
                 } else if (_cubiertoPorSaldo(reg.fecha)) {
@@ -6667,8 +6693,7 @@ Generado por Sistema Lushibosca
             if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return;
             if (!window.matchMedia('(hover: hover)').matches) return;
             const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
-            const esHover = window.matchMedia('(hover: hover)').matches;
-            if (stored === null ? !esHover : stored !== 'true') return;
+            if (stored !== 'true') return;
             if (_popupCalendarioEl && _popupCalendarioEl.dataset.registroId === registroId) return;
             if (_popupCalendarioEl && !_popupCalendarioEsHover) return;
             clearTimeout(_popupCalendarioHoverTimer);
@@ -6681,7 +6706,7 @@ Generado por Sistema Lushibosca
         function _onclickCalendarioDia(event, registroId) {
             const esDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
             const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
-            const hoverActivo = esDesktop && (stored === null ? true : stored === 'true');
+            const hoverActivo = esDesktop && stored === 'true';
 
             if (hoverActivo) {
                 if (_popupCalendarioEl) {
@@ -7103,6 +7128,7 @@ Generado por Sistema Lushibosca
             cambiarMesStats, generarReporte, toggleHistorico, toggleStats, sumarMinutosAHora, actualizarEstadoBotonHoverPopup,
             toggleTimerBreakMain, actualizarEstadoBotonTimerMain, toggleBloqueoEdicion, setBloqueoEdicion, actualizarEstadoBotonSaldoDesdePrimeroDiaMes,
             actualizarFeedbackConfig, poblarSelectorMeses, abrirSelectorPerfiles, actualizarBotonLote, toggleSaldoDesdeEnero, toggleSaldoDesdePrimeroDiaMes,
+            toggleLogicaCubierto, actualizarEstadoBotonLogicaCubierto,
             cerrarSelectorPerfiles, abrirEditorPerfil, cerrarEditorPerfil, guardarEdicionPerfil, toggleModoLote, toggleHoverPopupCalendario,
             eliminarPerfilDesdeEditor, crearPerfilDesdeSelector, renderizarListaPerfiles, ejecutarAccionRegistro,
             iniciarCambioHoras, detenerCambio, mostrarconfig, alternarFechaActual, verificarBloqueoCredito, gistSubir, gistBajar,
@@ -7119,6 +7145,40 @@ Generado por Sistema Lushibosca
         };
 
     })(SecurityAndUtils, DataManagement, GistSync);
+
+    // ====================================================================
+    // BIENVENIDA MODULE — primera vez / después de un restablecimiento
+    // ====================================================================
+    const BienvenidaModal = (function () {
+        'use strict';
+
+        async function chequearYMostrar() {
+            const yaVista = StorageHelper.getBoolean(STORAGE_KEYS.BIENVENIDA_VISTA, false, true);
+            if (yaVista) return;
+            
+            if (DataManagement.registros().length > 0) {
+                StorageHelper.setItem(STORAGE_KEYS.BIENVENIDA_VISTA, true, true);
+                return;
+            }
+
+            await new Promise(r => setTimeout(r, 1000));
+
+            const importar = await ModalManager.confirmar(
+                'No se encontraron registros, si tenes un respaldo local de los datos podes restaurarlos desde aca.',
+                'Restaurar',
+                '#icon-upload',
+                { titulo: '¡Bienvenido a Horarios!', labelCancel: 'Continuar', iconoCancel: '#icon-arrow-right' }
+            );
+
+            StorageHelper.setItem(STORAGE_KEYS.BIENVENIDA_VISTA, true, true);
+
+            if (importar) {
+                window.UILogic?.mostrarImportar(true);
+            }
+        }
+
+        return { chequearYMostrar };
+    })();
 
     // ====================================================================
     // FERIADOS MODULE
@@ -7276,7 +7336,10 @@ Generado por Sistema Lushibosca
 
     UILogic.init();
 
-    setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
+    (async () => {
+        await BienvenidaModal.chequearYMostrar();
+        setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
+    })();
 })();
 
 if ('serviceWorker' in navigator) {
@@ -7353,6 +7416,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-hover-popup')?.addEventListener('click', () => UILogic.toggleHoverPopupCalendario());
     $('btn-toggle-saldo-enero')?.addEventListener('click', () => UILogic.toggleSaldoDesdeEnero());
     $('btn-toggle-saldo-primero-mes')?.addEventListener('click', () => UILogic.toggleSaldoDesdePrimeroDiaMes());
+    $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
     $('btn-toggle-persistir-tarjetas')?.addEventListener('click', () => UILogic.togglePersistirTarjetas());
     $('btn-toggle-card-registrar')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('registrar'));
     $('btn-toggle-card-estadisticas')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('estadisticas'));
@@ -7432,7 +7496,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76,85,83,72,73,66,79,83,67,65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260708';
+        const _v = '-v260709';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {
