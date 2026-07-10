@@ -3729,8 +3729,7 @@
                 Object.assign(dragClone.style, {
                     position: 'fixed', top: `${rect.top}px`, left: `${rect.left}px`,
                     width: `${rect.width}px`, height: `${rect.height}px`, zIndex: '999999',
-                    pointerEvents: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-                    margin: '0', transform: 'scale(1.02)', opacity: '0.9'
+                    pointerEvents: 'none', margin: '0', transform: 'scale(1.02)', opacity: '0.9'
                 });
                 document.body.appendChild(dragClone);
                 draggingEl.style.opacity = '0';
