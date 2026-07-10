@@ -497,6 +497,30 @@ button:disabled {
     margin-bottom: -0.5rem;
 }
 
+/* Botones de ajustes: icono + texto pegados a la izquierda, con un indicador
+   (chevron para los que abren modal, dot para los toggles on/off) pegado a
+   la derecha. Excluye header/footer y horas objetivo / días laborales. */
+#modal-config .config-actions button,
+#modal-config #lista-orden-cards button {
+    justify-content: flex-start;
+    text-align: left;
+}
+
+#modal-config .config-actions button>span,
+#modal-config #lista-orden-cards button>span {
+    flex: 1;
+}
+
+.icon-indicator {
+    flex-shrink: 0;
+    margin-left: auto;
+    opacity: 0.55;
+}
+
+.btn-activo .icon-indicator {
+    opacity: 1;
+}
+
 /* ─── STATS CARD ─────────────────────────────────────────────────────────────── */
 
 .stats-card {

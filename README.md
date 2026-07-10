@@ -7,6 +7,8 @@
 
 ### 260709
 * **Nuevo:** Se agrega confirm de bienvenida para importacion de datos, en caso que la app se restablezca o no haya datos la primera vez que se abre
+* **Mejora:** la opcion "desactivar logica de cubierto" ahora aplica solo por perfil, antes aplicaba globalmente
+* **Cambios:** Se alinean los texto de los botones de ajustes a la izquierda
 
 ### 260708
 * **Mejora:** Se agrega opcion para desactivar la logica de cubierto por saldo
