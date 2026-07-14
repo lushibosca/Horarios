@@ -265,13 +265,14 @@
             <circle cx="12" cy="12" r="5" fill="currentColor" />
         </symbol>
         <symbol id="icon-shield-off" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18" class="icon-line" stroke="currentColor"></path>
-    <path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38" class="icon-line" stroke="currentColor"></path>
-    <line x1="1" y1="1" x2="23" y2="23" class="icon-line" stroke="currentColor"></line>
-</symbol>
-<symbol id="icon-dashboard" viewBox="0 0 24 24">
-                <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
-            </symbol>
+            <path d="M19.69 14a6.9 6.9 0 0 0 .31-2V5l-8-3-3.16 1.18" class="icon-line" stroke="currentColor"></path>
+            <path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38" class="icon-line"
+                stroke="currentColor"></path>
+            <line x1="1" y1="1" x2="23" y2="23" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-dashboard" viewBox="0 0 24 24">
+            <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
+        </symbol>
     </svg>
     <div class="header">
         <h1>Horarios</h1>
@@ -428,14 +429,14 @@
                     </svg>
                 </h2>
                 <div class="form-collapsible collapsible" id="form-stats">
-                    <div class="stats-inner">
+                    <div class="stats-inner" id="stats-inner">
                         <div class="form-group">
                             <label>Período</label>
                             <div class="stats-periodo-row">
                                 <select id="select-mes-stats"></select>
                                 <select id="select-anio-stats" class="hidden"></select>
                                 <select id="select-semana-stats" class="hidden"></select>
-                                <button id="btn-toggle-periodo" class="time-btn"
+                                <button id="btn-toggle-periodo" class="time-btn btn-toggle-periodo"
                                     title="Alternar vista mensual / anual / semanal">
                                     <svg class="icon">
                                         <use href="#icon-calendar-simple" />
@@ -511,70 +512,69 @@
                     <use href="#icon-chevron-down" />
                 </svg>
             </h2>
-
             <div class="form-collapsible collapsible" id="contenido-historico">
-              <div class="detalle-inner">
-                <div id="botones-historico" class="collapsible">
-                    <div class="botones-historico-inner">
-                        <div class="botones-historico-group">
-                            <button class="filter-btn" id="btn-vista-calendario" title="Vista">
-                                <svg class="icon">
-                                    <use href="#icon-calendar-simple" />
-                                </svg>
-                            </button>
-                            <button class="filter-btn" id="btn-filtro" title="Filtrar">
-                                <svg class="icon">
-                                    <use href="#icon-filter" />
-                                </svg>
-                            </button>
-                            <button class="filter-btn" id="btn-hist-restaurar" title="Restaurar">
-                                <svg class="icon">
-                                    <use href="#icon-upload" />
-                                </svg>
-                            </button>
-                            <button class="filter-btn" id="btn-hist-respaldar" title="Respaldar">
-                                <svg class="icon">
-                                    <use href="#icon-download" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="botones-historico-group">
-                            <button class="filter-btn" id="btn-undo" title="Deshacer">
-                                <svg class="icon">
-                                    <use href="#icon-undo" />
-                                </svg>
-                            </button>
-                            <button class="filter-btn" id="btn-redo" title="Rehacer">
-                                <svg class="icon">
-                                    <use href="#icon-redo" />
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div id="lista-registros" class="custom-scroll"></div>
-                <div id="vista-calendario-historico" class="hidden">
-                    <div class="calendario-nav">
-                        <span class="calendario-titulo" id="calendario-titulo-mes" title="Mostrar meses"></span>
-                        <div id="calendario-nav-botones">
-                            <button class="btn-hoy-calendario" title="Ir al mes actual">Hoy</button>
-                            <button title="Mes anterior">
-                                <svg class="icon icon-rotate-90">
-                                    <use href="#icon-chevron-down" />
-                                </svg>
-                            </button>
-                            <button title="Mes siguiente">
-                                <svg class="icon icon-rotate-neg90">
-                                    <use href="#icon-chevron-down" />
-                                </svg>
-                            </button>
+                <div class="detalle-inner">
+                    <div id="botones-historico" class="collapsible">
+                        <div class="botones-historico-inner">
+                            <div class="botones-historico-group">
+                                <button class="filter-btn" id="btn-vista-calendario" title="Vista">
+                                    <svg class="icon">
+                                        <use href="#icon-calendar-simple" />
+                                    </svg>
+                                </button>
+                                <button class="filter-btn" id="btn-filtro" title="Filtrar">
+                                    <svg class="icon">
+                                        <use href="#icon-filter" />
+                                    </svg>
+                                </button>
+                                <button class="filter-btn" id="btn-hist-restaurar" title="Restaurar">
+                                    <svg class="icon">
+                                        <use href="#icon-upload" />
+                                    </svg>
+                                </button>
+                                <button class="filter-btn" id="btn-hist-respaldar" title="Respaldar">
+                                    <svg class="icon">
+                                        <use href="#icon-download" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="botones-historico-group">
+                                <button class="filter-btn" id="btn-undo" title="Deshacer (Ctrl+Z)">
+                                    <svg class="icon">
+                                        <use href="#icon-undo" />
+                                    </svg>
+                                </button>
+                                <button class="filter-btn" id="btn-redo" title="Rehacer (Ctrl+Y)">
+                                    <svg class="icon">
+                                        <use href="#icon-redo" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
-                    <div class="calendario-grid" id="calendario-grid"></div>
-                    <div id="calendario-selector-meses" class="custom-scroll">
+                    <div id="lista-registros" class="custom-scroll"></div>
+                    <div id="vista-calendario-historico" class="hidden">
+                        <div class="calendario-nav">
+                            <span class="calendario-titulo" id="calendario-titulo-mes" title="Mostrar meses"></span>
+                            <div id="calendario-nav-botones">
+                                <button class="btn-hoy-calendario" title="Ir al mes actual">Hoy</button>
+                                <button title="Mes anterior">
+                                    <svg class="icon icon-rotate-90">
+                                        <use href="#icon-chevron-down" />
+                                    </svg>
+                                </button>
+                                <button title="Mes siguiente">
+                                    <svg class="icon icon-rotate-neg90">
+                                        <use href="#icon-chevron-down" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="calendario-grid" id="calendario-grid"></div>
+                        <div id="calendario-selector-meses" class="custom-scroll">
+                        </div>
                     </div>
-                </div>
-              </div><!-- .detalle-inner -->
+                </div><!-- .detalle-inner -->
             </div><!-- #contenido-historico -->
         </div>
     </div>
@@ -742,7 +742,7 @@
                                 <svg class="icon icon-indicator">
                                     <use href="#icon-dot" />
                                 </svg>
-                            </button>                            
+                            </button>
                         </div>
                         <div class="config-actions">
                             <label>Datos</label>

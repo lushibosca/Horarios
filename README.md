@@ -5,6 +5,15 @@
 
 ### VERSION:
 
+### 260713
+* **Fix:** Se corrige el salto de 1px en las tarjetas debajo del calendario al pasar de mes o seleccionar un mes
+* **Fix:** Se corrigen varios bug al cambiar la animaciones de las tarjetas de fichar y estadisticas
+* **Cambios:** Se simplifica la deteccion de feriados, ahora hace una deteccion mensual mostrando la lista de los mismos para el mes actual, asi se obtiene el panorama completo.
+* **Mejora:** Se agrega animacion al boton de tiempo fuera, al aparecer y desaparecer
+
+### 260710
+* **Mejora:** Se estandariza el font-size con variables
+
 ### 260709
 * **Nuevo:** Se agrega confirm de bienvenida para importacion de datos, en caso que la app se restablezca o no haya datos la primera vez que se abre
 * **Mejora:** la opcion "desactivar logica de cubierto" ahora aplica solo por perfil, antes aplicaba globalmente
