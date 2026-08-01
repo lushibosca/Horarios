@@ -8,7 +8,6 @@
     --text-main: #1f1f1f;
     --text-muted: #444746;
     --text-disabled: #444746a2;
-    /* Escala tipográfica: 6 tamaños estándar para toda la app */
     --text-sm: 0.85rem;
     --text-base: 1rem;
     --text-md: 1.125rem;
@@ -320,6 +319,10 @@ input.error {
     font-size: var(--text-base);
     font-weight: var(--fw-semibold);
     color: var(--text-main);
+}
+
+.input-number-display.input-number-inerte {
+    color: var(--text-disabled);
 }
 
 /* ─── BUTTONS ────────────────────────────────────────────────────────────────── */
@@ -713,11 +716,18 @@ button:disabled {
 .registro-total {
     font-size: var(--text-sm);
     font-weight: var(--fw-semibold);
-    margin-top: var(--space-xs);
     color: var(--c-white);
     display: inline-block;
     border-radius: var(--radius);
     padding: 0.1rem var(--space-lg);
+}
+
+.registro-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
 }
 
 .registro-mes-container {
@@ -1320,6 +1330,46 @@ button:disabled {
     color: var(--text-muted);
 }
 
+/* ─── ONBOARDING (modal-config en modo bienvenida) ─────────────────────────── */
+
+.config-onboarding-banner {
+    display: none;
+}
+
+body.config-onboarding .config-onboarding-banner {
+    display: block;
+    background: rgba(76, 114, 172, 0.1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.config-onboarding-banner p {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+body.config-onboarding .config-onboarding-hide {
+    display: none;
+}
+
+.icon-footer-empezar,
+.label-footer-empezar {
+    display: none;
+}
+
+body.config-onboarding .icon-footer-volver,
+body.config-onboarding .label-footer-volver {
+    display: none;
+}
+
+body.config-onboarding .icon-footer-empezar,
+body.config-onboarding .label-footer-empezar {
+    display: inline;
+}
+
 .empty-state__btn-restaurar {
     width: auto;
     margin: var(--space-lg) auto 0;
@@ -1866,10 +1916,9 @@ button.campo-flash {
         text-align: right;
     }
 
-    .registro-total {
+    .registro-badges {
         grid-column: 1 / -1;
         grid-row: 2;
-        margin-top: var(--space-xs);
         justify-self: start;
     }
 }

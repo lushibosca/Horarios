@@ -19,6 +19,7 @@
         SALDO_DESDE_PRIMERO_MES: 'saldoMensualDesdePrimero',
         IGNORAR_TF: 'ignorarTiempoFuera',
         IGNORAR_LOGICA_CUBIERTO: 'ignorarLogicaCubierto',
+        IGNORAR_OBJETIVO_POR_REGISTRO: 'ignorarObjetivoPorRegistro',
         FONDO_CARD: 'fondoCard',
         PERSISTIR_TARJETAS: 'persistirTarjetas',
         ORDEN_CARDS: 'ordenCards',
@@ -30,6 +31,7 @@
         HISTORY: 'history',
         GIST_TOKEN: 'gistToken',
         BIENVENIDA_VISTA: 'bienvenidaVista',
+        FERIADOS_PROCESADOS: 'feriadosAR_procesados',
 
         BREAK_TIME: (perfilId) => `breakStartTime_${perfilId}`,
         GIST_LIMITE: (tipo) => `gistSyncLimite_${tipo}`,
@@ -263,90 +265,10 @@
         return {
             validarFecha, validarHora, parsearFechaLocal, formatearFechaLocal,
             obtenerFechaHoy, obtenerHoraActual, minutosAHora, fechaLocalISOFull,
-            horaAMinutos, sumarMinutosAHora,
+            horaAMinutos, sumarMinutosAHora, descomponerHorasDecimales,
             obtenerNombreDia, obtenerLunes, obtenerLunesSemanaISO, obtenerSemanaRangoActual,
             horasATexto, formatoDiferencia, formatoTituloMes, _esCantidadSingular,
             generarRangoFechas
-        };
-    })();
-
-    // ====================================================================
-    // STORAGE HELPER MODULE
-    // ====================================================================
-    const StorageHelper = (function () {
-        'use strict';
-
-        function _getKey(key, useProfile) {
-            if (useProfile && window.PerfilManager) {
-                return window.PerfilManager.perfilKey(key);
-            }
-            if (useProfile) return key + '_default';
-            return key;
-        }
-
-        function setItem(key, value, useProfile = false) {
-            try {
-                const finalKey = _getKey(key, useProfile);
-                const valueToStore = typeof value === 'object' ? JSON.stringify(value) : String(value);
-                localStorage.setItem(finalKey, valueToStore);
-                return true;
-            } catch (e) {
-                console.error(`Error guardando en Storage (${key}):`, e);
-                if (e.name === 'QuotaExceededError' || e.code === 22) {
-                    if (window.UILogic) UILogic.mostrarToast('Almacenamiento lleno, no se pudo guardar', 'error');
-                }
-                return false;
-            }
-        }
-
-        function getItem(key, defaultValue = null, useProfile = false) {
-            try {
-                const value = localStorage.getItem(_getKey(key, useProfile));
-                return value !== null ? value : defaultValue;
-            } catch (e) {
-                return defaultValue;
-            }
-        }
-
-        function getBoolean(key, defaultValue = false, useProfile = false) {
-            const val = getItem(key, null, useProfile);
-            if (val === null) return defaultValue;
-            return val === 'true';
-        }
-
-        function getNumber(key, defaultValue = 0, useProfile = false) {
-            const val = getItem(key, null, useProfile);
-            if (val === null) return defaultValue;
-            const parsed = parseFloat(val);
-            return isNaN(parsed) ? defaultValue : parsed;
-        }
-
-        function getObject(key, defaultValue = null, useProfile = false) {
-            const val = getItem(key, null, useProfile);
-            if (!val) return defaultValue;
-            try {
-                return JSON.parse(val, (k, v) => {
-                    if (['__proto__', 'constructor', 'prototype'].includes(k)) return undefined;
-                    return v;
-                });
-            } catch (e) {
-                return defaultValue;
-            }
-        }
-
-        function removeItem(key, useProfile = false) {
-            try {
-                localStorage.removeItem(_getKey(key, useProfile));
-            } catch (e) { }
-        }
-
-        return {
-            setItem,
-            getItem,
-            getBoolean,
-            getNumber,
-            getObject,
-            removeItem
         };
     })();
 
@@ -359,7 +281,7 @@
             MAX_STRING_LENGTH: 100,
             MAX_NOTAS_LENGTH: 35,
             MAX_JSON_SIZE: 4 * 1024 * 1024,
-            SCHEMA_VERSION: 3,
+            SCHEMA_VERSION: 4,
         };
 
         const REGEX_PATTERNS = {
@@ -394,6 +316,12 @@
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        const CLAVES_PROTO_PELIGROSAS = ['__proto__', 'constructor', 'prototype'];
+
+        function reviverJSONSeguro(key, value) {
+            return CLAVES_PROTO_PELIGROSAS.includes(key) ? undefined : value;
         }
 
         function generarIDSeguro() {
@@ -436,11 +364,14 @@
             if (r.notas !== null && r.notas !== undefined && r.notas !== '') {
                 if (typeof r.notas !== 'string' || r.notas.length > SECURITY_LIMITS.MAX_NOTAS_LENGTH) return false;
             }
+            if (r.objetivoHoras !== null && r.objetivoHoras !== undefined) {
+                if (!Number.isFinite(r.objetivoHoras) || r.objetivoHoras < 0 || r.objetivoHoras > 24) return false;
+            }
             if (!Number.isFinite(r.horas) || r.horas < 0 || r.horas > 24) return false;
             if (!Number.isFinite(r.minutos) || r.minutos < 0 || r.minutos > 59) return false;
             if (!Number.isFinite(r.total) || r.total < 0 || r.total > 24) return false;
 
-            const propiedadesPermitidas = ['id', 'fecha', 'entrada', 'salida', 'tiempoFuera', 'horas', 'minutos', 'total', 'credito', 'notas'];
+            const propiedadesPermitidas = ['id', 'fecha', 'entrada', 'salida', 'tiempoFuera', 'horas', 'minutos', 'total', 'credito', 'notas', 'objetivoHoras'];
             const propiedadesActuales = Object.keys(r);
             const tienePropiedadesSospechosas = propiedadesActuales.some(prop => !propiedadesPermitidas.includes(prop));
             if (tienePropiedadesSospechosas) return false;
@@ -457,7 +388,88 @@
             generarIDSeguro,
             calcularHashSHA256,
             validarRegistroSeguro,
+            reviverJSONSeguro,
             fechaLocalISO: TimeUtils.fechaLocalISOFull
+        };
+    })();
+    // ====================================================================
+    // STORAGE HELPER MODULE
+    // ====================================================================
+    const StorageHelper = (function () {
+        'use strict';
+
+        let notify = { mostrarToast: () => { } };
+        function configurarNotificaciones(handlers) { notify = { ...notify, ...handlers }; }
+
+        function _getKey(key, useProfile) {
+            if (useProfile && window.PerfilManager) {
+                return window.PerfilManager.perfilKey(key);
+            }
+            if (useProfile) return key + '_default';
+            return key;
+        }
+
+        function setItem(key, value, useProfile = false) {
+            try {
+                const finalKey = _getKey(key, useProfile);
+                const valueToStore = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                localStorage.setItem(finalKey, valueToStore);
+                return true;
+            } catch (e) {
+                console.error(`Error guardando en Storage (${key}):`, e);
+                if (e.name === 'QuotaExceededError' || e.code === 22) {
+                    notify.mostrarToast('Almacenamiento lleno, no se pudo guardar', 'error');
+                }
+                return false;
+            }
+        }
+
+        function getItem(key, defaultValue = null, useProfile = false) {
+            try {
+                const value = localStorage.getItem(_getKey(key, useProfile));
+                return value !== null ? value : defaultValue;
+            } catch (e) {
+                return defaultValue;
+            }
+        }
+
+        function getBoolean(key, defaultValue = false, useProfile = false) {
+            const val = getItem(key, null, useProfile);
+            if (val === null) return defaultValue;
+            return val === 'true';
+        }
+
+        function getNumber(key, defaultValue = 0, useProfile = false) {
+            const val = getItem(key, null, useProfile);
+            if (val === null) return defaultValue;
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? defaultValue : parsed;
+        }
+
+        function getObject(key, defaultValue = null, useProfile = false) {
+            const val = getItem(key, null, useProfile);
+            if (!val) return defaultValue;
+            try {
+                return JSON.parse(val, SecurityAndUtils.reviverJSONSeguro);
+            } catch (e) {
+                return defaultValue;
+            }
+        }
+
+        function removeItem(key, useProfile = false) {
+            try {
+                localStorage.removeItem(_getKey(key, useProfile));
+            } catch (e) { }
+        }
+
+        return {
+            setItem,
+            getItem,
+            getBoolean,
+            getNumber,
+            getObject,
+            removeItem,
+            configurarNotificaciones
         };
     })();
 
@@ -577,6 +589,13 @@
     // ====================================================================
     const ModalManager = (function () {
         const _padres = {};
+        const _accionesVolver = {
+            'modal-confirmar': () => document.getElementById('modal-confirmar-cancel')?.click(),
+        };
+
+        function registrarAccionVolver(modalId, fn) {
+            _accionesVolver[modalId] = fn;
+        }
 
         let _navegandoHaciaAtras = false;
         let _ignorandoPopstate = false;
@@ -584,20 +603,7 @@
         let _enAlternanciaHaciaAtras = false;
 
         function _getAccionVolver(modalId) {
-            const acciones = {
-                'modal-gist': () => window.UILogic?.cerrarModalGist(),
-                'modal-gist-merge': () => window.UILogic?.gistMergeCancelar(),
-                'modal-config': () => window.UILogic && UILogic.cerrarConfig(),
-                'modal-selector-perfiles': () => window.UILogic && UILogic.cerrarSelectorPerfiles(),
-                'modal-editar': () => window.UILogic && UILogic.cerrarEdicion(),
-                'modal-importar': () => window.UILogic && UILogic.cerrarImportar(),
-                'modal-exportar': () => window.UILogic && UILogic.cerrarExportar(),
-                'modal-filtros': () => window.UILogic && UILogic.cerrarFiltros(),
-                'modal-editar-perfil': () => window.UILogic && UILogic.cerrarEditorPerfil(),
-                'modal-editar-grupo': () => window.UILogic && UILogic.cerrarEdicionGrupo(),
-                'modal-confirmar': () => document.getElementById('modal-confirmar-cancel')?.click(),
-            };
-            return acciones[modalId] || null;
+            return _accionesVolver[modalId] || null;
         }
 
         function _ejecutarAccionCierre(modalId) {
@@ -767,7 +773,7 @@
             });
         }
 
-        return { abrir, cerrar, alternar, cerrarTodos, confirmar, ejecutarAccionCierre: _ejecutarAccionCierre, getPadre: (id) => _padres[id] || null, setPadre: (id, padreId) => { if (id && padreId) _padres[id] = padreId; } };
+        return { abrir, cerrar, alternar, cerrarTodos, confirmar, ejecutarAccionCierre: _ejecutarAccionCierre, getPadre: (id) => _padres[id] || null, setPadre: (id, padreId) => { if (id && padreId) _padres[id] = padreId; }, registrarAccionVolver };
     })();
 
     // ====================================================================
@@ -782,9 +788,7 @@
             if (obj === null || obj === undefined) return obj;
             try { return structuredClone(obj); }
             catch (e) {
-                return JSON.parse(JSON.stringify(obj), (k, v) =>
-                    ['__proto__', 'constructor', 'prototype'].includes(k) ? undefined : v
-                );
+                return JSON.parse(JSON.stringify(obj), SecurityAndUtils.reviverJSONSeguro);
             }
         }
 
@@ -874,9 +878,21 @@
             return null;
         }
 
+        function parchearRegistrosEnHistorial(parchadorFn) {
+            let totalParcheado = 0;
+            _stack.forEach(estado => {
+                if (!Array.isArray(estado)) return;
+                estado.forEach(r => {
+                    if (parchadorFn(r)) totalParcheado++;
+                });
+            });
+            if (totalParcheado > 0) saveToLocalStorage();
+            return totalParcheado;
+        }
+
         return {
             saveState, undo, redo, canUndo, canRedo, updateButtons, clear,
-            saveToLocalStorage, loadFromLocalStorage, getCurrentState
+            saveToLocalStorage, loadFromLocalStorage, getCurrentState, parchearRegistrosEnHistorial
         };
     })();
 
@@ -961,7 +977,7 @@
                 emoji: '📚',
                 label: 'Capacitación',
                 labelPlural: 'Capacitaciones',
-                descripcion: 'Formacion profesional',
+                descripcion: 'Formación profesional',
                 color: 'purple',
                 contabiliza: true
             },
@@ -1021,6 +1037,33 @@
     // DATA MANAGEMENT MODULE 
     // ====================================================================
     const DataManagement = (function (S) {
+        let notify = {
+            actualizarBotonLote: () => { },
+            actualizarEstadoBotonTimerMain: () => { },
+            actualizarHintGrupo: () => { },
+            actualizarUI: () => { },
+            aplicarFeedbackCampos: () => { },
+            cerrarEdicion: () => { },
+            cerrarEdicionGrupo: () => { },
+            cerrarFiltros: () => { },
+            cerrarImportar: () => { },
+            descargarJSON: () => { },
+            iniciarTimerAutoCierreBotones: () => { },
+            limpiarError: () => { },
+            mostrarError: () => { },
+            mostrarToast: () => { },
+            obtenerNombrePerfilSafe: () => '',
+            resetearBoton: () => { },
+            restaurarBotonGuardarEdicion: () => { },
+            setBloqueoEdicion: () => { },
+            setBloqueoEdicionGrupo: () => { },
+            verificarBloqueoCredito: () => { },
+        };
+
+        function configurarNotificaciones(handlers) {
+            notify = { ...notify, ...handlers };
+        }
+
         let registros = [], diasHabiles = [1, 2, 3, 4, 5], horasDiarias = 7, editandoId = null; let vistaActual = 'diaria'; let ignorarTiempoFuera = false;
         let filtroActivo = false;
         let filtroDesde = null;
@@ -1046,13 +1089,13 @@
             $('edit-grupo-tipo').value = grupo.subtipo;
             $('edit-grupo-desde').value = grupoEnEdicion.fechaDesde;
             $('edit-grupo-hasta').value = grupoEnEdicion.fechaHasta;
-            UILogic.actualizarHintGrupo();
+            notify.actualizarHintGrupo();
             ModalManager.abrir('modal-editar-grupo');
-            UILogic.setBloqueoEdicionGrupo(true);
+            notify.setBloqueoEdicionGrupo(true);
         }
 
         function _validarRangoGrupo(nuevoTipo, nuevaDesde, nuevaHasta) {
-            if (!nuevaDesde || !nuevaHasta) return 'Verifica ambas fechas';
+            if (!nuevaDesde || !nuevaHasta) return 'Verificá ambas fechas';
             if (!TimeUtils.validarFecha(nuevaDesde)) return 'Fecha "Desde" inválida';
             if (!TimeUtils.validarFecha(nuevaHasta)) return 'Fecha "Hasta" inválida';
             if (nuevaDesde > nuevaHasta) return 'La fecha inicial debe ser inferior a la final';
@@ -1077,10 +1120,10 @@
                 const nuevaHasta = S.sanitizeString($('edit-grupo-hasta').value.trim(), 10);
 
                 const error = _validarRangoGrupo(nuevoTipo, nuevaDesde, nuevaHasta);
-                if (error) { UILogic.mostrarToast(error, 'error'); return; }
+                if (error) { notify.mostrarToast(error, 'error'); return; }
 
                 if (nuevoTipo === grupoEnEdicion.subtipo && nuevaDesde === grupoEnEdicion.fechaDesde && nuevaHasta === grupoEnEdicion.fechaHasta) {
-                    UILogic.mostrarToast('Sin cambios', 'info'); UILogic.cerrarEdicionGrupo(); return;
+                    notify.mostrarToast('Sin cambios', 'info'); notify.cerrarEdicionGrupo(); return;
                 }
 
                 const fechasNuevas = TimeUtils.generarRangoFechas(nuevaDesde, nuevaHasta);
@@ -1089,20 +1132,20 @@
                 const conflictos = registros.filter(r => fechasSet.has(r.fecha) && !idsDelGrupo.has(r.id));
                 if (conflictos.length > 0) {
                     const dias = conflictos.map(r => r.fecha.substring(8, 10)).sort((a, b) => a - b).join(', ');
-                    UILogic.mostrarToast(`Conflicto en día(s): ${dias}\n Ya existen registros en esas fechas.`, 'error'); return;
+                    notify.mostrarToast(`Conflicto en día(s): ${dias}\n Ya existen registros en esas fechas.`, 'error'); return;
                 }
 
                 registros = registros.filter(r => !idsDelGrupo.has(r.id));
                 const { entrada, salida } = TiposRegistro.obtenerCodigosPorTipo(nuevoTipo);
                 const nuevosRegistros = fechasNuevas.map(fechaISO => {
                     const t = calcularHoras(entrada, salida, null);
-                    return { id: S.generarIDSeguro(), fecha: fechaISO, entrada, salida, tiempoFuera: null, horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0 };
+                    return { id: S.generarIDSeguro(), fecha: fechaISO, entrada, salida, tiempoFuera: null, horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0, objetivoHoras: horasDiarias };
                 });
                 registros.push(...nuevosRegistros);
                 ordenarRegistros();
                 HistoryManager.saveState(registros);
                 const saved = await guardarYActualizar(nuevosRegistros.map(r => r.id));
-                if (saved) { UILogic.mostrarToast('Grupo actualizado', 'success'); UILogic.cerrarEdicionGrupo(); }
+                if (saved) { notify.mostrarToast('Grupo actualizado', 'success'); notify.cerrarEdicionGrupo(); }
             } finally {
                 btnGuardar.disabled = false;
             }
@@ -1111,42 +1154,42 @@
         async function eliminarGrupoActual() {
             if (!grupoEnEdicion) return;
             if (grupoEnEdicion.registros.length > 60) {
-                UILogic.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: 60 registros por operación.`, 'error');
+                notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: 60 registros por operación.`, 'error');
                 return;
             }
             const idsAEliminar = grupoEnEdicion.registros.map(r => r.id);
             registros = registros.filter(r => !idsAEliminar.includes(r.id));
             HistoryManager.saveState(registros);
             const saved = await guardarYActualizar();
-            if (saved) { UILogic.mostrarToast('Grupo eliminado', 'success'); UILogic.cerrarEdicionGrupo(); }
+            if (saved) { notify.mostrarToast('Grupo eliminado', 'success'); notify.cerrarEdicionGrupo(); }
         }
 
         function setGrupoEnEdicion(val) { grupoEnEdicion = val; }
 
         async function registrarDiaEspecial(fecha, tipo) {
             const registroExistente = registros.find(r => r.fecha === fecha);
-            if (registroExistente) { UILogic.mostrarToast('Ya existe un registro para hoy', 'warning'); throw new Error('Registro ya existe'); }
+            if (registroExistente) { notify.mostrarToast('Ya existe un registro para hoy', 'warning'); throw new Error('Registro ya existe'); }
 
             const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
-            if (!tipoConfig) { UILogic.mostrarToast('Tipo inválido', 'error'); throw new Error('Tipo inválido'); }
+            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); throw new Error('Tipo inválido'); }
 
             const entrada = tipoConfig.codigo;
             const salida = tipoConfig.codigo;
             const tipoTexto = `${tipoConfig.emoji} ${tipoConfig.label}`;
 
-            if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) { UILogic.mostrarToast('Límite de registros alcanzado', 'error'); throw new Error('Límite alcanzado'); }
+            if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast('Límite de registros alcanzado', 'error'); throw new Error('Límite alcanzado'); }
 
             const nuevoId = S.generarIDSeguro();
             const t = calcularHoras(entrada, salida, null);
             registros.push({
                 id: nuevoId, fecha: fecha, entrada: entrada, salida: salida, tiempoFuera: null,
-                horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0
+                horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0, objetivoHoras: horasDiarias
             });
 
             ordenarRegistros();
             HistoryManager.saveState(registros);
             const saved = await guardarYActualizar(nuevoId);
-            if (saved) { UILogic.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success'); }
+            if (saved) { notify.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success'); }
             else { throw new Error('Error al guardar'); }
         }
 
@@ -1159,8 +1202,8 @@
                 console.error('Error crítico al guardar:', e);
                 saveSuccessful = false;
             }
-            if (saveSuccessful) { UILogic.actualizarUI(idNuevo, false, animarCard); }
-            else { UILogic.mostrarToast('Error al guardar. Almacenamiento lleno o bloqueado.', 'error'); }
+            if (saveSuccessful) { notify.actualizarUI(idNuevo, false, animarCard); }
+            else { notify.mostrarToast('Error al guardar. Almacenamiento lleno o bloqueado.', 'error'); }
             return saveSuccessful;
         }
 
@@ -1211,36 +1254,19 @@
             return { horas: Math.floor(minNeto / 60), minutos: minNeto % 60, total: minNeto / 60 };
         }
 
-        function calcularHorasFeriadoEnRango(inicio, fin) {
-            const horasDiariasLocal = horasDiarias;
-            const diasHabilesConfig = diasHabiles;
-            let horasDescontar = 0;
-
-            registros.forEach(r => {
-                const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                if (r.fecha >= inicio && r.fecha <= fin && tipoEspecial) {
-                    if (tipoEspecial.id === 'remoto') return;
-                    const fechaObj = TimeUtils.parsearFechaLocal(r.fecha);
-                    const diaSemana = fechaObj.getDay();
-                    if (diasHabilesConfig.includes(diaSemana)) horasDescontar += horasDiariasLocal;
-                }
-            });
-            return horasDescontar;
-        }
-
         function validarFormulario() {
             let valido = true;
             const fecha = S.sanitizeString($('fecha').value, 10);
             const entrada = S.sanitizeString($('entrada').value.trim(), 5);
             const salida = S.sanitizeString($('salida').value.trim(), 5);
 
-            UILogic.limpiarError('fecha', null);
-            UILogic.limpiarError('entrada', null);
-            UILogic.limpiarError('salida', null);
+            notify.limpiarError('fecha', null);
+            notify.limpiarError('entrada', null);
+            notify.limpiarError('salida', null);
 
-            if (!fecha || !TimeUtils.validarFecha(fecha)) { UILogic.mostrarError('fecha', null); valido = false; }
-            if (entrada && !TimeUtils.validarHora(entrada)) { UILogic.mostrarError('entrada', null); valido = false; }
-            if (salida && !TimeUtils.validarHora(salida)) { UILogic.mostrarError('salida', null); valido = false; }
+            if (!fecha || !TimeUtils.validarFecha(fecha)) { notify.mostrarError('fecha', null); valido = false; }
+            if (entrada && !TimeUtils.validarHora(entrada)) { notify.mostrarError('entrada', null); valido = false; }
+            if (salida && !TimeUtils.validarHora(salida)) { notify.mostrarError('salida', null); valido = false; }
             return valido;
         }
 
@@ -1262,26 +1288,26 @@
             const saved = await guardarYActualizar(reg.id);
             if (!saved) return;
             if (!usaHoraActual) {
-                UILogic.aplicarFeedbackCampos([
+                notify.aplicarFeedbackCampos([
                     { id: 'entrada', fallback: 'Entrada', mostrar: false },
                     { id: 'salida', fallback: 'Salida', mostrar: true }
                 ]);
             }
-            UILogic.mostrarToast(_mensajeExitoSalida(reg, usaHoraActual, timerDetenido, s), 'success');
-            UILogic.resetearBoton(btn);
+            notify.mostrarToast(_mensajeExitoSalida(reg, usaHoraActual, timerDetenido, s), 'success');
+            notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('salida').value = '';
         }
 
         async function _crearNuevoRegistro(f, e, s, usaHoraActual, btn) {
             if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) {
-                UILogic.resetearBoton(btn); UILogic.mostrarToast('Límite alcanzado', 'error'); return;
+                notify.resetearBoton(btn); notify.mostrarToast('Límite alcanzado', 'error'); return;
             }
             const nuevoId = S.generarIDSeguro();
             const t = calcularHoras(e || null, s || null, null);
             registros.push({
                 id: nuevoId, fecha: f, entrada: e || null, salida: s || null, tiempoFuera: null,
-                horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0
+                horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0, objetivoHoras: horasDiarias
             });
             ordenarRegistros();
             HistoryManager.saveState(registros);
@@ -1289,19 +1315,19 @@
             if (!saved) return;
             const entradaManual = e && !usaHoraActual, salidaManual = s && !usaHoraActual;
             if (entradaManual || salidaManual) {
-                UILogic.aplicarFeedbackCampos([
+                notify.aplicarFeedbackCampos([
                     { id: 'entrada', fallback: 'Entrada', mostrar: entradaManual },
                     { id: 'salida', fallback: 'Salida', mostrar: salidaManual }
                 ]);
             }
-            UILogic.mostrarToast(usaHoraActual ? 'Registro agregado con hora actual' : 'Registro agregado', 'success');
-            UILogic.resetearBoton(btn);
+            notify.mostrarToast(usaHoraActual ? 'Registro agregado con hora actual' : 'Registro agregado', 'success');
+            notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('entrada').value = ''; $('salida').value = '';
         }
 
         async function agregarRegistro() {
-            if (!validarFormulario()) { UILogic.mostrarToast('Verifica los campos', 'error'); return; }
+            if (!validarFormulario()) { notify.mostrarToast('Verificá los campos', 'error'); return; }
 
             const btn = $('btn-agregar');
             btn.disabled = true;
@@ -1311,8 +1337,8 @@
             let s = S.sanitizeString($('salida').value.trim(), 5);
 
             if (f > TimeUtils.obtenerFechaHoy() && !TiposRegistro.esRegistroEspecial(e, s)) {
-                UILogic.resetearBoton(btn); UILogic.mostrarError('fecha', null);
-                UILogic.mostrarToast('Fecha futura no permitida en registro regular', 'warning'); return;
+                notify.resetearBoton(btn); notify.mostrarError('fecha', null);
+                notify.mostrarToast('Fecha futura no permitida en registro regular', 'warning'); return;
             }
 
             if (!e) {
@@ -1333,8 +1359,8 @@
             }
 
             if (!e && s) {
-                if (registroExistente?.salida) { UILogic.resetearBoton(btn); UILogic.mostrarToast('Ya existe un registro completo para esta fecha', 'error'); return; }
-                if (!registroExistente?.entrada) { UILogic.resetearBoton(btn); UILogic.mostrarToast('Debes fichar una entrada primero', 'error'); return; }
+                if (registroExistente?.salida) { notify.resetearBoton(btn); notify.mostrarToast('Ya existe un registro completo para esta fecha', 'error'); return; }
+                if (!registroExistente?.entrada) { notify.resetearBoton(btn); notify.mostrarToast('Debés fichar una entrada primero', 'error'); return; }
             }
 
             if (registroExistente?.entrada && !registroExistente.salida && !e && s) {
@@ -1342,9 +1368,9 @@
             }
 
             if (registroExistente) {
-                UILogic.resetearBoton(btn);
+                notify.resetearBoton(btn);
                 if (usaHoraActual) $('entrada').value = '';
-                UILogic.mostrarToast('Ya existe un registro para esta fecha', 'error'); return;
+                notify.mostrarToast('Ya existe un registro para esta fecha', 'error'); return;
             }
 
             await _crearNuevoRegistro(f, e, s, usaHoraActual, btn);
@@ -1363,7 +1389,7 @@
                     const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
                     if (StorageHelper.getItem(storageKey)) {
                         StorageHelper.removeItem(storageKey);
-                        UILogic.mostrarToast('Timer detenido al borrar el registro', 'info');
+                        notify.mostrarToast('Timer detenido al borrar el registro', 'info');
                     }
                 }
 
@@ -1375,12 +1401,10 @@
                 btnEliminar.innerHTML = '<svg class="icon"><use href="#icon-trash"/></svg> Eliminar';
 
                 if (saved) {
-                    UILogic.mostrarToast('Registro eliminado', 'success');
-                    UILogic.cerrarEdicion();
-                    UILogic.actualizarEstadoBotonTimerMain();
-                    if (window.UILogic && window.UILogic.actualizarBotonLote) {
-                        window.UILogic.actualizarBotonLote();
-                    }
+                    notify.mostrarToast('Registro eliminado', 'success');
+                    notify.cerrarEdicion();
+                    notify.actualizarEstadoBotonTimerMain();
+                    notify.actualizarBotonLote();
                 }
             }
         }
@@ -1397,6 +1421,13 @@
             $('edit-tiempo-fuera').value = r.tiempoFuera || '';
             $('edit-notas').value = r.notas || '';
 
+            const objetivoActual = (typeof r.objetivoHoras === 'number' && Number.isFinite(r.objetivoHoras)) ? r.objetivoHoras : horasDiarias;
+            const elObjetivo = $('edit-objetivo');
+            if (elObjetivo) {
+                elObjetivo.dataset.valor = objetivoActual;
+                elObjetivo.textContent = TimeUtils.horasATexto(objetivoActual, 'short');
+            }
+
             const btnCredito = document.getElementById('btn-toggle-credito');
             btnCredito.style.background = '';
             btnCredito.style.color = '';
@@ -1411,10 +1442,10 @@
             }
 
             ModalManager.abrir('modal-editar');
-            UILogic.setBloqueoEdicion(true);
+            notify.setBloqueoEdicion(true);
 
             requestAnimationFrame(() => {
-                UILogic.verificarBloqueoCredito();
+                notify.verificarBloqueoCredito();
                 const hintEl = document.getElementById('edit-hint-resumen');
                 if (hintEl) hintEl.dispatchEvent ? document.getElementById('edit-entrada').dispatchEvent(new Event('input')) : null;
             });
@@ -1440,7 +1471,7 @@
             if (tf && !TimeUtils.validarHora(tf))
                 return { msg: 'Tiempo fuera inválido', tipo: 'error' };
             if (!e && s)
-                return { msg: 'Debes fichar una entrada', tipo: 'error' };
+                return { msg: 'Debés fichar una entrada', tipo: 'error' };
 
             if (registros.some(reg => reg.fecha === f && reg.id !== editandoId))
                 return { msg: 'Ya existe otro registro para esa fecha', tipo: 'error' };
@@ -1465,12 +1496,12 @@
             return null;
         }
 
-        function _calcularCredito(e, s, tf) {
+        function _calcularCredito(e, s, tf, objetivo = horasDiarias) {
             const btn = document.getElementById('btn-toggle-credito');
             if (!btn || btn.dataset.activo !== 'true') return null;
             const calc = calcularHoras(e, s, tf, null);
             if (!calc) return null;
-            const diferencia = horasDiarias - calc.total;
+            const diferencia = objetivo - calc.total;
             if (diferencia <= 0.01) return null;
             const { horas: h, minutos: m } = TimeUtils.descomponerHorasDecimales(diferencia);
             return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -1481,13 +1512,13 @@
             if (reg?.fecha === TimeUtils.obtenerFechaHoy()) {
                 const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
                 StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
-                UILogic.actualizarEstadoBotonTimerMain();
+                notify.actualizarEstadoBotonTimerMain();
             }
             registros = registros.filter(r => r.id !== editandoId);
             HistoryManager.saveState(registros);
             const saved = await guardarYActualizar();
-            UILogic.restaurarBotonGuardarEdicion(btnGuardar);
-            if (saved) { UILogic.mostrarToast('Registro eliminado (vacío)', 'info'); UILogic.cerrarEdicion(); }
+            notify.restaurarBotonGuardarEdicion(btnGuardar);
+            if (saved) { notify.mostrarToast('Registro eliminado (vacío)', 'info'); notify.cerrarEdicion(); }
         }
 
         async function guardarEdicion() {
@@ -1504,13 +1535,18 @@
             if (notas) notas = S.sanitizeNotas(notas, true) || null;
             if (notas === '') notas = null;
 
-            const cr = _calcularCredito(e, s, tf);
+            let objetivoNuevo = parseFloat($('edit-objetivo')?.dataset.valor);
+            if (isNaN(objetivoNuevo) || objetivoNuevo < 0 || objetivoNuevo > 24) objetivoNuevo = horasDiarias;
+            const objetivoPrevio = (typeof r.objetivoHoras === 'number' && Number.isFinite(r.objetivoHoras)) ? r.objetivoHoras : horasDiarias;
+
+            const cr = _calcularCredito(e, s, tf, objetivoEdicionEnVivo());
 
             if (r.fecha === f && (r.entrada || '') === (e || '') && (r.salida || '') === (s || '') &&
-                (r.tiempoFuera || '') === (tf || '') && (r.credito || '') === (cr || '') && (r.notas || '') === (notas || '')) {
-                UILogic.mostrarToast('Sin cambios', 'info');
-                UILogic.restaurarBotonGuardarEdicion(btnGuardar);
-                UILogic.cerrarEdicion();
+                (r.tiempoFuera || '') === (tf || '') && (r.credito || '') === (cr || '') && (r.notas || '') === (notas || '') &&
+                objetivoNuevo === objetivoPrevio) {
+                notify.mostrarToast('Sin cambios', 'info');
+                notify.restaurarBotonGuardarEdicion(btnGuardar);
+                notify.cerrarEdicion();
                 return;
             }
 
@@ -1518,8 +1554,8 @@
 
             const camposError = _validarCamposEdicion(f, e, s, tf);
             if (camposError) {
-                UILogic.restaurarBotonGuardarEdicion(btnGuardar);
-                UILogic.mostrarToast(camposError.msg, camposError.tipo);
+                notify.restaurarBotonGuardarEdicion(btnGuardar);
+                notify.mostrarToast(camposError.msg, camposError.tipo);
                 return;
             }
 
@@ -1528,7 +1564,7 @@
                 const timerDetenido = detenerYRegistrarTimer(r);
                 if (timerDetenido) tf = r.tiempoFuera;
             }
-            r.salida = s || null; r.tiempoFuera = tf; r.credito = cr; r.notas = notas;
+            r.salida = s || null; r.tiempoFuera = tf; r.credito = cr; r.notas = notas; r.objetivoHoras = objetivoNuevo;
 
             const t = calcularHoras(r.entrada, r.salida, r.tiempoFuera, r.credito);
             r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
@@ -1536,10 +1572,10 @@
             ordenarRegistros();
             HistoryManager.saveState(registros);
             const saved = await guardarYActualizar(null, true);
-            UILogic.restaurarBotonGuardarEdicion(btnGuardar);
+            notify.restaurarBotonGuardarEdicion(btnGuardar);
             if (saved) {
-                UILogic.mostrarToast(cr ? `Guardado con Salida Temprano (+${cr})` : 'Registro actualizado', 'success');
-                UILogic.cerrarEdicion();
+                notify.mostrarToast(cr ? `Guardado con Salida Temprano (+${cr})` : 'Registro actualizado', 'success');
+                notify.cerrarEdicion();
             }
         }
 
@@ -1555,7 +1591,7 @@
 
             const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
             StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
-            const keys = [STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS, STORAGE_KEYS.BIENVENIDA_VISTA];
+            const keys = [STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS, STORAGE_KEYS.BIENVENIDA_VISTA, STORAGE_KEYS.FERIADOS_PROCESADOS];
             keys.forEach(k => StorageHelper.removeItem(k, true));
 
             if (window.PerfilManager) {
@@ -1576,7 +1612,7 @@
                 S.validarRegistroSeguro(r) && r.fecha > hoy && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
             ).length;
             if (descartadosFuturos > 0)
-                UILogic.mostrarToast(`${descartadosFuturos} registro${descartadosFuturos > 1 ? 's' : ''} normal${descartadosFuturos > 1 ? 'es' : ''} con fecha futura omitido${descartadosFuturos > 1 ? 's' : ''}`, 'warning');
+                notify.mostrarToast(`${descartadosFuturos} registro${descartadosFuturos > 1 ? 's' : ''} normal${descartadosFuturos > 1 ? 'es' : ''} con fecha futura omitido${descartadosFuturos > 1 ? 's' : ''}`, 'warning');
             const normalizados = rawList
                 .filter(r => S.validarRegistroSeguro(r))
                 .filter(r => {
@@ -1592,9 +1628,13 @@
                     total: Math.max(0, Math.min(24, parseFloat(r.total) || 0)),
                     credito: validarHora(r.credito),
                     notas: (r.notas && typeof r.notas === 'string') ? S.sanitizeString(r.notas, S.SECURITY_LIMITS.MAX_NOTAS_LENGTH) || null : null,
+                    objetivoHoras: (typeof r.objetivoHoras === 'number' && Number.isFinite(r.objetivoHoras))
+                        ? Math.max(0, Math.min(24, r.objetivoHoras))
+                        : undefined,
                 }));
 
             normalizados.forEach(r => {
+                if (TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) return;
                 const t = calcularHorasFn(r.entrada, r.salida, r.tiempoFuera || null, r.credito || null);
                 r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
             });
@@ -1608,38 +1648,38 @@
                 hash: await S.calcularHashSHA256(registros), timestamp: Date.now()
             };
             try {
-                const nombreSafe = window.UILogic.obtenerNombrePerfilSafe();
+                const nombreSafe = notify.obtenerNombrePerfilSafe();
                 const fechaHoy = TimeUtils.fechaLocalISOFull().slice(0, 10);
-                window.UILogic.descargarJSON(data, `Horarios_${nombreSafe}_${fechaHoy}.json`);
-                window.UILogic.mostrarToast('Datos exportados', 'success');
+                notify.descargarJSON(data, `Horarios_${nombreSafe}_${fechaHoy}.json`);
+                notify.mostrarToast('Datos exportados', 'success');
                 ModalManager.cerrarTodos();
             } catch (e) {
                 console.error(e);
-                UILogic.mostrarToast('Error al exportar', 'error');
+                notify.mostrarToast('Error al exportar', 'error');
             }
         }
 
         async function _validarDatosImport(data) {
-            if (!data || typeof data !== 'object' || Array.isArray(data)) { UILogic.mostrarToast('Estructura de archivo inválida', 'error'); return false; }
-            if (!data.registros || !Array.isArray(data.registros)) { UILogic.mostrarToast('Archivo inválido o corrupto', 'error'); return false; }
+            if (!data || typeof data !== 'object' || Array.isArray(data)) { notify.mostrarToast('Estructura de archivo inválida', 'error'); return false; }
+            if (!data.registros || !Array.isArray(data.registros)) { notify.mostrarToast('Archivo inválido o corrupto', 'error'); return false; }
             const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', 'rangoExportado'];
-            if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) { UILogic.mostrarToast('Archivo con estructura sospechosa', 'error'); return false; }
+            if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) { notify.mostrarToast('Archivo con estructura sospechosa', 'error'); return false; }
             if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
-                UILogic.mostrarToast(`Archivo de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
+                notify.mostrarToast(`Archivo de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
             }
             if (data.rangoExportado !== undefined) {
                 const rangoSafe = S.sanitizeString(String(data.rangoExportado), 100);
-                if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-:]+$/.test(rangoSafe)) { UILogic.mostrarToast('Metadatos de rango inválidos', 'error'); return false; }
+                if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s\-:]+$/.test(rangoSafe)) { notify.mostrarToast('Metadatos de rango inválidos', 'error'); return false; }
             }
             if (data.hash) {
                 if (await S.calcularHashSHA256(data.registros) !== data.hash) {
-                    UILogic.mostrarToast('⚠️ El archivo puede estar corrupto o modificado', 'warning');
+                    notify.mostrarToast('⚠️ El archivo puede estar corrupto o modificado', 'warning');
                     if (!(await ModalManager.confirmar('El hash de integridad no coincide. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload'))) return false;
                 }
             } else {
                 if (!(await ModalManager.confirmar('Este archivo no tiene verificación de integridad. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload'))) return false;
             }
-            if (data.registros.length > S.SECURITY_LIMITS.MAX_REGISTROS) { UILogic.mostrarToast(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS} registros permitidos`, 'error'); return false; }
+            if (data.registros.length > S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS} registros permitidos`, 'error'); return false; }
             return true;
         }
 
@@ -1651,8 +1691,8 @@
                 const local = registros.find(r => r.fecha === imp.fecha);
                 return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
             });
-            if (nuevos.length === 0 && complementarios.length === 0) { UILogic.mostrarToast('No hay días nuevos ni datos para completar', 'info'); return; }
-            if (registros.length + nuevos.length > S.SECURITY_LIMITS.MAX_REGISTROS) { UILogic.mostrarToast(`Límite alcanzado. Solo se pueden agregar ${S.SECURITY_LIMITS.MAX_REGISTROS - registros.length} registros más`, 'error'); return; }
+            if (nuevos.length === 0 && complementarios.length === 0) { notify.mostrarToast('No hay días nuevos ni datos para completar', 'info'); return; }
+            if (registros.length + nuevos.length > S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast(`Límite alcanzado. Solo se pueden agregar ${S.SECURITY_LIMITS.MAX_REGISTROS - registros.length} registros más`, 'error'); return; }
             complementarios.forEach(imp => {
                 const local = registros.find(r => r.fecha === imp.fecha);
                 if (!local) return;
@@ -1672,24 +1712,22 @@
         function importarDatos(modo = 'replace') {
             const fileInput = $('file-import');
             const file = fileInput.files[0];
-            if (!file) { UILogic.mostrarToast('Selecciona un archivo primero', 'error'); return; }
-            if (file.size > S.SECURITY_LIMITS.MAX_JSON_SIZE) { UILogic.mostrarToast('Archivo muy grande', 'error'); return; }
-            if (!file.type || file.type !== 'application/json') { UILogic.mostrarToast('Solo se permiten archivos JSON', 'error'); return; }
+            if (!file) { notify.mostrarToast('Seleccioná un archivo primero', 'error'); return; }
+            if (file.size > S.SECURITY_LIMITS.MAX_JSON_SIZE) { notify.mostrarToast('Archivo muy grande', 'error'); return; }
+            if (!file.type || file.type !== 'application/json') { notify.mostrarToast('Solo se permiten archivos JSON', 'error'); return; }
 
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
                     const contenido = e.target.result;
-                    if (!contenido || contenido.trim().length === 0) { UILogic.mostrarToast('Archivo vacío', 'error'); return; }
-                    if (contenido.length > S.SECURITY_LIMITS.MAX_JSON_SIZE) { UILogic.mostrarToast('Contenido del archivo demasiado grande', 'error'); return; }
+                    if (!contenido || contenido.trim().length === 0) { notify.mostrarToast('Archivo vacío', 'error'); return; }
+                    if (contenido.length > S.SECURITY_LIMITS.MAX_JSON_SIZE) { notify.mostrarToast('Contenido del archivo demasiado grande', 'error'); return; }
 
-                    const data = JSON.parse(contenido, (key, value) =>
-                        ['__proto__', 'constructor', 'prototype'].includes(key) ? undefined : value
-                    );
+                    const data = JSON.parse(contenido, S.reviverJSONSeguro);
                     if (!await _validarDatosImport(data)) return;
 
                     const registrosImportados = normalizarRegistrosImportados(data.registros, calcularHoras);
-                    if (registrosImportados.length === 0) { UILogic.mostrarToast('No se encontraron registros válidos', 'warning'); return; }
+                    if (registrosImportados.length === 0) { notify.mostrarToast('No se encontraron registros válidos', 'warning'); return; }
 
                     if (modo === 'replace') {
                         registros = registrosImportados;
@@ -1708,15 +1746,16 @@
                     }
                 } catch (err) {
                     console.error('Error en importación:', err);
-                    UILogic.mostrarToast(err instanceof SyntaxError ? 'Archivo JSON mal formado' : 'Error al procesar el archivo', 'error');
+                    notify.mostrarToast(err instanceof SyntaxError ? 'Archivo JSON mal formado' : 'Error al procesar el archivo', 'error');
                 }
             };
-            reader.onerror = () => { UILogic.mostrarToast('Error al leer el archivo', 'error'); };
+            reader.onerror = () => { notify.mostrarToast('Error al leer el archivo', 'error'); };
             reader.readAsText(file);
         }
 
         async function finalizarImportacionAndSave(mensajeExito) {
             ordenarRegistros();
+            migrarObjetivoHorasFaltante();
             HistoryManager.saveState(registros);
             if (await guardarYActualizar()) {
                 const esPerfilDefault = window.PerfilManager && PerfilManager.obtenerPerfilActual() === 'default';
@@ -1724,8 +1763,8 @@
                     StorageHelper.setItem(STORAGE_KEYS.DIAS_HABILES, diasHabiles);
                     StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, horasDiarias);
                 }
-                UILogic.mostrarToast(mensajeExito, 'success');
-                UILogic.cerrarImportar();
+                notify.mostrarToast(mensajeExito, 'success');
+                notify.cerrarImportar();
                 $('file-import').value = '';
             }
         }
@@ -1779,10 +1818,11 @@
                 const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
                 const esRemoto = esEspecial && TiposRegistro.obtenerTipoPorCodigo(r?.entrada, r?.salida)?.id === 'remoto';
                 const diaTerminado = iso === hoy ? !!(r && r.salida) : !(ayerAbierto && iso === ayerStr);
+                const objetivoDia = r ? objetivoDeRegistro(r) : horasDiarias;
 
-                if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += horasDiarias;
+                if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += objetivoDia;
                 if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
-                if (esRemoto) hechas += horasDiarias;
+                if (esRemoto) hechas += objetivoDia;
             }
             return Math.round((hechas - objetivo) * 1e6) / 1e6;
         }
@@ -1791,8 +1831,8 @@
             filtroActivo = false; filtroDesde = null; filtroHasta = null; filtroTipo = null;
             $('filtro-fecha-desde').value = ''; $('filtro-fecha-hasta').value = ''; $('filtro-tipo').value = '';
             guardarYActualizar();
-            UILogic.cerrarFiltros();
-            UILogic.mostrarToast('Filtro eliminado', 'info');
+            notify.cerrarFiltros();
+            notify.mostrarToast('Filtro eliminado', 'info');
             document.getElementById('btn-filtro').classList.remove('filtro-activo');
         }
 
@@ -1823,16 +1863,16 @@
 
         async function registrarVacacionesDirecto(desde, hasta, tipo) {
             const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
-            if (!tipoConfig) { UILogic.mostrarToast('Tipo inválido', 'error'); throw new Error('Tipo inválido'); }
+            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); throw new Error('Tipo inválido'); }
             const entrada = tipoConfig.codigo;
             const salida = tipoConfig.codigo;
 
             const fechasARegistrar = TimeUtils.generarRangoFechas(desde, hasta);
 
-            if (fechasARegistrar.length > 60) { UILogic.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: 60 días por operación.`, 'error'); throw new Error('Límite de días excedido'); }
+            if (fechasARegistrar.length > 60) { notify.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: 60 días por operación.`, 'error'); throw new Error('Límite de días excedido'); }
 
             const nuevosRegistros = fechasARegistrar.filter(f => !registros.some(r => r.fecha === f));
-            if (nuevosRegistros.length === 0) { UILogic.mostrarToast('Todas las fechas ya están registradas', 'warning'); throw new Error('Sin fechas nuevas'); }
+            if (nuevosRegistros.length === 0) { notify.mostrarToast('Todas las fechas ya están registradas', 'warning'); throw new Error('Sin fechas nuevas'); }
 
             const idsNuevosParaAnimar = [];
             nuevosRegistros.forEach(fecha => {
@@ -1841,7 +1881,7 @@
                 idsNuevosParaAnimar.push(nuevoId);
                 registros.push({
                     id: nuevoId, fecha: fecha, entrada: entrada, salida: salida, tiempoFuera: null,
-                    horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0
+                    horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0, objetivoHoras: horasDiarias
                 });
             });
 
@@ -1849,8 +1889,8 @@
             HistoryManager.saveState(registros);
             const saved = await guardarYActualizar(idsNuevosParaAnimar);
             if (saved) {
-                UILogic.mostrarToast(nuevosRegistros.length === 1 ? '1 día registrado' : `${nuevosRegistros.length} días registrados`, 'success');
-                if (UILogic.actualizarBotonLote) UILogic.actualizarBotonLote();
+                notify.mostrarToast(nuevosRegistros.length === 1 ? '1 día registrado' : `${nuevosRegistros.length} días registrados`, 'success');
+                notify.actualizarBotonLote();
             } else { throw new Error('Error al guardar'); }
         }
 
@@ -1864,12 +1904,10 @@
                 }
             });
             guardarYActualizar(null, true);
-            UILogic.mostrarToast(mensaje, 'info');
-            if (window.UILogic && window.UILogic.actualizarBotonLote) {
-                const modoLote = document.getElementById('modo-lote');
-                if (modoLote && getComputedStyle(modoLote).display !== 'none') window.UILogic.actualizarBotonLote();
-            }
-            if (window.UILogic && window.UILogic.iniciarTimerAutoCierreBotones) window.UILogic.iniciarTimerAutoCierreBotones();
+            notify.mostrarToast(mensaje, 'info');
+            const modoLote = document.getElementById('modo-lote');
+            if (modoLote && getComputedStyle(modoLote).display !== 'none') notify.actualizarBotonLote();
+            notify.iniciarTimerAutoCierreBotones();
         }
 
         async function borrarPeriodoDirecto(desde, hasta) {
@@ -1877,22 +1915,75 @@
                 if (r.fecha < desde || r.fecha > hasta) return false;
                 return !TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
             });
-            if (registrosAEliminar.length > 60) { UILogic.mostrarToast(`Máximo 60 registros. Encontrados: ${registrosAEliminar.length}`, 'error'); throw new Error('Límite excedido'); }
-            if (registrosAEliminar.length === 0) { UILogic.mostrarToast('No hay registros de jornadas en ese período', 'info'); throw new Error('Sin registros'); }
+            if (registrosAEliminar.length > 60) { notify.mostrarToast(`Máximo 60 registros. Encontrados: ${registrosAEliminar.length}`, 'error'); throw new Error('Límite excedido'); }
+            if (registrosAEliminar.length === 0) { notify.mostrarToast('No hay registros de jornadas en ese período', 'info'); throw new Error('Sin registros'); }
 
             registros = registros.filter(r => !registrosAEliminar.includes(r));
             HistoryManager.saveState(registros);
             const saved = await guardarYActualizar();
             if (saved) {
-                UILogic.mostrarToast(registrosAEliminar.length === 1 ? '1 registro eliminado' : `${registrosAEliminar.length} registros eliminados`, 'success');
-                UILogic.actualizarBotonLote?.();
+                notify.mostrarToast(registrosAEliminar.length === 1 ? '1 registro eliminado' : `${registrosAEliminar.length} registros eliminados`, 'success');
+                notify.actualizarBotonLote();
             } else { throw new Error('Error al guardar'); }
+        }
+
+        function objetivoDeRegistro(registro) {
+            if (StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true)) return horasDiarias;
+            const v = registro?.objetivoHoras;
+            return (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24) ? v : horasDiarias;
+        }
+
+        function objetivoEdicionEnVivo() {
+            if (StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true)) return horasDiarias;
+            const v = parseFloat($('edit-objetivo')?.dataset.valor);
+            return (Number.isFinite(v) && v >= 0 && v <= 24) ? v : horasDiarias;
+        }
+
+        function migrarObjetivoHorasFaltante() {
+            let migrados = 0;
+            registros.forEach(r => {
+                if (typeof r.objetivoHoras !== 'number' || !Number.isFinite(r.objetivoHoras)) {
+                    r.objetivoHoras = horasDiarias;
+                    migrados++;
+                }
+            });
+            return migrados;
+        }
+
+        function _recalcularCreditoRegistro(r, nuevoObjetivo) {
+            const crudo = calcularHoras(r.entrada, r.salida, r.tiempoFuera || null, null);
+            if (!crudo) return false;
+            const diferencia = nuevoObjetivo - crudo.total;
+            let nuevoCredito = null;
+            if (diferencia > 0.01) {
+                const { horas: h, minutos: m } = TimeUtils.descomponerHorasDecimales(diferencia);
+                nuevoCredito = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+            }
+            r.credito = nuevoCredito;
+            const t = calcularHoras(r.entrada, r.salida, r.tiempoFuera, r.credito);
+            r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
+            return true;
+        }
+
+        function aplicarHorasATodosLosRegistros() {
+            let aplicados = 0;
+            let creditosRecalculados = 0;
+            registros.forEach(r => {
+                if (r.objetivoHoras === horasDiarias) return;
+                r.objetivoHoras = horasDiarias;
+                aplicados++;
+                if (r.credito && r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
+                    if (_recalcularCreditoRegistro(r, horasDiarias)) creditosRecalculados++;
+                }
+            });
+            return { aplicados, creditosRecalculados };
         }
 
         return {
             registros: () => registros, horasSemanales: () => (horasDiarias * diasHabiles.length), diasHabiles: () => diasHabiles,
             horasDiarias: () => horasDiarias, setDiasHabiles: (v) => diasHabiles = v, setHorasDiarias: (v) => horasDiarias = v,
             getIgnorarTiempoFuera: () => ignorarTiempoFuera, setIgnorarTiempoFuera: (v) => { ignorarTiempoFuera = v; },
+            objetivoDeRegistro, objetivoEdicionEnVivo, migrarObjetivoHorasFaltante, aplicarHorasATodosLosRegistros,
             recalcularTotalesEnMemoria: function () {
                 registros.forEach(r => {
                     if (r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
@@ -1902,200 +1993,47 @@
                 });
             },
             editandoId: () => editandoId, setEditandoId: (id) => editandoId = id, vistaActual: () => vistaActual, setVistaActual: (v) => vistaActual = v,
-            cargarConfiguracion, calcularHoras, calcularHorasFeriadoEnRango, normalizarRegistrosImportados, guardarYActualizar,
+            cargarConfiguracion, calcularHoras, normalizarRegistrosImportados, guardarYActualizar,
             agregarRegistro, eliminarRegistroActual, editarRegistro, guardarEdicion, borrarTodoHistorial, exportarJSON, importarDatos,
             calcularBufferPeriodo, detectarAyerAbierto, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
             registrarVacacionesDirecto, borrarPeriodoDirecto, registrarDiaEspecial, editarGrupo, guardarEdicionGrupo,
             eliminarGrupoActual, setGrupoEnEdicion: (val) => grupoEnEdicion = val,
             undoAction: function () { _aplicarEstadoHistorial(HistoryManager.undo(), 'Deshecho'); },
-            redoAction: function () { _aplicarEstadoHistorial(HistoryManager.redo(), 'Rehecho'); }
+            redoAction: function () { _aplicarEstadoHistorial(HistoryManager.redo(), 'Rehecho'); },
+            configurarNotificaciones
         };
     })(SecurityAndUtils);
 
     // ====================================================================
-    //                     MÓDULO GIST SYNC
+    //                     MÓDULO UI CORE (utilidades genéricas de UI)
     // ====================================================================
-    const GistSync = (function (S) {
-        const GIST_FILENAME = 'horarios_backup.json';
-        const GIST_ID_REGEX = /^[a-f0-9]{20,40}$/i;
+    const UICore = (function (S, D) {
 
-        function esGistIdValido(id) { return id && GIST_ID_REGEX.test(id.trim()); }
+        function toggleSeccionGen(elementId, iconId, storageKey, callback = null) {
+            const el = $(elementId);
+            const icon = $(iconId);
+            if (!el) return;
 
-        function _conPerfil(fn) {
-            if (!window.PerfilManager) return;
-            const perfil = PerfilManager.obtenerDatosPerfil();
-            if (perfil) { fn(perfil); PerfilManager.guardarPerfiles(); }
-        }
-
-        function getToken() { return StorageHelper.getItem(STORAGE_KEYS.GIST_TOKEN, ''); }
-
-        function getGistId() { return window.PerfilManager?.obtenerDatosPerfil()?.gistId || ''; }
-        function getLastSync() { return window.PerfilManager?.obtenerDatosPerfil()?.gistLastSync || null; }
-        function getMergeBehavior() { return window.PerfilManager?.obtenerDatosPerfil()?.gistMergeBehavior || 'replace'; }
-        function setMergeBehavior(valor) { _conPerfil(perfil => { perfil.gistMergeBehavior = valor; }); }
-
-        function getAutoSync() {
-            const val = window.PerfilManager?.obtenerDatosPerfil()?.gistAutoSync;
-            if (val === 1 || val === 2) return val;
-            if (val === true) return 1;
-            return 0;
-        }
-        function setAutoSync(valor) { _conPerfil(perfil => { perfil.gistAutoSync = valor; }); }
-
-        function getRangoHorario() {
-            const perfil = window.PerfilManager?.obtenerDatosPerfil();
-            return {
-                desde: perfil?.gistRangoDesde || '21:00',
-                hasta: perfil?.gistRangoHasta || '00:00'
-            };
-        }
-        function setRangoHorario(desde, hasta) { _conPerfil(perfil => { perfil.gistRangoDesde = desde; perfil.gistRangoHasta = hasta; }); }
-
-        function _claveHoraActual() {
-            return TimeUtils.fechaLocalISOFull().slice(0, 13);
-        }
-
-        function getSyncCount(tipo) {
-            const perfil = window.PerfilManager?.obtenerDatosPerfil();
-            const key = `gistSyncCount_${tipo}`;
-            const keyFecha = `gistSyncFecha_${tipo}`;
-            if (!perfil?.[keyFecha] || perfil[keyFecha] !== _claveHoraActual()) return 0;
-            return perfil?.[key] || 0;
-        }
-
-        function marcarSync(tipo) {
-            if (getSyncLimite(tipo) === 0) return;
-            _conPerfil(perfil => {
-                const key = `gistSyncCount_${tipo}`;
-                const keyFecha = `gistSyncFecha_${tipo}`;
-                const clave = _claveHoraActual();
-                const esNuevaHora = perfil[keyFecha] !== clave;
-                perfil[keyFecha] = clave;
-                perfil[key] = esNuevaHora ? 1 : (perfil[key] || 0) + 1;
-            });
-        }
-
-        function getSyncLimite(tipo) {
-            const defValue = tipo === 'bajar' ? 2 : (tipo === 'subir' ? 1 : 2);
-            return StorageHelper.getNumber(STORAGE_KEYS.GIST_LIMITE(tipo), defValue);
-        }
-
-        function setSyncLimite(tipo, valor) {
-            const anteriorLimite = getSyncLimite(tipo);
-            StorageHelper.setItem(STORAGE_KEYS.GIST_LIMITE(tipo), valor);
-            if (anteriorLimite === 0 && valor > 0 && window.PerfilManager) {
-                _conPerfil(perfil => {
-                    perfil[`gistSyncCount_${tipo}`] = 0;
-                    perfil[`gistSyncFecha_${tipo}`] = null;
-                });
+            el.classList.toggle('expanded');
+            const isExpanded = el.classList.contains('expanded');
+            if (icon) {
+                if (isExpanded) icon.classList.add('rotated');
+                else icon.classList.remove('rotated');
             }
+
+            if (StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true)) {
+                StorageHelper.setItem(storageKey, isExpanded);
+            }
+            if (isExpanded && callback) callback();
         }
 
-        function superaLimite(tipo) {
-            const limite = getSyncLimite(tipo);
-            if (limite === 0) return false;
-            return getSyncCount(tipo) >= limite;
-        }
-
-        function dentroDelRangoHorario() {
-            const { desde, hasta } = getRangoHorario();
-            const horaActual = TimeUtils.obtenerHoraActual();
-            return desde <= hasta ? (horaActual >= desde && horaActual <= hasta) : (horaActual >= desde || horaActual <= hasta);
-        }
-
-        function saveCredentials(token, gistId) {
-            if (token) StorageHelper.setItem(STORAGE_KEYS.GIST_TOKEN, S.sanitizeString(token.trim(), 256));
-            else StorageHelper.removeItem(STORAGE_KEYS.GIST_TOKEN);
-
-            _conPerfil(perfil => {
-                if (gistId && esGistIdValido(gistId)) perfil.gistId = gistId.trim();
-                else if (gistId === '') delete perfil.gistId;
-            });
-        }
-
-        function saveLastSync(gistId) {
-            const ahoraISO = new Date().toISOString();
-            _conPerfil(perfil => {
-                perfil.gistLastSync = ahoraISO;
-                if (gistId && esGistIdValido(gistId)) perfil.gistId = gistId;
-            });
-        }
-
-        function formatLastSync(isoOrLegacy) {
-            if (!isoOrLegacy) return null;
-            try {
-                const d = new Date(isoOrLegacy);
-                if (!isNaN(d.getTime())) return d.toLocaleString('es-AR');
-            } catch (e) { }
-            return isoOrLegacy;
-        }
-
-        async function subir(registros, diasHabiles, horasDiarias) {
-            const token = getToken();
-            if (!token) throw new Error('Falta el token de GitHub');
-
-            const hash = await S.calcularHashSHA256(registros);
-            const data = { registros, diasHabiles, horasDiarias, fecha: S.fechaLocalISO(), version: S.SECURITY_LIMITS.SCHEMA_VERSION, hash, timestamp: Date.now() };
-            const gistId = getGistId();
-            const gistIdValido = esGistIdValido(gistId);
-            const url = gistIdValido ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
-            const method = gistIdValido ? 'PATCH' : 'POST';
-
-            const response = await fetch(url, {
-                method,
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-                body: JSON.stringify({ description: 'Horarios PWA - Backup automático', public: false, files: { [GIST_FILENAME]: { content: JSON.stringify(data, null, 2) } } })
-            });
-
-            if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || `Error ${response.status}`);
-            const result = await response.json();
-            saveLastSync(result.id);
-            return result.id;
-        }
-
-        async function bajar() {
-            const token = getToken();
-            const gistId = getGistId();
-            if (!token) throw new Error('Falta el token de GitHub');
-            if (!gistId || !esGistIdValido(gistId)) throw new Error('Gist ID inválido — dejá el campo vacío y subí primero para crear uno');
-
-            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
-            });
-
-            if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || `Error ${response.status}`);
-            const file = (await response.json()).files[GIST_FILENAME];
-            if (!file) throw new Error(`Archivo ${GIST_FILENAME} no encontrado en el Gist`);
-
-            const data = JSON.parse(file.content, (key, value) => ['__proto__', 'constructor', 'prototype'].includes(key) ? undefined : value);
-            if (data.hash && await S.calcularHashSHA256(data.registros) !== data.hash) data._hashNoCoincide = true;
-
-            saveLastSync(gistId);
-            return data;
-        }
-
-        return { getToken, getGistId, getLastSync, formatLastSync, getMergeBehavior, setMergeBehavior, getAutoSync, setAutoSync, getRangoHorario, setRangoHorario, getSyncCount, marcarSync, superaLimite, getSyncLimite, setSyncLimite, dentroDelRangoHorario, saveCredentials, esGistIdValido, subir, bajar };
-    })(SecurityAndUtils);
-
-    const UILogic = (function (S, D, GistSync) {
 
         let toastTimeout = null;
         let _toastQueue = [];
         let _toastRunning = false;
-        let intervaloPulsacion = null;
-        let timeoutInicial = null;
-        let edicionBloqueada = true;
-        let edicionGrupoBloqueada = true;
-        let perfilEnEdicion = null;
-        let modoLoteActivo = false;
-        let tiempoExpansionBotones = null;
-        let timerAutoCierreBotones = null;
-        let modoEstadisticas = 'mensual';
-        let _modalAbiertoDesdeLista = false;
-        let _timerAutoVista = null;
 
-        function formatoDiferencia(tiempoTotal) {
-            return TimeUtils.formatoDiferencia(tiempoTotal, D.horasDiarias());
+        function formatoDiferencia(tiempoTotal, objetivo = D.horasDiarias()) {
+            return TimeUtils.formatoDiferencia(tiempoTotal, objetivo);
         }
 
         function registrarSwipe(el, callback, { minX = 50, maxY = 80, ignoreInputs = false } = {}) {
@@ -2128,6 +2066,22 @@
                 };
                 clearTimeout(timeout);
                 timeout = setTimeout(later, wait);
+            };
+        }
+
+        function _crearPressHold(accionFn) {
+            let timeout = null, intervalo = null;
+            return {
+                iniciar(arg) {
+                    accionFn(arg);
+                    timeout = setTimeout(() => {
+                        intervalo = setInterval(() => accionFn(arg), 100);
+                    }, 500);
+                },
+                detener() {
+                    if (timeout) { clearTimeout(timeout); timeout = null; }
+                    if (intervalo) { clearInterval(intervalo); intervalo = null; }
+                }
             };
         }
 
@@ -2219,7 +2173,1895 @@
             btnGuardar.innerHTML = '<svg class="icon"><use href="#icon-save"/></svg> Guardar';
         }
 
+        function _getCSSdur(varName) {
+            const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+            if (!raw) return 300;
+            return raw.endsWith('ms') ? parseFloat(raw) : parseFloat(raw) * 1000;
+        }
+        const DUR_ANIM = () => _getCSSdur('--dur-anim');
+        const DUR_CALENDARIO = () => _getCSSdur('--dur-calendario');
 
+        function _animarFadeSwap(el, fn) {
+            if (!el) { fn(); return; }
+            el.classList.add('fade-out');
+            setTimeout(() => { fn(); el.classList.remove('fade-out'); }, DUR_ANIM());
+        }
+
+        /**
+         * Factory para pares toggle/actualizarEstado de configuraciones booleanas.
+         *
+         * @param {object} cfg
+         * @param {function(): boolean}  cfg.getVal        - Lee el valor actual.
+         * @param {function(boolean): void} cfg.setVal     - Persiste el nuevo valor.
+         * @param {string}               cfg.btnId         - ID del botón a marcar con btn-activo.
+         * @param {string}               cfg.mensajeOn     - Toast cuando queda activo.
+         * @param {string}               cfg.mensajeOff    - Toast cuando queda inactivo.
+         * @param {function(boolean): void} [cfg.onAfterToggle] - Efecto secundario opcional.
+         * @returns {{ toggle: function, actualizarEstado: function }}
+         */
+        function _crearToggleConfig({ getVal, setVal, btnId, mensajeOn, mensajeOff, onAfterToggle }) {
+            function actualizarEstado() {
+                _setBtnActivo(btnId, getVal());
+            }
+            function toggle() {
+                const nuevo = !getVal();
+                setVal(nuevo);
+                actualizarEstado();
+                mostrarToast(nuevo ? mensajeOn : mensajeOff, 'info');
+                onAfterToggle?.(nuevo);
+            }
+            return { toggle, actualizarEstado };
+        }
+
+        function _setBtnActivo(id, activo) {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.toggle('btn-activo', activo);
+        }
+
+        function _crearOpcion(value, text, selected = false) {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = text;
+            if (selected) { opt.selected = true; opt.setAttribute('selected', ''); }
+            return opt;
+        }
+
+        function _poblarSelect(selectId, items, getLabel, selDefault, actualizarFn, agruparFn = null) {
+            const select = $(selectId);
+            if (!select) return;
+            const selActual = select.value;
+            select.innerHTML = '';
+            if (!items.length) { select.appendChild(_crearOpcion('', 'Sin registros')); actualizarFn(null); return; }
+            const sel = (selActual && items.includes(selActual))
+                ? selActual
+                : (items.includes(selDefault)
+                    ? selDefault
+                    : (items.find(k => k <= selDefault) || items[items.length - 1]));
+            if (agruparFn) {
+                agruparFn(items).forEach((claves, grupo) => {
+                    const grp = document.createElement('optgroup');
+                    grp.label = grupo;
+                    claves.forEach(k => grp.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
+                    select.appendChild(grp);
+                });
+            } else {
+                items.forEach(k => select.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
+            }
+            actualizarFn(sel);
+        }
+
+        function setIconoBtn(btn, icono) {
+            const use = btn.querySelector('svg use');
+            if (use) use.setAttribute('href', icono);
+        }
+
+        function _setBtnDisabled(id, disabled) {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.disabled = disabled;
+        }
+
+        function _posicionarPopup(popup, event) {
+            const el = event.currentTarget || event.target;
+            const rect = el.getBoundingClientRect();
+            const margin = 8;
+            requestAnimationFrame(() => {
+                const pw = popup.offsetWidth, ph = popup.offsetHeight;
+                let top = rect.bottom + 12;
+                let left = rect.left + (rect.width / 2) - (pw / 2);
+                if (left + pw > window.innerWidth - margin) left = window.innerWidth - pw - margin;
+                if (left < margin) left = margin;
+                if (top + ph > window.innerHeight - margin) top = rect.top - ph - 12;
+                if (top < margin) top = margin;
+                popup.style.top = `${top}px`;
+                popup.style.left = `${left}px`;
+                popup.style.visibility = '';
+                setTimeout(() => popup.classList.add('listo'), 350);
+            });
+        }
+
+        function _registrarCierrePopup(popup, selectorTrigger, esMismoTrigger, alCerrar) {
+            const cerrar = () => {
+                popup.remove();
+                if (alCerrar) alCerrar();
+                document.removeEventListener('click', onClick, true);
+                document.removeEventListener('scroll', cerrar, true);
+            };
+            const onClick = (e) => {
+                const trigger = e.target.closest(selectorTrigger);
+                if (trigger && esMismoTrigger(trigger)) return;
+                if (!popup.contains(e.target)) cerrar();
+            };
+            setTimeout(() => {
+                document.addEventListener('click', onClick, { capture: true, passive: true });
+                document.addEventListener('scroll', cerrar, { capture: true, passive: true });
+            }, 10);
+            return cerrar;
+        }
+
+        function _flashCampo(...ids) {
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                clearTimeout(el._flashTimeout);
+                el.classList.remove('campo-flash');
+                void el.offsetWidth;
+                el.classList.add('campo-flash');
+
+                const cs = getComputedStyle(el);
+                const duracionMs = (parseFloat(cs.animationDuration) || 0.5) * 1000;
+                const iteraciones = parseFloat(cs.animationIterationCount) || 1;
+                const totalMs = duracionMs * iteraciones;
+
+                el._flashTimeout = setTimeout(() => el.classList.remove('campo-flash'), totalMs);
+            });
+        }
+
+        const _slideAnimEstado = new WeakMap();
+
+        function _limpiarClonVisual(clon) {
+            clon.removeAttribute('id');
+            clon.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+            return clon;
+        }
+
+        function _finalizarSlidePendiente(el) {
+            const estado = _slideAnimEstado.get(el);
+            if (!estado) return;
+            clearTimeout(estado.timeout);
+            el.style.display = '';
+            estado.wrapper.parentNode?.insertBefore(el, estado.wrapper);
+            estado.wrapper.remove();
+            _slideAnimEstado.delete(el);
+        }
+
+        function _animarSlideElemento(el, delta, mutarFn) {
+            if (!el) { mutarFn(); return; }
+
+            _finalizarSlidePendiente(el);
+
+            const rectViejo = el.getBoundingClientRect();
+            const anchoViejo = rectViejo.width;
+            const altoViejo = rectViejo.height;
+            const margenTop = getComputedStyle(el).marginTop;
+
+            const snapViejo = _limpiarClonVisual(el.cloneNode(true));
+            snapViejo.style.cssText = 'position:absolute;top:0;left:0;width:' + anchoViejo + 'px;pointer-events:none;';
+
+            el.style.visibility = 'hidden';
+            mutarFn();
+
+            const rectNuevo = el.getBoundingClientRect();
+            const anchoNuevo = rectNuevo.width;
+            const altoNuevo = rectNuevo.height;
+
+            const snapNuevo = _limpiarClonVisual(el.cloneNode(true));
+            snapNuevo.style.cssText = 'position:absolute;top:0;width:' + anchoNuevo + 'px;pointer-events:none;left:' + (delta > 0 ? anchoViejo : -anchoNuevo) + 'px;';
+
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'position:relative;overflow:hidden;pointer-events:none;width:' + anchoViejo + 'px;height:calc(' + altoViejo + 'px + ' + margenTop + ');';
+            wrapper.appendChild(snapViejo);
+            wrapper.appendChild(snapNuevo);
+
+            el.parentNode.insertBefore(wrapper, el);
+            el.style.display = 'none';
+            el.style.visibility = '';
+
+            wrapper.offsetHeight;
+            const dur = DUR_CALENDARIO();
+            const easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
+            snapViejo.style.transition = 'transform ' + dur + 'ms ' + easing;
+            snapNuevo.style.transition = 'transform ' + dur + 'ms ' + easing;
+            if (Math.abs(altoNuevo - altoViejo) > 0.5) {
+                wrapper.style.transition = 'height ' + dur + 'ms ' + easing;
+                wrapper.style.height = 'calc(' + altoNuevo + 'px + ' + margenTop + ')';
+            }
+            const tx = (delta > 0 ? -anchoViejo : anchoViejo) + 'px';
+            snapViejo.style.transform = 'translateX(' + tx + ')';
+            snapNuevo.style.transform = 'translateX(' + tx + ')';
+
+            const timeout = setTimeout(() => {
+                el.style.display = '';
+                wrapper.parentNode.insertBefore(el, wrapper);
+                wrapper.remove();
+                _slideAnimEstado.delete(el);
+            }, dur + 20);
+
+            _slideAnimEstado.set(el, { timeout, wrapper });
+        }
+
+        return {
+            formatoDiferencia,
+            registrarSwipe,
+            debounce,
+            _crearPressHold,
+            _actualizarOffsetsStickyMes,
+            actualizarOffsetsStickyMesDebounced,
+            mostrarError,
+            limpiarError,
+            obtenerNombrePerfilSafe,
+            descargarJSON,
+            mostrarToast,
+            resetearBoton,
+            restaurarBotonGuardarEdicion,
+            _getCSSdur,
+            DUR_ANIM,
+            DUR_CALENDARIO,
+            _crearToggleConfig,
+            _setBtnActivo,
+            _crearOpcion,
+            _poblarSelect,
+            setIconoBtn,
+            _setBtnDisabled,
+            _posicionarPopup,
+            _registrarCierrePopup,
+            _flashCampo,
+            _limpiarClonVisual,
+            _finalizarSlidePendiente,
+            _animarSlideElemento,
+            toggleSeccionGen,
+            _animarFadeSwap
+        };
+    })(SecurityAndUtils, DataManagement);
+
+    // ====================================================================
+    //                     MÓDULO UI PERFILES
+    // ====================================================================
+    const UIPerfiles = (function (S, UICore) {
+        const { mostrarToast } = UICore;
+
+        let perfilEnEdicion = null;
+
+        function renderizarListaPerfiles() {
+            const lista = document.getElementById('lista-perfiles-botones');
+            if (!lista) return;
+
+            lista.innerHTML = '';
+            window.PerfilManager.obtenerListaPerfiles().forEach(p => {
+                const container = Object.assign(document.createElement('div'), {
+                    className: `btn-perfil-select ${p.esActual ? 'activo' : ''}`
+                });
+                if (p.esActual) container.style.cursor = 'default';
+
+                const countText = `${p.totalRegistros} registro${p.totalRegistros !== 1 ? 's' : ''}`;
+                const infoSection = Object.assign(document.createElement('div'), { className: 'btn-perfil-info' });
+                infoSection.appendChild(Object.assign(document.createElement('div'), { className: 'btn-perfil-nombre', textContent: p.nombre }));
+                const badge = Object.assign(document.createElement('div'), {
+                    className: 'btn-perfil-badge',
+                    textContent: p.esActual ? `${countText} · Activo` : countText
+                });
+                if (p.esActual) badge.style.color = 'var(--c-green)';
+                infoSection.appendChild(badge);
+
+                const editBtn = Object.assign(document.createElement('button'), {
+                    className: 'btn-perfil-edit',
+                    innerHTML: '<svg class="icon"><use href="#icon-edit"/></svg>',
+                    title: 'Editar perfil',
+                    onclick: (e) => { e.stopPropagation(); UILogic.abrirEditorPerfil(p.id); }
+                });
+
+                container.onclick = () => { if (!p.esActual) window.PerfilManager.cambiarPerfil(p.id); };
+                container.appendChild(infoSection);
+                container.appendChild(editBtn);
+                lista.appendChild(container);
+            });
+        }
+
+        function abrirSelectorPerfiles() {
+            ModalManager.abrir('modal-selector-perfiles', () => {
+                const inputNuevo = document.getElementById('nombre-nuevo-perfil-selector');
+                if (inputNuevo) inputNuevo.value = '';
+
+                renderizarListaPerfiles();
+
+                const temaOscuro = document.documentElement.classList.contains('dark-mode');
+                const toggleBtnModal = document.getElementById('theme-toggle-modal');
+
+                if (toggleBtnModal) {
+                    const icon = toggleBtnModal.querySelector('use');
+                    if (temaOscuro) {
+                        icon.setAttribute('href', '#icon-sun');
+                    } else {
+                        icon.setAttribute('href', '#icon-moon');
+                    }
+                }
+            });
+        }
+
+        function _validarNombrePerfil(nombre, perfiles) {
+            if (!nombre) return 'Ingresá un nombre para el perfil';
+            if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/.test(nombre)) return 'El nombre contiene caracteres no válidos.\n Solo letras, números y espacios.';
+            if (Object.values(perfiles).some(p => p.nombre.toLowerCase().trim() === nombre.toLowerCase().trim())) return 'Ya existe un perfil con ese nombre';
+            if (Object.keys(perfiles).length >= PerfilManager.MAX_PERFILES) return `Máximo de perfiles alcanzado (${PerfilManager.MAX_PERFILES})`;
+            return null;
+        }
+
+        function crearPerfilDesdeSelector() {
+            const input = document.getElementById('nombre-nuevo-perfil-selector');
+            if (!input) return;
+            const nombre = S.sanitizeString(input.value.trim(), 30);
+            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+
+            const error = _validarNombrePerfil(nombre, perfiles);
+            if (error) { mostrarToast(error, 'error'); return; }
+
+            const id = 'perfil_' + S.generarIDSeguro();
+            perfiles[id] = { nombre, registros: [], diasHabiles: [1, 2, 3, 4, 5], horasDiarias: 7 };
+
+            try {
+                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
+            } catch (e) {
+                console.error('Error al guardar perfil:', e);
+                delete perfiles[id];
+                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
+                return;
+            }
+
+            if (window.PerfilManager) window.PerfilManager.inicializar();
+            mostrarToast(`Perfil "${nombre}" creado`, 'success');
+            input.value = '';
+            renderizarListaPerfiles();
+            requestAnimationFrame(() => {
+                const ultimo = document.getElementById('lista-perfiles-botones')?.lastElementChild;
+                if (ultimo) { ultimo.style.animation = 'zoomIn 0.3s ease-out'; ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+            });
+        }
+
+        function cerrarSelectorPerfiles() {
+            ModalManager.cerrar('modal-selector-perfiles');
+        }
+
+        function abrirEditorPerfil(perfilId) {
+            perfilEnEdicion = perfilId;
+            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+            const perfil = perfiles[perfilId];
+
+            if (!perfil) {
+                mostrarToast('Perfil no encontrado', 'error');
+                return;
+            }
+
+            document.getElementById('nombre-perfil-editar').value = perfil.nombre;
+            document.getElementById('id-perfil-editar').value = perfilId;
+
+            const btnEliminar = document.getElementById('btn-eliminar-perfil-editor');
+            if (btnEliminar) {
+                btnEliminar.disabled = (perfilId === 'default');
+            }
+
+            ModalManager.alternar('modal-selector-perfiles', 'modal-editar-perfil');
+        }
+
+        function cerrarEditorPerfil() {
+            perfilEnEdicion = null;
+            ModalManager.alternar('modal-editar-perfil', 'modal-selector-perfiles', null, () => {
+                const inputNuevo = document.getElementById('nombre-nuevo-perfil-selector');
+                if (inputNuevo) inputNuevo.value = '';
+                renderizarListaPerfiles();
+            });
+        }
+
+        function _validarNombrePerfilEdicion(nuevoNombre, perfiles, excluirId) {
+            if (!nuevoNombre) return 'Ingresá un nombre válido';
+            if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/.test(nuevoNombre)) return 'Caracteres no permitidos en el nombre.';
+            if (!perfiles[excluirId]) return 'Perfil no encontrado';
+            const norm = nuevoNombre.toLowerCase().trim();
+            if (Object.entries(perfiles).some(([id, p]) => id !== excluirId && p.nombre.toLowerCase().trim() === norm)) return 'Ya existe otro perfil con ese nombre';
+            return null;
+        }
+
+        function guardarEdicionPerfil() {
+            if (!perfilEnEdicion) return;
+            const nuevoNombre = S.sanitizeString(document.getElementById('nombre-perfil-editar').value.trim(), 30);
+            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+
+            const error = _validarNombrePerfilEdicion(nuevoNombre, perfiles, perfilEnEdicion);
+            if (error) { mostrarToast(error, 'error'); return; }
+
+            if (perfiles[perfilEnEdicion].nombre === nuevoNombre) {
+                mostrarToast('Sin cambios', 'info'); cerrarEditorPerfil(); return;
+            }
+
+            const nombreAnterior = perfiles[perfilEnEdicion].nombre;
+            perfiles[perfilEnEdicion].nombre = nuevoNombre;
+            try {
+                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
+            } catch (e) {
+                console.error('Error al guardar perfil:', e);
+                perfiles[perfilEnEdicion].nombre = nombreAnterior;
+                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
+                return;
+            }
+
+            if (perfilEnEdicion === window.PerfilManager?.obtenerPerfilActual()) {
+                const btnTexto = document.getElementById('nombre-perfil-header');
+                if (btnTexto) btnTexto.textContent = nuevoNombre;
+            }
+            if (window.PerfilManager) window.PerfilManager.inicializar();
+            mostrarToast('Perfil actualizado', 'success');
+            cerrarEditorPerfil();
+        }
+
+        function _limpiarClavesPerfil(pid) {
+            ['breakStartTime', STORAGE_KEYS.HISTORY, STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO,
+                'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS
+            ].forEach(k => StorageHelper.removeItem(`${k}_${pid}`));
+        }
+
+        async function eliminarPerfilDesdeEditor() {
+            if (!perfilEnEdicion || perfilEnEdicion === 'default') {
+                mostrarToast('No se puede eliminar el perfil Principal', 'error'); return;
+            }
+            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+            const perfil = perfiles[perfilEnEdicion];
+            if (!perfil) { mostrarToast('Perfil no encontrado', 'error'); return; }
+
+            if (!await ModalManager.confirmar(`¿Estás seguro de que querés eliminar el perfil "${perfil.nombre}"? Esta acción no se puede deshacer.`, 'Eliminar')) return;
+
+            _limpiarClavesPerfil(perfilEnEdicion);
+            delete perfiles[perfilEnEdicion];
+            try {
+                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
+            } catch (e) {
+                console.error('Error al eliminar perfil:', e); mostrarToast('Error al guardar: almacenamiento lleno', 'error'); return;
+            }
+
+            if (perfilEnEdicion === window.PerfilManager?.obtenerPerfilActual()) {
+                try {
+                    if (!StorageHelper.setItem(STORAGE_KEYS.PERFIL_ACTIVO, 'default')) throw new Error('quota');
+                } catch (e) {
+                    console.error('Error al guardar perfil activo:', e); mostrarToast('Error al guardar: almacenamiento lleno', 'error'); return;
+                }
+                mostrarToast('Perfil eliminado. Recargando...', 'success');
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                window.PerfilManager?.inicializar();
+                mostrarToast('Perfil eliminado', 'success');
+                cerrarEditorPerfil();
+            }
+        }
+
+        return {
+            renderizarListaPerfiles,
+            abrirSelectorPerfiles,
+            crearPerfilDesdeSelector,
+            cerrarSelectorPerfiles,
+            abrirEditorPerfil,
+            cerrarEditorPerfil,
+            guardarEdicionPerfil,
+            eliminarPerfilDesdeEditor,
+            _limpiarClavesPerfil
+        };
+    })(SecurityAndUtils, UICore);
+
+    // ====================================================================
+    //                     MÓDULO UI CALENDARIO
+    // ====================================================================
+    const UICalendario = (function (S, D, UICore) {
+        const { registrarSwipe, _animarFadeSwap, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, formatoDiferencia } = UICore;
+
+        function _agruparMesesPorAnio(mesesOrdenados) {
+            const map = new Map();
+            mesesOrdenados.forEach(mesAnio => {
+                const anio = mesAnio.substring(0, 4);
+                if (!map.has(anio)) map.set(anio, []);
+                map.get(anio).push(mesAnio);
+            });
+            return map;
+        }
+
+        function _nombreMesCapitalizado(mesAnio) {
+            const [a, m] = mesAnio.split('-');
+            const nombre = new Date(a, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
+            return nombre.charAt(0).toUpperCase() + nombre.slice(1).replace('.', '');
+        }
+
+        function _cerrarSelectorMeses(idResaltar = null) {
+            const grid = document.getElementById('calendario-grid');
+            const selector = document.getElementById('calendario-selector-meses');
+            const navBotones = document.getElementById('calendario-nav-botones');
+            _animarFadeSwap(selector, () => {
+                selector.style.display = 'none';
+                navBotones.style.display = 'flex';
+                grid.style.display = 'grid';
+                grid.classList.add('fade-out');
+                grid.offsetHeight;
+                _renderizarCalendario(idResaltar);
+                grid.classList.remove('fade-out');
+            });
+        }
+
+        function abrirSelectorMesesCalendario() {
+            const grid = document.getElementById('calendario-grid');
+            const selector = document.getElementById('calendario-selector-meses');
+            const navBotones = document.getElementById('calendario-nav-botones');
+            const titulo = document.getElementById('calendario-titulo-mes');
+
+            if (selector.style.display !== 'none') { _cerrarSelectorMeses(); return; }
+
+            const mesesOrdenados = [...new Set(D.registros().map(r => r.fecha.substring(0, 7)))].sort().reverse();
+            selector.innerHTML = '';
+
+            if (mesesOrdenados.length === 0) {
+                const emptyEl = Object.assign(document.createElement('div'), {
+                    className: 'empty-state empty-state--calendario',
+                    textContent: 'No hay registros'
+                });
+                selector.appendChild(emptyEl);
+            } else {
+                const hoy = new Date();
+                const anioActual = _calendarioMes ? _calendarioMes.anio : hoy.getFullYear();
+                const mesActual = _calendarioMes ? _calendarioMes.mes : hoy.getMonth();
+
+                _agruparMesesPorAnio(mesesOrdenados).forEach((meses, anioStr) => {
+                    const separador = Object.assign(document.createElement('div'), {
+                        className: 'selector-meses-anio-header',
+                        textContent: anioStr
+                    });
+                    selector.appendChild(separador);
+
+                    meses.forEach(mesAnio => {
+                        const [aStr, mesStr] = mesAnio.split('-');
+                        const anio = parseInt(aStr), mes = parseInt(mesStr) - 1;
+                        const btn = Object.assign(document.createElement('button'), {
+                            className: 'btn-mes-calendario',
+                            textContent: _nombreMesCapitalizado(mesAnio)
+                        });
+                        if (anio === anioActual && mes === mesActual) btn.classList.add('activo');
+                        btn.onclick = (e) => { e.stopPropagation(); _calendarioMes = { anio, mes }; _cerrarSelectorMeses(); };
+                        selector.appendChild(btn);
+                    });
+                });
+            }
+
+            selector.style.height = grid.getBoundingClientRect().height + 'px';
+            _animarFadeSwap(grid, () => {
+                grid.style.display = 'none';
+                navBotones.style.display = 'none';
+                titulo.innerHTML = '<svg class="icon"><use href="#icon-back" /></svg> Volver';
+                selector.style.display = 'grid';
+                selector.classList.add('fade-out');
+                selector.offsetHeight;
+                selector.classList.remove('fade-out');
+            });
+        }
+
+        function _activarVistaCalendarioHistorico() {
+            if (!_vistaHistoricoCalendario) return;
+            const lista = document.getElementById('lista-registros');
+            const cal = document.getElementById('vista-calendario-historico');
+            const btnFiltro = document.getElementById('btn-filtro');
+            if (lista) lista.classList.add('hidden');
+            if (cal) cal.classList.remove('hidden');
+            if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
+            _renderizarCalendario();
+        }
+
+        let _calendarioMes = null;
+
+        function _renderizarCalendario(idResaltar = null) {
+            const grid = document.getElementById('calendario-grid');
+            const titulo = document.getElementById('calendario-titulo-mes');
+            if (!grid) return;
+
+            if (grid.parentNode) {
+                registrarSwipe(grid.parentNode, dir => navegarCalendario(dir));
+            } else {
+                registrarSwipe(grid, dir => navegarCalendario(dir));
+            }
+
+            const hoy = new Date();
+            const anio = _calendarioMes ? _calendarioMes.anio : hoy.getFullYear();
+            const mes = _calendarioMes ? _calendarioMes.mes : hoy.getMonth();
+            const nombresMes = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+            if (titulo) titulo.textContent = `${nombresMes[mes]} ${anio}`;
+            const fechaStr = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const registrosFiltrados = D.obtenerRegistrosFiltrados();
+            const todosLosRegistros = D.registros();
+            const regsPorFecha = Object.fromEntries(registrosFiltrados.map(r => [r.fecha, r]));
+            const todosRegsPorFecha = Object.fromEntries(todosLosRegistros.map(r => [r.fecha, r]));
+            const diasHabilesObj = D.diasHabiles();
+            const filtroActivo = D.obtenerRegistrosFiltrados().length !== D.registros().length;
+            const claseDelDia = (fecha) => {
+                const r = regsPorFecha[fecha];
+                if (!r && filtroActivo && todosRegsPorFecha[fecha]) return 'dia-filtrado';
+                if (!r) return 'dia-sin-registro';
+                if (TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
+                    const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                    return `dia-especial-${tipo ? tipo.color : 'purple'}`;
+                }
+                if (r.entrada && !r.salida) return 'dia-en-curso';
+                if (!UILogic._esFechaHabil(fecha, diasHabilesObj) || horasGte(r.total, D.objetivoDeRegistro(r))) return 'dia-normal';
+                return UILogic._cubiertoPorSaldo(fecha) ? 'dia-cubierto' : 'dia-incompleto';
+            };
+
+            const diasNombre = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+            const primerDia = new Date(anio, mes, 1);
+            const ultimoDia = new Date(anio, mes + 1, 0);
+            const frag = document.createDocumentFragment();
+
+            diasNombre.forEach(d => {
+                const cell = document.createElement('div');
+                cell.className = 'calendario-dia-nombre';
+                cell.textContent = d;
+                frag.appendChild(cell);
+            });
+
+            const offsetInicio = primerDia.getDay();
+            for (let i = 0; i < offsetInicio; i++) {
+                const vacio = document.createElement('div');
+                vacio.className = 'calendario-dia vacio';
+                frag.appendChild(vacio);
+            }
+
+            for (let dia = 1; dia <= ultimoDia.getDate(); dia++) {
+                const fecha = fechaStr(anio, mes, dia);
+                const clase = claseDelDia(fecha);
+                const esHoy = anio === hoy.getFullYear() && mes === hoy.getMonth() && dia === hoy.getDate();
+                const reg = regsPorFecha[fecha];
+                const esNuevo = idResaltar && reg && reg.id === idResaltar;
+
+                const cell = document.createElement('div');
+                let clases = `calendario-dia ${clase}`;
+                if (esHoy) clases += ' hoy';
+                if (esNuevo) clases += ' nuevo-registro-animacion';
+                if (reg) clases += ' cursor-pointer';
+                cell.className = clases;
+                cell.textContent = dia;
+
+                if (reg) {
+                    cell.dataset.regId = reg.id;
+                    cell.addEventListener('click', (e) => UILogic._onclickCalendarioDia(e, reg.id));
+                    cell.addEventListener('mouseenter', (e) => UILogic._popupCalendarioHover(e, reg.id));
+                    cell.addEventListener('mouseleave', (e) => UILogic._cerrarPopupCalendarioHover(e));
+                } else if (clase === 'dia-sin-registro') {
+                    cell.classList.add('cursor-pointer');
+                    cell.dataset.fecha = fecha;
+                    cell.addEventListener('click', (e) => UILogic._popupCalendarioDiaSinRegistro(e, fecha));
+                }
+
+                frag.appendChild(cell);
+            }
+
+            grid.classList.toggle('calendario-filtro-activo', filtroActivo);
+            grid.innerHTML = '';
+            grid.appendChild(frag);
+
+        }
+
+        let _vistaHistoricoCalendario = false;
+
+        function toggleVistaHistorico() {
+            _vistaHistoricoCalendario = !_vistaHistoricoCalendario;
+            try { StorageHelper.setItem(STORAGE_KEYS.VISTA_HISTORICO_CAL, _vistaHistoricoCalendario); } catch (e) { }
+
+            const lista = document.getElementById('lista-registros');
+            const cal = document.getElementById('vista-calendario-historico');
+            const btnFiltro = document.getElementById('btn-filtro');
+            const saliente = _vistaHistoricoCalendario ? lista : cal;
+            const entrante = _vistaHistoricoCalendario ? cal : lista;
+            _animarFadeSwap(saliente, () => {
+                if (saliente) { saliente.classList.add('hidden'); }
+                if (entrante) {
+                    entrante.classList.remove('hidden');
+                    entrante.classList.add('fade-out');
+                    entrante.offsetHeight;
+                    entrante.classList.remove('fade-out');
+                }
+
+                if (_vistaHistoricoCalendario) {
+                    if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
+                    _renderizarCalendario();
+                } else {
+                    if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
+                }
+            });
+
+            const selector = document.getElementById('calendario-selector-meses');
+            const grid = document.getElementById('calendario-grid');
+            const navBotones = document.getElementById('calendario-nav-botones');
+            if (selector && !selector.classList.contains('hidden') && selector.style.display !== 'none') {
+                selector.style.display = 'none';
+                if (grid) grid.style.display = 'grid';
+                if (navBotones) navBotones.style.display = 'flex';
+            }
+        }
+
+        let _popupCalendarioEl = null;
+
+        function _buildInfoHtmlRegistro(reg) {
+            const esEspecial = TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
+            if (esEspecial) {
+                const tipoConfig = TiposRegistro.obtenerTipoPorCodigo(reg.entrada, reg.salida);
+                const emoji = S.escapeHtml(tipoConfig?.emoji ?? '');
+                const label = tipoConfig ? S.escapeHtml(tipoConfig.label) : S.escapeHtml(reg.entrada);
+                const colorSafe = /^[a-z]+$/.test(tipoConfig?.color || '') ? tipoConfig.color : 'purple';
+                return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>`;
+            }
+            if (reg.entrada && !reg.salida) {
+                const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
+                return `<div class="cal-popup-info cal-popup-info--blue">${esHoy ? 'En curso' : 'Incompleto'}</div>
+                    <div class="cal-popup-3l">Entrada: ${S.escapeHtml(reg.entrada)}</div>`;
+            }
+            const totalHoras = reg.total || 0;
+            const h = Math.floor(totalHoras);
+            const m = Math.round((totalHoras - h) * 60);
+            const totalStr = `${h}h${m > 0 ? ' ' + m + 'm' : ''}`;
+            let tfStr = '';
+            if (reg.tiempoFuera && reg.tiempoFuera !== '00:00') {
+                const [tfH, tfM] = reg.tiempoFuera.split(':').map(Number);
+                tfStr = tfH > 0 ? `${tfH}h${tfM > 0 ? ' ' + tfM + 'm' : ''} fuera` : `${tfM}m fuera`;
+            }
+            let totalConDiff = totalStr, diffColor = '', cubiertoLineaHtml = '';
+            const objetivoReg = D.objetivoDeRegistro(reg);
+            if (objetivoReg > 0 && UILogic._esFechaHabil(reg.fecha, D.diasHabiles())) {
+                const diffText = formatoDiferencia(totalHoras, objetivoReg);
+                if (horasGte(totalHoras, objetivoReg)) {
+                    diffColor = 'var(--c-green)';
+                    if (diffText) totalConDiff += ` (${diffText})`;
+                } else if (UILogic._cubiertoPorSaldo(reg.fecha)) {
+                    diffColor = 'var(--c-gold)';
+                    if (diffText) totalConDiff += ` (${diffText})`;
+                    cubiertoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--gold">Cubierto</span>`;
+                } else {
+                    diffColor = 'var(--c-red)';
+                    if (diffText) totalConDiff += ` (${diffText})`;
+                }
+            }
+            return `<div class="cal-popup-info${diffColor ? ' cal-popup-info--dynamic' : ''}"${diffColor ? ` data-color="${diffColor}"` : ''}>${totalConDiff}</div>
+                ${cubiertoLineaHtml}
+                <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} – ${S.escapeHtml(reg.salida)}</div>
+                ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
+        }
+
+        function _popupCalendario(event, registroId) {
+            event.stopPropagation();
+
+            if (_popupCalendarioEl) { _popupCalendarioEl.remove(); _popupCalendarioEl = null; }
+
+            const reg = D.registros().find(r => r.id === registroId);
+            if (!reg) return;
+
+            const claveMes = reg.fecha.substring(0, 7);
+            const registrosDelMes = D.registros().filter(r => r.fecha.substring(0, 7) === claveMes);
+            const grupos = UILogic.agruparRegistrosConsecutivos(registrosDelMes);
+            const grupoDelRegistro = grupos.find(g => g.tipo === 'grupo' && g.registros.some(r => r.id === registroId));
+
+            const fechaLabel = S.escapeHtml(new Date(reg.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+            const infoHtml = _buildInfoHtmlRegistro(reg);
+            const btnGrupoHtml = grupoDelRegistro ? `
+                <button class="cal-popup-btn-edit" id="_cal-popup-btn-grupo">
+                    <svg class="icon"><use href="#icon-grid-group"/></svg>
+                    Editar grupo
+                </button>` : '';
+
+            if (grupoDelRegistro) window._calPopupGrupo = grupoDelRegistro;
+
+            const popup = document.createElement('div');
+            popup.className = 'cal-popup';
+            popup.id = '_cal-popup';
+            popup.dataset.registroId = reg.id;
+            popup.innerHTML = `
+                <div class="cal-popup-fecha">${fechaLabel}</div>
+                ${infoHtml}
+                <button class="cal-popup-btn-edit" id="_cal-popup-btn-edit">
+                    <svg class="icon"><use href="#icon-edit"/></svg>
+                    Editar
+                </button>
+                ${btnGrupoHtml}`;
+
+            _applyDataColors(popup);
+            popup.style.visibility = 'hidden';
+            document.body.appendChild(popup);
+            _popupCalendarioEl = popup;
+
+            popup.querySelector('#_cal-popup-btn-edit')?.addEventListener('click', () => {
+                DataManagement.editarRegistro(reg.id);
+                document.getElementById('_cal-popup')?.remove();
+            });
+            popup.querySelector('#_cal-popup-btn-grupo')?.addEventListener('click', () => {
+                DataManagement.editarGrupo(window._calPopupGrupo);
+                document.getElementById('_cal-popup')?.remove();
+            });
+
+            popup.addEventListener('mouseenter', () => clearTimeout(_popupCalendarioHoverTimer));
+            popup.addEventListener('mouseleave', () => {
+                if (_popupCalendarioEsHover) {
+                    _popupCalendarioHoverTimer = setTimeout(() => {
+                        if (_popupCalendarioEl) { _popupCalendarioEl.remove(); _popupCalendarioEl = null; }
+                        _popupCalendarioEsHover = false;
+                    }, 500);
+                }
+            });
+
+            _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.regId === reg.id, () => { _popupCalendarioEl = null; });
+            _posicionarPopup(popup, event);
+        }
+
+        let _popupCalendarioEsHover = false;
+        let _popupCalendarioHoverTimer = null;
+
+        function _popupCalendarioDiaSinRegistro(event, fecha) {
+            event.stopPropagation();
+            clearTimeout(_popupCalendarioHoverTimer);
+            _popupCalendarioEsHover = false;
+
+            if (_popupCalendarioEl) {
+                const mismaFecha = _popupCalendarioEl.dataset.fecha === fecha;
+                _popupCalendarioEl.remove();
+                _popupCalendarioEl = null;
+                if (mismaFecha) return;
+            }
+
+            const esFechaFutura = fecha > TimeUtils.obtenerFechaHoy();
+            const fechaLabel = S.escapeHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+
+            const popup = document.createElement('div');
+            popup.className = 'cal-popup';
+            popup.id = '_cal-popup';
+            popup.dataset.fecha = fecha;
+            popup.innerHTML = `
+                <div class="cal-popup-fecha">${fechaLabel}</div>
+                <div class="cal-popup-sin-reg">Sin registros</div>
+                ${esFechaFutura ? '' : `<button class="cal-popup-btn-edit cal-popup-btn-accion--normal" id="_cal-popup-btn-normal">
+                    <svg class="icon"><use href="#icon-clock"/></svg>
+                    Jornada regular
+                </button>`}
+                <button class="cal-popup-btn-edit cal-popup-btn-accion--especial" id="_cal-popup-btn-especial">
+                    <svg class="icon"><use href="#icon-calendar-simple"/></svg>
+                    Jornada especial
+                </button>`;
+
+            popup.style.visibility = 'hidden';
+            document.body.appendChild(popup);
+            _popupCalendarioEl = popup;
+
+            const cerrarPopup = _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.fecha === fecha, () => { _popupCalendarioEl = null; });
+            popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrarPopup(); UILogic._irAFicharConFecha(fecha, false); });
+            popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrarPopup(); UILogic._irAFicharConFecha(fecha, true); });
+
+            _posicionarPopup(popup, event);
+        }
+
+        function _popupCalendarioHover(event, registroId) {
+            if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return;
+            if (!window.matchMedia('(hover: hover)').matches) return;
+            const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
+            if (stored !== 'true') return;
+            if (_popupCalendarioEl && _popupCalendarioEl.dataset.registroId === registroId) return;
+            if (_popupCalendarioEl && !_popupCalendarioEsHover) return;
+            clearTimeout(_popupCalendarioHoverTimer);
+            _popupCalendarioHoverTimer = setTimeout(() => {
+                _popupCalendarioEsHover = true;
+                _popupCalendario(event, registroId);
+            }, 150);
+        }
+
+        function _onclickCalendarioDia(event, registroId) {
+            const esDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+            const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
+            const hoverActivo = esDesktop && stored === 'true';
+
+            if (hoverActivo) {
+                if (_popupCalendarioEl) {
+                    _popupCalendarioEl.remove();
+                    _popupCalendarioEl = null;
+                }
+                clearTimeout(_popupCalendarioHoverTimer);
+                DataManagement.editarRegistro(registroId);
+            } else {
+                if (_popupCalendarioEl && _popupCalendarioEl.dataset.registroId === registroId) {
+                    _popupCalendarioEl.remove();
+                    _popupCalendarioEl = null;
+                    return;
+                }
+                _popupCalendario(event, registroId);
+            }
+        }
+
+        function _cerrarPopupCalendarioHover(event) {
+            if (!_popupCalendarioEsHover) return;
+            const related = event.relatedTarget;
+            if (related && _popupCalendarioEl && _popupCalendarioEl.contains(related)) return;
+            clearTimeout(_popupCalendarioHoverTimer);
+            _popupCalendarioHoverTimer = setTimeout(() => {
+                if (_popupCalendarioEl) {
+                    _popupCalendarioEl.remove();
+                    _popupCalendarioEl = null;
+                }
+                _popupCalendarioEsHover = false;
+            }, 500);
+        }
+
+        function _animarCalendario(delta, renderFn) {
+            _animarSlideElemento(document.getElementById('calendario-grid'), delta, renderFn);
+        }
+
+        function navegarCalendario(delta) {
+            if (_popupCalendarioEl) {
+                _popupCalendarioEl.remove();
+                _popupCalendarioEl = null;
+            }
+
+            const hoy = new Date();
+            const base = _calendarioMes || { anio: hoy.getFullYear(), mes: hoy.getMonth() };
+            let nuevoMes = base.mes + delta;
+            let nuevoAnio = base.anio;
+            if (nuevoMes > 11) { nuevoMes = 0; nuevoAnio++; }
+            if (nuevoMes < 0) { nuevoMes = 11; nuevoAnio--; }
+            _calendarioMes = { anio: nuevoAnio, mes: nuevoMes };
+            _animarCalendario(delta, () => _renderizarCalendario());
+        }
+
+        function irHoyCalendario() {
+            const hoy = new Date();
+            if (_calendarioMes === null ||
+                (_calendarioMes.anio === hoy.getFullYear() && _calendarioMes.mes === hoy.getMonth())) {
+                return;
+            }
+            const base = _calendarioMes;
+            const delta = (base.anio * 12 + base.mes) > (hoy.getFullYear() * 12 + hoy.getMonth()) ? -1 : 1;
+            _calendarioMes = null;
+            _animarCalendario(delta, () => _renderizarCalendario());
+        }
+
+        return {
+            abrirSelectorMesesCalendario,
+            _cerrarSelectorMeses,
+            _activarVistaCalendarioHistorico,
+            _renderizarCalendario,
+            toggleVistaHistorico,
+            _popupCalendario,
+            _popupCalendarioDiaSinRegistro,
+            _popupCalendarioHover,
+            _onclickCalendarioDia,
+            _cerrarPopupCalendarioHover,
+            navegarCalendario,
+            irHoyCalendario,
+            _agruparMesesPorAnio,
+            _nombreMesCapitalizado,
+            getVistaHistoricoCalendario: () => _vistaHistoricoCalendario,
+            setVistaHistoricoCalendario: (v) => { _vistaHistoricoCalendario = v; }
+        };
+    })(SecurityAndUtils, DataManagement, UICore);
+
+
+    // ====================================================================
+    //                     MÓDULO GIST SYNC
+    // ====================================================================
+    const GistSync = (function (S) {
+        const GIST_FILENAME = 'horarios_backup.json';
+        const GIST_ID_REGEX = /^[a-f0-9]{20,40}$/i;
+        const RANGO_HORARIO_DEFAULT = { desde: '21:00', hasta: '00:00' };
+
+        function esGistIdValido(id) { return id && GIST_ID_REGEX.test(id.trim()); }
+
+        function _conPerfil(fn) {
+            if (!window.PerfilManager) return;
+            const perfil = PerfilManager.obtenerDatosPerfil();
+            if (perfil) { fn(perfil); PerfilManager.guardarPerfiles(); }
+        }
+
+        function getToken() { return StorageHelper.getItem(STORAGE_KEYS.GIST_TOKEN, ''); }
+
+        function getGistId() { return window.PerfilManager?.obtenerDatosPerfil()?.gistId || ''; }
+        function getLastSync() { return window.PerfilManager?.obtenerDatosPerfil()?.gistLastSync || null; }
+        function getMergeBehavior() { return window.PerfilManager?.obtenerDatosPerfil()?.gistMergeBehavior || 'replace'; }
+        function setMergeBehavior(valor) { _conPerfil(perfil => { perfil.gistMergeBehavior = valor; }); }
+
+        function getAutoSync() {
+            const val = window.PerfilManager?.obtenerDatosPerfil()?.gistAutoSync;
+            if (val === 1 || val === 2) return val;
+            if (val === true) return 1;
+            return 0;
+        }
+        function setAutoSync(valor) { _conPerfil(perfil => { perfil.gistAutoSync = valor; }); }
+
+        function getRangoHorario() {
+            const perfil = window.PerfilManager?.obtenerDatosPerfil();
+            return {
+                desde: perfil?.gistRangoDesde || RANGO_HORARIO_DEFAULT.desde,
+                hasta: perfil?.gistRangoHasta || RANGO_HORARIO_DEFAULT.hasta
+            };
+        }
+        function setRangoHorario(desde, hasta) { _conPerfil(perfil => { perfil.gistRangoDesde = desde; perfil.gistRangoHasta = hasta; }); }
+
+        function _claveHoraActual() {
+            return TimeUtils.fechaLocalISOFull().slice(0, 13);
+        }
+
+        function _clavesSyncCount(tipo) {
+            return { key: `gistSyncCount_${tipo}`, keyFecha: `gistSyncFecha_${tipo}` };
+        }
+
+        function getSyncCount(tipo) {
+            const perfil = window.PerfilManager?.obtenerDatosPerfil();
+            const { key, keyFecha } = _clavesSyncCount(tipo);
+            if (!perfil?.[keyFecha] || perfil[keyFecha] !== _claveHoraActual()) return 0;
+            return perfil?.[key] || 0;
+        }
+
+        function marcarSync(tipo) {
+            if (getSyncLimite(tipo) === 0) return;
+            const { key, keyFecha } = _clavesSyncCount(tipo);
+            _conPerfil(perfil => {
+                const clave = _claveHoraActual();
+                const esNuevaHora = perfil[keyFecha] !== clave;
+                perfil[keyFecha] = clave;
+                perfil[key] = esNuevaHora ? 1 : (perfil[key] || 0) + 1;
+            });
+        }
+
+        function getSyncLimite(tipo) {
+            const defValue = tipo === 'bajar' ? 2 : (tipo === 'subir' ? 1 : 2);
+            return StorageHelper.getNumber(STORAGE_KEYS.GIST_LIMITE(tipo), defValue);
+        }
+
+        function setSyncLimite(tipo, valor) {
+            const anteriorLimite = getSyncLimite(tipo);
+            StorageHelper.setItem(STORAGE_KEYS.GIST_LIMITE(tipo), valor);
+            if (anteriorLimite === 0 && valor > 0 && window.PerfilManager) {
+                const { key, keyFecha } = _clavesSyncCount(tipo);
+                _conPerfil(perfil => {
+                    perfil[key] = 0;
+                    perfil[keyFecha] = null;
+                });
+            }
+        }
+
+        function superaLimite(tipo) {
+            const limite = getSyncLimite(tipo);
+            if (limite === 0) return false;
+            return getSyncCount(tipo) >= limite;
+        }
+
+        function dentroDelRangoHorario() {
+            const { desde, hasta } = getRangoHorario();
+            const horaActual = TimeUtils.obtenerHoraActual();
+            return desde <= hasta ? (horaActual >= desde && horaActual <= hasta) : (horaActual >= desde || horaActual <= hasta);
+        }
+
+        function saveCredentials(token, gistId) {
+            if (token) StorageHelper.setItem(STORAGE_KEYS.GIST_TOKEN, S.sanitizeString(token.trim(), 256));
+            else StorageHelper.removeItem(STORAGE_KEYS.GIST_TOKEN);
+
+            _conPerfil(perfil => {
+                if (gistId && esGistIdValido(gistId)) perfil.gistId = gistId.trim();
+                else if (gistId === '') delete perfil.gistId;
+            });
+        }
+
+        function saveLastSync(gistId) {
+            const ahoraISO = new Date().toISOString();
+            _conPerfil(perfil => {
+                perfil.gistLastSync = ahoraISO;
+                if (gistId && esGistIdValido(gistId)) perfil.gistId = gistId;
+            });
+        }
+
+        function formatLastSync(isoOrLegacy) {
+            if (!isoOrLegacy) return null;
+            try {
+                const d = new Date(isoOrLegacy);
+                if (!isNaN(d.getTime())) return d.toLocaleString('es-AR');
+            } catch (e) { }
+            return isoOrLegacy;
+        }
+
+        async function _gistFetch(url, options = {}) {
+            const token = getToken();
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-GitHub-Api-Version': '2022-11-28',
+                    ...options.headers
+                }
+            });
+            if (!response.ok) throw new Error((await response.json().catch(() => ({}))).message || `Error ${response.status}`);
+            return response.json();
+        }
+
+        async function subir(registros, diasHabiles, horasDiarias) {
+            const token = getToken();
+            if (!token) throw new Error('Falta el token de GitHub');
+
+            const hash = await S.calcularHashSHA256(registros);
+            const data = { registros, diasHabiles, horasDiarias, fecha: S.fechaLocalISO(), version: S.SECURITY_LIMITS.SCHEMA_VERSION, hash, timestamp: Date.now() };
+            const gistId = getGistId();
+            const gistIdValido = esGistIdValido(gistId);
+            const url = gistIdValido ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
+            const method = gistIdValido ? 'PATCH' : 'POST';
+
+            const result = await _gistFetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ description: 'Horarios PWA - Backup automático', public: false, files: { [GIST_FILENAME]: { content: JSON.stringify(data, null, 2) } } })
+            });
+            saveLastSync(result.id);
+            return result.id;
+        }
+
+        async function bajar() {
+            const token = getToken();
+            const gistId = getGistId();
+            if (!token) throw new Error('Falta el token de GitHub');
+            if (!gistId || !esGistIdValido(gistId)) throw new Error('Gist ID inválido — dejá el campo vacío y subí primero para crear uno');
+
+            const respuesta = await _gistFetch(`https://api.github.com/gists/${gistId}`);
+            const file = respuesta.files[GIST_FILENAME];
+            if (!file) throw new Error(`Archivo ${GIST_FILENAME} no encontrado en el Gist`);
+
+            const data = JSON.parse(file.content, S.reviverJSONSeguro);
+            if (data.hash && await S.calcularHashSHA256(data.registros) !== data.hash) data._hashNoCoincide = true;
+
+            saveLastSync(gistId);
+            return data;
+        }
+
+        return { getToken, getGistId, getLastSync, formatLastSync, getMergeBehavior, setMergeBehavior, getAutoSync, setAutoSync, getRangoHorario, setRangoHorario, RANGO_HORARIO_DEFAULT, getSyncCount, marcarSync, superaLimite, getSyncLimite, setSyncLimite, dentroDelRangoHorario, saveCredentials, esGistIdValido, subir, bajar };
+    })(SecurityAndUtils);
+
+    // ====================================================================
+    //                     MÓDULO UI GIST Y RESPALDO
+    // ====================================================================
+    const UIGistYRespaldo = (function (S, D, GistSync, UICore) {
+        const {
+            mostrarToast, _setBtnDisabled, _setBtnActivo, _flashCampo, _crearPressHold,
+            descargarJSON, obtenerNombrePerfilSafe, _posicionarPopup, _registrarCierrePopup
+        } = UICore;
+
+        let _modalAbiertoDesdeLista = false;
+
+        function _actualizarBotonVolver(id, desdeLista) {
+            const btn = $(id);
+            if (!btn) return;
+            btn.lastChild.textContent = desdeLista ? ' Cerrar' : ' Volver';
+            btn.querySelector('use').setAttribute('href', desdeLista ? '#icon-cancelar' : '#icon-undo');
+        }
+
+        function _cerrarModalConfigHija(modalId) {
+            if (!_modalAbiertoDesdeLista && !document.body.classList.contains('config-onboarding')) {
+                ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
+            }
+            ModalManager.alternar(modalId, _modalAbiertoDesdeLista ? null : 'modal-config');
+            _modalAbiertoDesdeLista = false;
+        }
+
+        function mostrarImportar(desdeLista = false) {
+            _modalAbiertoDesdeLista = desdeLista;
+            ModalManager.alternar(desdeLista ? null : 'modal-config', 'modal-importar', null, () => {
+                $('file-import').value = '';
+
+                const nombreEl = document.getElementById('nombre-archivo-seleccionado');
+                if (nombreEl) {
+                    nombreEl.style.display = 'none';
+                    nombreEl.textContent = '';
+                }
+
+                const btnCombinar = document.getElementById('btn-combinar');
+                const btnReemplazar = document.getElementById('btn-reemplazar');
+
+                if (btnCombinar) {
+                    btnCombinar.disabled = true;
+                }
+                if (btnReemplazar) {
+                    btnReemplazar.disabled = true;
+                }
+
+                _actualizarBotonVolver('btn-volver-importar', desdeLista);
+                setTimeout(() => $('file-import').click(), 50);
+            });
+        }
+
+        function cerrarImportar() {
+            _cerrarModalConfigHija('modal-importar');
+        }
+
+        function mostrarExportar(desdeLista = false) {
+            _modalAbiertoDesdeLista = desdeLista;
+            ModalManager.alternar(desdeLista ? null : 'modal-config', 'modal-exportar', null, () => {
+                const tipoSelect = document.getElementById('tipo-exportacion');
+                if (tipoSelect) tipoSelect.value = 'todo';
+
+                const camposRango = document.getElementById('campos-rango-exportar');
+                if (camposRango) camposRango.classList.remove('expanded');
+
+                document.getElementById('export-fecha-desde').value = '';
+                document.getElementById('export-fecha-hasta').value = '';
+
+                _actualizarBotonVolver('btn-volver-exportar', desdeLista);
+            });
+        }
+
+        function cerrarExportar() {
+            _cerrarModalConfigHija('modal-exportar');
+        }
+
+        function toggleCamposRangoExport() {
+            const tipo = document.getElementById('tipo-exportacion').value;
+            const camposRango = document.getElementById('campos-rango-exportar');
+
+            camposRango.classList.toggle('expanded', tipo === 'rango');
+        }
+
+        async function ejecutarExportacion() {
+            const tipo = document.getElementById('tipo-exportacion').value;
+            const btn = document.querySelector('#modal-exportar .btn-export');
+
+            btn.disabled = true;
+
+            try {
+                if (tipo === 'todo') {
+                    D.exportarJSON();
+                    cerrarExportar();
+
+                } else if (tipo === 'mes-actual') {
+                    const mesActual = TimeUtils.formatearFechaLocal(new Date()).slice(0, 7);
+                    await exportarRango(mesActual, mesActual, true);
+
+                } else if (tipo === 'rango') {
+                    const desde = S.sanitizeString(document.getElementById('export-fecha-desde').value, 10);
+                    const hasta = S.sanitizeString(document.getElementById('export-fecha-hasta').value, 10);
+
+                    if (!desde || !hasta) {
+                        mostrarToast('Completá ambas fechas', 'error');
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    if (!TimeUtils.validarFecha(desde) || !TimeUtils.validarFecha(hasta)) {
+                        mostrarToast('Fechas inválidas', 'error');
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    if (desde > hasta) {
+                        mostrarToast('La fecha inicial debe ser anterior a la final', 'error');
+                        btn.disabled = false;
+                        return;
+                    }
+
+                    await exportarRango(desde, hasta, false);
+                }
+
+            } catch (error) {
+                console.error('Error en exportación:', error);
+                mostrarToast('Error al exportar', 'error');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function _filtrarRegistrosRango(desde, hasta, esMes) {
+            if (esMes) {
+                const [año, mes] = desde.split('-').map(Number);
+                return D.registros().filter(r => {
+                    const [aReg, mReg] = r.fecha.split('-').map(Number);
+                    return aReg === año && mReg === mes;
+                });
+            }
+            return D.registros().filter(r => r.fecha >= desde && r.fecha <= hasta);
+        }
+
+        async function exportarRango(desde, hasta, esMes = false) {
+            const registrosFiltrados = _filtrarRegistrosRango(desde, hasta, esMes);
+            if (registrosFiltrados.length === 0) { mostrarToast('No hay registros en ese rango', 'warning'); return; }
+
+            const fechaLocal = TimeUtils.fechaLocalISOFull();
+            const fechaHoy = fechaLocal.substring(0, 10);
+
+            const data = {
+                registros: registrosFiltrados,
+                diasHabiles: D.diasHabiles(),
+                horasDiarias: D.horasDiarias(),
+                fecha: fechaLocal,
+                version: S.SECURITY_LIMITS.SCHEMA_VERSION,
+                hash: await S.calcularHashSHA256(registrosFiltrados),
+                timestamp: Date.now(),
+                rangoExportado: S.sanitizeString(esMes ? `Mes ${desde}` : `${desde} a ${hasta}`, 100)
+            };
+
+            try {
+                const sufijo = esMes ? `_${desde}` : `_${desde}_${hasta}`;
+                descargarJSON(data, `Horarios_${obtenerNombrePerfilSafe()}${sufijo}_${fechaHoy}.json`);
+                mostrarToast(`Exportados ${registrosFiltrados.length} registros${esMes ? ' del mes' : ''}`, 'success');
+                cerrarExportar();
+            } catch (e) {
+                console.error(e);
+                mostrarToast('Error al exportar', 'error');
+            }
+        }
+
+        let _gistModalPadre = null;
+        let _gistAutoSyncTemp = null;
+        let _gistLimitesTemp = null;
+        let _gistLimitesOrig = null;
+        let _gistMergeDesdeModal = false;
+
+        function _gistEstadoAutoSyncActual() {
+            return parseInt(_gistAutoSyncTemp ?? GistSync.getAutoSync());
+        }
+
+        function actualizarEstadoBotonesGist() {
+            const token = document.getElementById('gist-token')?.value.trim() || '';
+            const gistId = document.getElementById('gist-id')?.value.trim() || '';
+            const soloToken = token !== '';
+            const ambosCompletos = soloToken && gistId.length > 10;
+
+            _setBtnDisabled('btn-gist-subir', !soloToken);
+            _setBtnDisabled('btn-gist-bajar', !ambosCompletos);
+            _setBtnDisabled('btn-toggle-gist-backup', !ambosCompletos);
+
+            const estadoBackup = _gistEstadoAutoSyncActual();
+            _setBtnDisabled('btn-toggle-gist-merge', !(ambosCompletos && estadoBackup === 1));
+        }
+
+        function abrirModalGist() {
+            const modalAbierto = document.querySelector('.modal.show');
+            _gistModalPadre = modalAbierto ? modalAbierto.id : null;
+
+            const tokenInput = document.getElementById('gist-token');
+            const gistIdInput = document.getElementById('gist-id');
+            const lastSyncEl = document.getElementById('gist-ultima-sync');
+
+            if (tokenInput) tokenInput.value = GistSync.getToken();
+            if (gistIdInput) gistIdInput.value = GistSync.getGistId();
+            if (lastSyncEl) {
+                const last = GistSync.getLastSync();
+                lastSyncEl.textContent = last ? `Sincronizado: ${GistSync.formatLastSync(last)}` : 'No sincronizado';
+            }
+
+            const rango = GistSync.getRangoHorario();
+            const desdeEl = document.getElementById('gist-rango-desde');
+            const hastaEl = document.getElementById('gist-rango-hasta');
+            if (desdeEl) desdeEl.value = rango.desde;
+            if (hastaEl) hastaEl.value = rango.hasta;
+
+            _gistAutoSyncTemp = GistSync.getAutoSync();
+            actualizarBotonGistBackup();
+            actualizarBotonGistMerge();
+            actualizarEstadoBotonesGist();
+            ModalManager.alternar(_gistModalPadre, 'modal-gist');
+            _gistLimitesTemp = null;
+            _actualizarCampoLimite();
+            _gistLimitesOrig = { bajar: GistSync.getSyncLimite('bajar'), subir: GistSync.getSyncLimite('subir') };
+        }
+
+        function _leerRangoHorarioInputs() {
+            const desdeRaw = document.getElementById('gist-rango-desde')?.value || '';
+            const hastaRaw = document.getElementById('gist-rango-hasta')?.value || '';
+            const desdeValida = !desdeRaw || TimeUtils.validarHora(desdeRaw);
+            const hastaValida = !hastaRaw || TimeUtils.validarHora(hastaRaw);
+            return {
+                desde: desdeRaw || GistSync.RANGO_HORARIO_DEFAULT.desde,
+                hasta: hastaRaw || GistSync.RANGO_HORARIO_DEFAULT.hasta,
+                desdeInvalida: desdeRaw !== '' && !desdeValida,
+                hastaInvalida: hastaRaw !== '' && !hastaValida,
+                valida: desdeValida && hastaValida
+            };
+        }
+
+        function _gistGuardarCredencialesSiModalAbierto() {
+            if (!document.getElementById('modal-gist')?.classList.contains('show')) return;
+
+            GistSync.saveCredentials(
+                document.getElementById('gist-token')?.value.trim() || '',
+                document.getElementById('gist-id')?.value.trim() || ''
+            );
+
+            const { desde, hasta, valida } = _leerRangoHorarioInputs();
+            if (valida) GistSync.setRangoHorario(desde, hasta);
+
+            if (_gistAutoSyncTemp !== null) {
+                GistSync.setAutoSync(_gistAutoSyncTemp);
+                _gistAutoSyncTemp = null;
+            }
+            if (_gistLimitesTemp !== null) {
+                GistSync.setSyncLimite('bajar', _gistLimitesTemp.bajar);
+                GistSync.setSyncLimite('subir', _gistLimitesTemp.subir);
+                _gistLimitesTemp = null;
+            }
+            _gistLimitesOrig = null;
+        }
+
+        function actualizarBotonesHistorico() {
+            const btnRespaldar = document.getElementById('btn-hist-respaldar');
+            const btnRestaurar = document.getElementById('btn-hist-restaurar');
+            if (!btnRespaldar || !btnRestaurar) return;
+
+            const tieneGist = GistSync.esGistIdValido(GistSync.getGistId());
+
+            const newRespaldar = btnRespaldar.cloneNode(true);
+            const newRestaurar = btnRestaurar.cloneNode(true);
+            btnRespaldar.parentNode.replaceChild(newRespaldar, btnRespaldar);
+            btnRestaurar.parentNode.replaceChild(newRestaurar, btnRestaurar);
+
+            if (tieneGist) {
+                newRespaldar.title = 'Subir a Gist';
+                newRespaldar.addEventListener('click', () => gistSubir());
+                newRespaldar.querySelector('use').setAttribute('href', '#icon-cloud-upload');
+
+                newRestaurar.title = 'Bajar de Gist';
+                newRestaurar.addEventListener('click', () => gistBajar());
+                newRestaurar.querySelector('use').setAttribute('href', '#icon-cloud-download');
+            } else {
+                newRespaldar.title = 'Respaldar';
+                newRespaldar.addEventListener('click', () => mostrarExportar(true));
+                newRespaldar.querySelector('use').setAttribute('href', '#icon-download');
+
+                newRestaurar.title = 'Restaurar';
+                newRestaurar.addEventListener('click', () => mostrarImportar(true));
+                newRestaurar.querySelector('use').setAttribute('href', '#icon-upload');
+            }
+        }
+
+        function guardarConfigGist() {
+            const token = document.getElementById('gist-token')?.value.trim() || '';
+            const gistId = document.getElementById('gist-id')?.value.trim() || '';
+            const { desde, hasta, desdeInvalida, hastaInvalida } = _leerRangoHorarioInputs();
+
+            if (desdeInvalida) {
+                mostrarToast('Hora inicial inválida.', 'error');
+                return;
+            }
+            if (hastaInvalida) {
+                mostrarToast('Hora final inválida.', 'error');
+                return;
+            }
+
+            const rango = GistSync.getRangoHorario();
+            const limitesCambiaron = _gistLimitesOrig !== null && (
+                _gistLimitesOrig.bajar !== GistSync.getSyncLimite('bajar') ||
+                _gistLimitesOrig.subir !== GistSync.getSyncLimite('subir')
+            );
+            const huboCambios = token !== GistSync.getToken()
+                || gistId !== GistSync.getGistId()
+                || desde !== rango.desde
+                || hasta !== rango.hasta
+                || limitesCambiaron
+                || (_gistAutoSyncTemp !== null && _gistAutoSyncTemp !== GistSync.getAutoSync())
+                || (_gistLimitesTemp !== null);
+
+            if (_gistAutoSyncTemp !== null) GistSync.setAutoSync(_gistAutoSyncTemp);
+            if (_gistLimitesTemp !== null) {
+                GistSync.setSyncLimite('bajar', _gistLimitesTemp.bajar);
+                GistSync.setSyncLimite('subir', _gistLimitesTemp.subir);
+            }
+            GistSync.saveCredentials(token, gistId);
+            GistSync.setRangoHorario(desde, hasta);
+            mostrarToast(huboCambios ? 'Configuración guardada' : 'Sin cambios', huboCambios ? 'success' : 'info');
+            cerrarModalGist();
+        }
+
+        function cerrarModalGist() {
+            _gistAutoSyncTemp = null;
+            _gistLimitesTemp = null;
+            _gistLimitesOrig = null;
+            if (_gistModalPadre) {
+                const padre = _gistModalPadre;
+                _gistModalPadre = null;
+                ModalManager.alternar('modal-gist', padre);
+                if (padre === 'modal-config' && !document.body.classList.contains('config-onboarding')) {
+                    ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
+                }
+            } else {
+                ModalManager.cerrar('modal-gist');
+                _gistModalPadre = null;
+            }
+            actualizarBotonesHistorico();
+        }
+
+        function _calcularRegistrosMerge(modo, mergeData) {
+            const { registrosNormalizados, soloEnGist, complementarios = [], data } = mergeData;
+
+            if (modo === 'merge') {
+                if (soloEnGist.length === 0 && complementarios.length === 0) {
+                    return { vacio: true };
+                }
+                if (D.registros().length + soloEnGist.length > S.SECURITY_LIMITS.MAX_REGISTROS) {
+                    return { limiteAlcanzado: true };
+                }
+
+                const registrosActualizados = D.registros().map(local => {
+                    const imp = complementarios.find(c => c.fecha === local.fecha);
+                    if (!imp) return local;
+                    const actualizado = { ...local };
+                    if (!actualizado.salida && imp.salida) actualizado.salida = imp.salida;
+                    if (!actualizado.tiempoFuera && imp.tiempoFuera) actualizado.tiempoFuera = imp.tiempoFuera;
+                    const t = D.calcularHoras(actualizado.entrada, actualizado.salida, actualizado.tiempoFuera || null, actualizado.credito || null);
+                    if (t) { actualizado.horas = t.horas; actualizado.minutos = t.minutos; actualizado.total = t.total; }
+                    return actualizado;
+                });
+
+                const partes = [];
+                if (soloEnGist.length > 0) partes.push(`${soloEnGist.length} día${soloEnGist.length !== 1 ? 's' : ''} nuevo${soloEnGist.length !== 1 ? 's' : ''}`);
+                if (complementarios.length > 0) partes.push(`${complementarios.length} registro${complementarios.length !== 1 ? 's' : ''} completado${complementarios.length !== 1 ? 's' : ''}`);
+
+                return {
+                    registrosFinales: [...registrosActualizados, ...soloEnGist],
+                    mensajeExito: `Combinado: ${partes.join(', ')}`
+                };
+
+            } else {
+                if (Array.isArray(data.diasHabiles)) {
+                    const diasValidos = data.diasHabiles.filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
+                    if (diasValidos.length > 0) D.setDiasHabiles(diasValidos);
+                }
+                if (data.horasDiarias != null) {
+                    const hd = parseFloat(data.horasDiarias);
+                    if (Number.isFinite(hd) && hd >= 0 && hd <= 24) D.setHorasDiarias(hd);
+                }
+                return {
+                    registrosFinales: registrosNormalizados,
+                    mensajeExito: `${registrosNormalizados.length} registros restaurados desde Gist`
+                };
+            }
+        }
+
+        function _gistMergeCerrarOVolver() {
+            if (_gistMergeDesdeModal) {
+                _gistMergeDesdeModal = false;
+                ModalManager.alternar('modal-gist-merge', 'modal-gist');
+            } else {
+                ModalManager.cerrar('modal-gist-merge');
+            }
+        }
+
+        async function gistMergeAplicar(modo, modoAutomatico = false) {
+            if (!_gistMergeData) return;
+            const mergeData = _gistMergeData;
+            _gistMergeData = null;
+
+            const resultado = _calcularRegistrosMerge(modo, mergeData);
+
+            if (resultado.vacio) {
+                if (!modoAutomatico) _gistMergeCerrarOVolver();
+                mostrarToast('Sin datos nuevos para completar', 'info');
+                return;
+            }
+            if (resultado.limiteAlcanzado) {
+                mostrarToast('Límite alcanzado', 'error');
+                return;
+            }
+
+            const { registrosFinales, mensajeExito } = resultado;
+
+            D.registros().splice(0, D.registros().length, ...registrosFinales);
+            D.registros().sort((a, b) => {
+                if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
+                return (b.entrada || '').localeCompare(a.entrada || '');
+            });
+            D.migrarObjetivoHorasFaltante();
+            HistoryManager.saveState(D.registros());
+
+            await D.guardarYActualizar();
+            UILogic.actualizarUI();
+
+            if (!modoAutomatico) _gistMergeCerrarOVolver();
+            const lastSyncEl = document.getElementById('gist-ultima-sync');
+            if (lastSyncEl) lastSyncEl.textContent = `Última sync: ${GistSync.formatLastSync(GistSync.getLastSync())}`;
+            mostrarToast(mensajeExito, 'success');
+
+            const btn = document.getElementById('btn-gist-bajar');
+            if (btn) btn.disabled = false;
+        }
+
+        function gistMergeCancelar() {
+            _gistMergeData = null;
+            const btn = document.getElementById('btn-gist-bajar');
+            if (btn) btn.disabled = false;
+            _gistMergeCerrarOVolver();
+        }
+
+        function toggleGistMerge() {
+            const actual = GistSync.getMergeBehavior();
+            GistSync.setMergeBehavior(actual === 'merge' ? 'replace' : 'merge');
+            actualizarBotonGistMerge();
+        }
+
+        function actualizarBotonGistMerge() {
+            const hint = document.getElementById('hint-gist-merge');
+            const iconEl = document.getElementById('icon-gist-merge')?.querySelector('use');
+            const esMerge = GistSync.getMergeBehavior() === 'merge';
+            if (hint) hint.textContent = esMerge ? 'Combinar' : 'Reemplazar';
+            if (iconEl) iconEl.setAttribute('href', esMerge ? '#icon-combine' : '#icon-replace-swap');
+        }
+
+        function toggleGistBackup() {
+            const actual = _gistEstadoAutoSyncActual();
+            _gistAutoSyncTemp = (actual + 1) % 3;
+            actualizarBotonGistBackup();
+            actualizarEstadoBotonesGist();
+            _actualizarCampoLimite();
+        }
+
+        function actualizarBotonGistBackup() {
+            const btn = document.getElementById('btn-toggle-gist-backup');
+            const hint = document.getElementById('hint-gist-backup');
+            const label = document.getElementById('label-gist-backup');
+            const rangoEl = document.getElementById('gist-rango-horario');
+            const estado = _gistEstadoAutoSyncActual();
+            if (!btn) return;
+
+            const configs = [
+                { texto: 'Sin automatizar', hint: '', activo: false },
+                { texto: 'Restaurar', hint: '', activo: true },
+                { texto: 'Respaldar', hint: '', activo: true }
+            ];
+            const c = configs[estado];
+            _setBtnActivo(btn.id, c.activo);
+            if (label) label.textContent = c.texto;
+            if (hint) { hint.textContent = c.hint; hint.style.color = c.color; }
+
+            if (rangoEl) {
+                const activo = estado === 1 || estado === 2;
+                rangoEl.classList.toggle('disabled', !activo);
+            }
+        }
+
+        function toggleVerToken() {
+            const input = document.getElementById('gist-token');
+            if (!input) return;
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        function abrirGistEnBrowser() {
+            const gistIdRaw = document.getElementById('gist-id')?.value.trim() || GistSync.getGistId();
+            if (gistIdRaw && GistSync.esGistIdValido(gistIdRaw)) {
+                window.open(`https://gist.github.com/${gistIdRaw.trim()}`, '_blank', 'noopener,noreferrer');
+            } else {
+                window.open('https://gist.github.com', '_blank', 'noopener,noreferrer');
+            }
+        }
+
+        function _tipoSyncActual() {
+            const estado = _gistEstadoAutoSyncActual();
+            return estado === 1 ? 'bajar' : estado === 2 ? 'subir' : null;
+        }
+
+        function _actualizarCampoLimite() {
+            const tipo = _tipoSyncActual();
+            const contenedor = document.getElementById('gist-limite-sync');
+            if (!contenedor) return;
+            if (!tipo) {
+                contenedor.classList.add('disabled');
+                return;
+            }
+            const limite = _gistLimitesTemp ? _gistLimitesTemp[tipo] : GistSync.getSyncLimite(tipo);
+            const input = document.getElementById('gist-limite-valor');
+            const label = document.getElementById('gist-limite-label');
+            if (input) input.textContent = limite;
+            if (label) label.textContent = tipo === 'bajar' ? 'Límite bajadas por hora (0 = sin límite)' : 'Límite subidas por hora (0 = sin límite)';
+            contenedor.classList.remove('disabled');
+        }
+
+        function cambiarLimiteSync(delta) {
+            const tipo = _tipoSyncActual();
+            if (!tipo) return;
+            if (!_gistLimitesTemp) _gistLimitesTemp = { bajar: GistSync.getSyncLimite('bajar'), subir: GistSync.getSyncLimite('subir') };
+            _gistLimitesTemp[tipo] = Math.max(0, Math.min(99, _gistLimitesTemp[tipo] + delta));
+            _actualizarCampoLimite();
+        }
+
+        const _pressHoldLimite = _crearPressHold(delta => cambiarLimiteSync(delta));
+        function iniciarCambioLimite(delta) { _pressHoldLimite.iniciar(delta); }
+        function detenerCambioLimite() { _pressHoldLimite.detener(); }
+
+        async function _gistConSpinner(btnId, mensajeError, accion) {
+            const btn = document.getElementById(btnId);
+            if (btn) btn.disabled = true;
+            const iconoPerfil = document.getElementById('header-profile-icon');
+            iconoPerfil?.classList.add('icono-spin');
+            _flashCampo('header-profile-btn');
+
+            try {
+                await accion();
+            } catch (e) {
+                console.error(`${mensajeError}:`, e);
+                mostrarToast(mensajeError, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+                iconoPerfil?.classList.remove('icono-spin');
+            }
+        }
+
+        async function gistSubir() {
+            _gistGuardarCredencialesSiModalAbierto();
+            await _gistConSpinner('btn-gist-subir', 'Error al subir', async () => {
+                const nuevoId = await GistSync.subir(
+                    D.registros(),
+                    D.diasHabiles(),
+                    D.horasDiarias()
+                );
+                const gistIdInput = document.getElementById('gist-id');
+                if (gistIdInput) gistIdInput.value = nuevoId;
+                const lastSyncEl = document.getElementById('gist-ultima-sync');
+                if (lastSyncEl) lastSyncEl.textContent = `Última sync: ${GistSync.formatLastSync(GistSync.getLastSync())}`;
+                mostrarToast('Datos respaldados en Gist', 'success');
+            });
+        }
+
+        let _gistMergeData = null;
+
+        async function _validarDatosGist(data) {
+            if (!data.registros || !Array.isArray(data.registros)) throw new Error('Datos inválidos en el Gist');
+            const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', '_hashNoCoincide'];
+            if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) throw new Error('Estructura del Gist sospechosa');
+            if (data._hashNoCoincide) {
+                const continuar = await ModalManager.confirmar('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
+                if (!continuar) return null;
+            }
+            if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
+                mostrarToast(`Gist de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
+            }
+            const registrosNormalizados = D.normalizarRegistrosImportados(data.registros, D.calcularHoras);
+            if (registrosNormalizados.length === 0) throw new Error('No se encontraron registros válidos');
+            if (registrosNormalizados.length > S.SECURITY_LIMITS.MAX_REGISTROS) throw new Error(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS} registros permitidos`);
+            return registrosNormalizados;
+        }
+
+        function _calcularDiffGist(registrosNormalizados) {
+            const localesPorFecha = new Map(D.registros().map(r => [r.fecha, r]));
+            const gistPorFecha = new Map(registrosNormalizados.map(r => [r.fecha, r]));
+
+            const soloEnGist = registrosNormalizados.filter(r => !localesPorFecha.has(r.fecha));
+            const enAmbos = registrosNormalizados.filter(r => localesPorFecha.has(r.fecha));
+            const soloLocal = D.registros().filter(r => !gistPorFecha.has(r.fecha));
+            const complementarios = enAmbos.filter(imp => {
+                const local = localesPorFecha.get(imp.fecha);
+                return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
+            });
+            return { soloEnGist, enAmbos, soloLocal, complementarios };
+        }
+
+        function _calcularConfigCambios(data) {
+            const cambios = [];
+            if (Array.isArray(data.diasHabiles)) {
+                const diasGist = [...data.diasHabiles].sort().join(',');
+                const diasLocal = [...D.diasHabiles()].sort().join(',');
+                if (diasGist !== diasLocal) cambios.push('días laborales');
+            }
+            if (data.horasDiarias != null && parseFloat(data.horasDiarias) !== D.horasDiarias()) {
+                cambios.push(`horas diarias (${D.horasDiarias()}h → ${parseFloat(data.horasDiarias)}h)`);
+            }
+            return cambios;
+        }
+
+        function _buildResumenMerge(resumenEl, { soloEnGist, enAmbos, soloLocal, complementarios }, registrosNormalizados, configCambios) {
+            resumenEl.innerHTML = '';
+            const _mkSvg = (id) => {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('class', 'icon');
+                const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+                use.setAttribute('href', id);
+                svg.appendChild(use);
+                return svg;
+            };
+            const _mkStrong = (text, cls) => Object.assign(document.createElement('strong'), { className: cls || '', textContent: String(text) });
+            const _mkRow = (...nodes) => {
+                const d = document.createElement('div');
+                nodes.forEach(n => d.appendChild(typeof n === 'string' ? document.createTextNode(n) : n));
+                return d;
+            };
+
+            const plural = (n) => n !== 1 ? 's' : '';
+            const bloqueFilas = document.createElement('div');
+            bloqueFilas.appendChild(_mkRow(_mkSvg('#icon-cloud'), ` En Gist `, _mkStrong(soloEnGist.length, 'text-green'), ` registro${plural(soloEnGist.length)} nuevos`));
+            const filaAmbos = _mkRow(_mkSvg('#icon-combine'), ` En ambos `, _mkStrong(enAmbos.length), ` registro${plural(enAmbos.length)} (por fecha`);
+            if (complementarios.length > 0) {
+                filaAmbos.appendChild(document.createTextNode(', '));
+                filaAmbos.appendChild(_mkStrong(complementarios.length, 'text-blue'));
+                filaAmbos.appendChild(document.createTextNode(' para completar'));
+            }
+            filaAmbos.appendChild(document.createTextNode(')'));
+            bloqueFilas.appendChild(filaAmbos);
+            bloqueFilas.appendChild(_mkRow(_mkSvg('#icon-save'), ` Local `, _mkStrong(soloLocal.length), ` registro${plural(soloLocal.length)} no subidos`));
+            resumenEl.appendChild(bloqueFilas);
+
+            const configEl = Object.assign(document.createElement('div'), {
+                id: '_gist-config-cambios',
+                textContent: configCambios.length > 0 ? `⚙ Reemplazar cambiará: ${configCambios.join(', ')}` : '⚙ Sin cambios de configuración'
+            });
+            resumenEl.appendChild(configEl);
+
+            const footer = document.createElement('div');
+            footer.className = 'gist-resumen-footer';
+            let txtCombinar = `: agrega ${soloEnGist.length} nuevo(s)`;
+            if (complementarios.length > 0) txtCombinar += `, completa ${complementarios.length} registro(s)`;
+            txtCombinar += ', mantiene los locales';
+            footer.appendChild(_mkStrong('Combinar'));
+            footer.appendChild(document.createTextNode(txtCombinar));
+            footer.appendChild(document.createElement('br'));
+            footer.appendChild(_mkStrong('Reemplazar'));
+            footer.appendChild(document.createTextNode(`: usa los ${registrosNormalizados.length} registros del Gist`));
+            resumenEl.appendChild(footer);
+        }
+
+        async function gistBajar(modoAutomatico = false) {
+            _gistGuardarCredencialesSiModalAbierto();
+            _gistMergeDesdeModal = document.getElementById('modal-gist')?.classList.contains('show') ?? false;
+            await _gistConSpinner('btn-gist-bajar', 'Error al bajar', async () => {
+                const data = await GistSync.bajar();
+                const registrosNormalizados = await _validarDatosGist(data);
+                if (!registrosNormalizados) return;
+
+                const diff = _calcularDiffGist(registrosNormalizados);
+                const { soloEnGist, complementarios } = diff;
+                _gistMergeData = { registrosNormalizados, soloEnGist, complementarios, data };
+
+                if (modoAutomatico) {
+                    await gistMergeAplicar(GistSync.getMergeBehavior(), true);
+                } else {
+                    const configCambios = _calcularConfigCambios(data);
+                    const resumenEl = document.getElementById('gist-merge-resumen');
+                    if (resumenEl) _buildResumenMerge(resumenEl, diff, registrosNormalizados, configCambios);
+                    ModalManager.alternar('modal-gist', 'modal-gist-merge');
+                }
+            });
+        }
+
+        return {
+            mostrarImportar,
+            cerrarImportar,
+            mostrarExportar,
+            cerrarExportar,
+            ejecutarExportacion,
+            toggleCamposRangoExport,
+            actualizarEstadoBotonesGist,
+            actualizarBotonesHistorico,
+            abrirModalGist,
+            cerrarModalGist,
+            guardarConfigGist,
+            toggleVerToken,
+            abrirGistEnBrowser,
+            gistMergeCancelar,
+            gistMergeAplicar,
+            toggleGistBackup,
+            toggleGistMerge,
+            cambiarLimiteSync,
+            iniciarCambioLimite,
+            detenerCambioLimite,
+            gistSubir,
+            gistBajar
+        };
+    })(SecurityAndUtils, DataManagement, GistSync, UICore);
+
+    // ====================================================================
+    //                     MÓDULO UI HISTORICO
+    // ====================================================================
+    const UIHistorico = (function (S, D, UICore) {
+        const {
+            formatoDiferencia, mostrarToast, _setBtnActivo, debounce,
+            _actualizarOffsetsStickyMes
+        } = UICore;
+
+        let edicionBloqueada = true;
+
+        let edicionGrupoBloqueada = true;
+
+        let tiempoExpansionBotones = null;
+        let timerAutoCierreBotones = null;
 
         function agruparRegistrosPorMes(registros) {
             if (!Array.isArray(registros)) {
@@ -2305,7 +4147,7 @@
             return svg;
         }
 
-        function crearItemRegistroIndividual(r, horasDiarias, idResaltar = null, hoy = TimeUtils.obtenerFechaHoy()) {
+        function crearItemRegistroIndividual(r, idResaltar = null, hoy = TimeUtils.obtenerFechaHoy()) {
             const item = document.createElement('div');
 
             let className = r.fecha === hoy ? 'registro-item hoy' : 'registro-item';
@@ -2341,20 +4183,23 @@
             const totalEl = document.createElement('div');
             totalEl.className = 'registro-total';
             let totalText = 'Incompleto';
+            let esCubierto = false;
 
             if (tipoEspecial) {
                 totalText = 'Justificado';
                 totalEl.classList.add(`${tipoEspecial.color}-text`);
             } else if (r.entrada && r.salida) {
                 totalText = `${r.horas}h ${r.minutos}m`;
-                if (horasDiarias > 0 && _esFechaHabil(r.fecha, D.diasHabiles())) {
-                    const diffText = formatoDiferencia(r.total);
-                    if (horasGte(r.total, horasDiarias)) {
+                const objetivoReg = D.objetivoDeRegistro(r);
+                if (objetivoReg > 0 && UILogic._esFechaHabil(r.fecha, D.diasHabiles())) {
+                    const diffText = formatoDiferencia(r.total, objetivoReg);
+                    if (horasGte(r.total, objetivoReg)) {
                         totalEl.classList.add('green-text');
                         if (diffText) totalText += ` (${diffText})`;
-                    } else if (_cubiertoPorSaldo(r.fecha)) {
+                    } else if (UILogic._cubiertoPorSaldo(r.fecha)) {
                         totalEl.classList.add('gold-text');
-                        totalText += ` (${diffText}) Cubierto`;
+                        if (diffText) totalText += ` (${diffText})`;
+                        esCubierto = true;
                     } else {
                         totalEl.classList.add('red-text');
                         if (diffText) totalText += ` (${diffText})`;
@@ -2368,15 +4213,26 @@
             }
 
             totalEl.textContent = totalText;
+
+            const badgesEl = document.createElement('div');
+            badgesEl.className = 'registro-badges';
+            badgesEl.appendChild(totalEl);
+            if (esCubierto) {
+                const cubiertoEl = document.createElement('div');
+                cubiertoEl.className = 'registro-total gold-text';
+                cubiertoEl.textContent = 'Cubierto';
+                badgesEl.appendChild(cubiertoEl);
+            }
+
             info.appendChild(fechaEl);
             info.appendChild(horasEl);
-            info.appendChild(totalEl);
+            info.appendChild(badgesEl);
             item.appendChild(info);
 
             return item;
         }
 
-        function crearContenedorMes(claveMes, registrosDelMes, horasDiarias, idNuevo, mesHoy, hoy) {
+        function crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy) {
             const grupos = agruparRegistrosConsecutivos(registrosDelMes);
 
             const contenedorMesActual = document.createElement('div');
@@ -2425,8 +4281,8 @@
 
                 innerMesActual.appendChild(
                     esGrupo
-                        ? crearGrupoExpandible(grupo, horasDiarias, idNuevo)
-                        : crearItemRegistroIndividual(r, horasDiarias, idNuevo, hoy)
+                        ? crearGrupoExpandible(grupo, idNuevo)
+                        : crearItemRegistroIndividual(r, idNuevo, hoy)
                 );
                 semanaAnterior = semanaActual;
             });
@@ -2445,7 +4301,7 @@
                     className: 'btn-backup empty-state__btn-restaurar',
                     innerHTML: '<svg class="icon"><use href="#icon-upload" /></svg> Restaurar desde archivo'
                 });
-                btn.addEventListener('click', () => mostrarImportar(true));
+                btn.addEventListener('click', () => UILogic.mostrarImportar(true));
                 emptyDiv.appendChild(msg);
                 emptyDiv.appendChild(btn);
             } else {
@@ -2454,7 +4310,7 @@
             lista.appendChild(emptyDiv);
         }
 
-        function _crearContenedorAnio(anio, mesesDelAnio, horasDiarias, idNuevo, mesHoy, hoy) {
+        function _crearContenedorAnio(anio, mesesDelAnio, idNuevo, mesHoy, hoy) {
             const contenedor = document.createElement('div');
             contenedor.className = 'registro-mes-container';
 
@@ -2472,7 +4328,7 @@
             if (expandido) { detalle.classList.add('expanded'); chevron.style.transform = 'rotate(180deg)'; }
 
             mesesDelAnio.forEach((registrosDelMes, claveMes) =>
-                innerAnio.appendChild(crearContenedorMes(claveMes, registrosDelMes, horasDiarias, idNuevo, mesHoy, hoy))
+                innerAnio.appendChild(crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy))
             );
 
             contenedor.appendChild(header);
@@ -2487,7 +4343,6 @@
             const registrosAMostrar = D.obtenerRegistrosFiltrados();
             if (registrosAMostrar.length === 0) { _renderEmptyStateLista(lista); return; }
 
-            const horasDiarias = D.horasDiarias();
             const hoy = TimeUtils.obtenerFechaHoy();
             const mesHoy = hoy.substring(0, 7);
             const anioHoy = hoy.substring(0, 4);
@@ -2507,24 +4362,17 @@
             });
 
             mesesAnioActual.forEach((regs, claveMes) =>
-                fragmento.appendChild(crearContenedorMes(claveMes, regs, horasDiarias, idNuevo, mesHoy, hoy))
+                fragmento.appendChild(crearContenedorMes(claveMes, regs, idNuevo, mesHoy, hoy))
             );
             [...mesesPorAnio.keys()].sort().reverse().forEach(anio =>
-                fragmento.appendChild(_crearContenedorAnio(anio, mesesPorAnio.get(anio), horasDiarias, idNuevo, mesHoy, hoy))
+                fragmento.appendChild(_crearContenedorAnio(anio, mesesPorAnio.get(anio), idNuevo, mesHoy, hoy))
             );
 
             lista.appendChild(fragmento);
             _actualizarOffsetsStickyMes();
         }
 
-        function setProgressBarColor(progressEl, status) {
-            if (!progressEl) return;
-            progressEl.className = 'progress-fill';
-            progressEl.classList.add(status);
-            if (status === 'blue') progressEl.classList.add('shimmer');
-        }
-
-        function crearGrupoExpandible(grupo, horasDiarias, idResaltar = null) {
+        function crearGrupoExpandible(grupo, idResaltar = null) {
             const primerReg = grupo.registros[0];
             const ultimoReg = grupo.registros[grupo.registros.length - 1];
 
@@ -2571,9 +4419,13 @@
             totalEl.className = `registro-total ${colorClase}`;
             totalEl.textContent = 'Justificado';
 
+            const badgesEl = document.createElement('div');
+            badgesEl.className = 'registro-badges';
+            badgesEl.appendChild(totalEl);
+
             info.appendChild(fechaEl);
             info.appendChild(horasEl);
-            info.appendChild(totalEl);
+            info.appendChild(badgesEl);
             header.appendChild(info);
 
             header.dataset.accion = 'editar-grupo';
@@ -2585,6 +4437,424 @@
             container.appendChild(header);
             return container;
         }
+
+        function cerrarEdicion() {
+            window.UILogic?.detenerCambioObjetivoEdicion();
+            ModalManager.cerrar('modal-editar', () => {
+                D.setEditandoId(null);
+                document.dispatchEvent(new Event('scroll'));
+            });
+        }
+
+        function _setBloqueoEdicionGenerico(bloqueado, { btnLockId, inputIds, modalId, excluirBotones }) {
+            const btnLock = $(btnLockId);
+            if (btnLock) {
+                const icon = btnLock.querySelector('use');
+                icon.setAttribute('href', bloqueado ? '#icon-lock' : '#icon-lock-open');
+                btnLock.title = bloqueado ? "Desbloquear edición" : "Bloquear edición";
+                btnLock.style.color = 'var(--text-main)';
+                btnLock.style.background = bloqueado ? 'var(--c-red)' : 'var(--c-green)';
+            }
+
+            inputIds.forEach(id => {
+                const el = $(id);
+                if (el) el.disabled = bloqueado;
+            });
+
+            const modal = $(modalId);
+            if (modal) {
+                const botones = modal.querySelectorAll(excluirBotones);
+                botones.forEach(btn => {
+                    btn.disabled = bloqueado;
+                });
+            }
+        }
+
+        function setBloqueoEdicion(bloqueado) {
+            edicionBloqueada = bloqueado;
+            _setBloqueoEdicionGenerico(bloqueado, {
+                btnLockId: 'btn-lock-toggle',
+                inputIds: ['edit-fecha', 'edit-entrada', 'edit-salida', 'edit-tiempo-fuera', 'edit-notas'],
+                modalId: 'modal-editar',
+                excluirBotones: 'button:not(#btn-lock-toggle):not(.btn-cancel):not(#btn-toggle-credito)'
+            });
+
+            const enModoGlobal = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true);
+            const elObjetivo = $('edit-objetivo');
+            const objetivoDeshabilitado = bloqueado || enModoGlobal;
+            [$('btn-edit-objetivo-inc'), $('btn-edit-objetivo-dec')].forEach(btn => {
+                if (btn) btn.disabled = objetivoDeshabilitado;
+            });
+            if (objetivoDeshabilitado) window.UILogic?.detenerCambioObjetivoEdicion();
+            if (elObjetivo) elObjetivo.classList.toggle('input-number-inerte', objetivoDeshabilitado);
+            verificarBloqueoCredito();
+        }
+
+        function toggleBloqueoEdicion() {
+            setBloqueoEdicion(!edicionBloqueada);
+        }
+
+        function toggleCredito() {
+            const btn = document.getElementById('btn-toggle-credito');
+            const estaActivo = btn.dataset.activo === "true";
+
+            btn.dataset.activo = estaActivo ? "false" : "true";
+            _setBtnActivo('btn-toggle-credito', !estaActivo);
+            mostrarToast(!estaActivo ? 'Asueto | Salida temprano activado' : 'Asueto | Salida temprano desactivado', 'info');
+        }
+
+        function _actualizarHintEdicion() {
+            const hint = document.getElementById('edit-hint-resumen');
+            if (!hint) return;
+            const e = document.getElementById('edit-entrada')?.value.trim();
+            const s = document.getElementById('edit-salida')?.value.trim();
+            const tf = document.getElementById('edit-tiempo-fuera')?.value.trim();
+            if (!e && !s) { hint.textContent = ''; return; }
+            const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(e, s);
+            if (tipoEspecial) { hint.textContent = tipoEspecial.label; return; }
+            if (e?.length === 5 && s?.length === 5) {
+                const t = D.calcularHoras(e, s, tf || null, null, false);
+                hint.textContent = t ? `Total: ${t.horas}h ${t.minutos}m` : '';
+            } else {
+                hint.textContent = '';
+            }
+        }
+
+        function _initListenerAccionesLista(lista) {
+            lista.addEventListener('click', (e) => {
+                const target = e.target.closest('[data-accion]');
+                if (!target) return;
+                if (target.dataset.accion === 'editar-registro') {
+                    const id = target.dataset.registroId;
+                    if (id) D.editarRegistro(id);
+                } else if (target.dataset.accion === 'editar-grupo') {
+                    try {
+                        const grupoData = JSON.parse(target.dataset.grupoData, S.reviverJSONSeguro);
+                        const registrosCompletos = D.registros().filter(r => grupoData.registros.includes(r.id));
+                        D.editarGrupo({ registros: registrosCompletos, subtipo: grupoData.subtipo });
+                    } catch (err) { console.error('Error al abrir grupo:', err); }
+                }
+            });
+        }
+
+        function _initListenerToggleAnio(lista) {
+            lista.addEventListener('click', (e) => {
+                const headerAnio = e.target.closest('.registro-mes-header[data-accion="toggle-anio"]');
+                if (!headerAnio) return;
+                e.stopPropagation();
+                const contenedorAnio = headerAnio.closest('.registro-mes-container');
+                if (!contenedorAnio) return;
+                const detalleAnio = contenedorAnio.querySelector(':scope > .registro-mes-detalle');
+                const chevronAnio = headerAnio.querySelector('.chevron-mes');
+                const anioId = headerAnio.dataset.anioId;
+                const abierto = detalleAnio.classList.toggle('expanded');
+                if (chevronAnio) chevronAnio.style.transform = abierto ? 'rotate(180deg)' : 'rotate(0deg)';
+                try { StorageHelper.setItem(STORAGE_KEYS.ANIO_EXPANDIDO(anioId), String(abierto)); } catch (e) { }
+            });
+        }
+
+        function _scrollAlExpandir(contenedor, detalle) {
+            setTimeout(() => {
+                const margenHeader = 80;
+                const alturaVentana = window.innerHeight;
+                const registros = detalle.querySelectorAll('.registro-item');
+                if (!registros.length) return;
+                const r0 = registros[0].getBoundingClientRect();
+                const r1 = registros.length > 1 ? registros[1].getBoundingClientRect() : null;
+                const cortado0 = r0.top < margenHeader || r0.bottom > alturaVentana;
+                const cortado1 = r1 && (r1.top < margenHeader || r1.bottom > alturaVentana);
+                if (cortado0 || cortado1) contenedor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 310);
+        }
+
+        function _initListenerToggleMes(lista) {
+            lista.addEventListener('click', (e) => {
+                const header = e.target.closest('.registro-mes-header');
+                if (!header || header.dataset.accion !== 'toggle-mes') return;
+                e.stopPropagation();
+                const contenedor = header.closest('.registro-mes-container');
+                if (!contenedor) return;
+                const detalle = contenedor.querySelector('.registro-mes-detalle');
+                const chevronIcon = header.querySelector('.chevron-mes');
+
+                if (detalle.classList.contains('expanded')) {
+                    detalle.classList.remove('expanded');
+                    chevronIcon.style.transform = 'rotate(0deg)';
+                    try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'false'); } catch (e) { }
+                    return;
+                }
+
+                const esContenedorAnio = (el) => {
+                    const h = el.closest('.registro-mes-container')?.querySelector('.registro-mes-header');
+                    return h && h.dataset.accion === 'toggle-anio';
+                };
+                const detalleAnioPadre = contenedor.parentElement?.closest('.registro-mes-detalle') || null;
+                const otrosMesesAbiertos = lista.querySelectorAll('.registro-mes-detalle.expanded');
+
+                const _colapsarContenedor = (otro, { datasetKey, storageKeyFn }) => {
+                    otro.classList.remove('expanded');
+                    const oc = otro.closest('.registro-mes-container');
+                    const och = oc?.querySelector('.chevron-mes');
+                    const oHeader = oc?.querySelector('.registro-mes-header');
+                    if (och) och.style.transform = 'rotate(0deg)';
+                    const id = oHeader?.dataset[datasetKey];
+                    if (id) {
+                        try { StorageHelper.setItem(storageKeyFn(id), 'false'); } catch (e) { }
+                    }
+                };
+
+                otrosMesesAbiertos.forEach(otro => {
+                    if (!esContenedorAnio(otro) || otro === detalleAnioPadre) return;
+                    _colapsarContenedor(otro, { datasetKey: 'anioId', storageKeyFn: STORAGE_KEYS.ANIO_EXPANDIDO });
+                });
+
+                const _abrirDetalle = () => {
+                    detalle.classList.add('expanded');
+                    chevronIcon.style.transform = 'rotate(180deg)';
+                    try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'true'); } catch (e) { }
+                    _scrollAlExpandir(contenedor, detalle);
+                };
+
+                const hayOtrosAbiertos = Array.from(otrosMesesAbiertos).some(o => o !== detalle && !esContenedorAnio(o));
+                if (hayOtrosAbiertos) {
+                    otrosMesesAbiertos.forEach(otro => {
+                        if (otro === detalle || esContenedorAnio(otro)) return;
+                        _colapsarContenedor(otro, { datasetKey: 'mesId', storageKeyFn: STORAGE_KEYS.MES_EXPANDIDO });
+                    });
+                }
+                _abrirDetalle();
+            });
+        }
+
+        function actualizarHintGrupo() {
+            const hint = document.getElementById('edit-grupo-hint');
+            if (!hint) return;
+            const desde = document.getElementById('edit-grupo-desde')?.value;
+            const hasta = document.getElementById('edit-grupo-hasta')?.value;
+            if (!desde && !hasta) { hint.textContent = ''; return; }
+            if (desde && !hasta) {
+                hint.textContent = `1 día`;
+                return;
+            }
+            if (!TimeUtils.validarFecha(desde) || !TimeUtils.validarFecha(hasta) || desde > hasta) {
+                hint.textContent = 'Rango inválido';
+                return;
+            }
+            const fechaInicio = TimeUtils.parsearFechaLocal(desde);
+            const fechaFin = TimeUtils.parsearFechaLocal(hasta);
+            const diasTotales = Math.ceil(Math.abs(fechaFin - fechaInicio) / (1000 * 60 * 60 * 24)) + 1;
+            hint.textContent = `${diasTotales} día${diasTotales !== 1 ? 's' : ''}`;
+        }
+        ['edit-grupo-desde', 'edit-grupo-hasta'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', actualizarHintGrupo);
+        });
+
+        function mostrarFiltros() {
+            if (D.obtenerRegistrosFiltrados().length !== D.registros().length) {
+                D.limpiarFiltros();
+                return;
+            }
+
+            ModalManager.abrir('modal-filtros');
+
+            const aplicarInmediato = () => {
+                const desde = $('filtro-fecha-desde').value;
+                const hasta = $('filtro-fecha-hasta').value;
+                const tipo = $('filtro-tipo').value;
+                D.aplicarFiltrosInmediato(desde, hasta, tipo);
+            };
+
+            ['filtro-fecha-desde', 'filtro-fecha-hasta', 'filtro-tipo'].forEach(id => {
+                const el = $(id);
+                if (el) {
+                    el.removeEventListener('change', aplicarInmediato);
+                    el.addEventListener('change', aplicarInmediato);
+                }
+            });
+        }
+
+        function cerrarFiltros() {
+            ModalManager.cerrar('modal-filtros');
+        }
+
+        function _setIconHistorico(icon, estado) {
+            if (!icon) return;
+            icon.classList.toggle('rotated', estado === 'meses');
+            icon.style.transform = estado === 'completo' ? 'rotate(-90deg)' : '';
+        }
+
+        function toggleHistorico() {
+            cancelarTimerAutoCierreBotones();
+            const contenido = $('contenido-historico');
+            const botones = $('botones-historico');
+            const icon = $('icon-indicator-historico');
+            if (!contenido) return;
+
+            const expandido = contenido.classList.contains('expanded');
+            const conBotones = botones.classList.contains('expanded');
+
+            try {
+                if (!expandido) {
+                    contenido.classList.add('expanded');
+                    _setIconHistorico(icon, 'meses');
+                    StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
+                    tiempoExpansionBotones = null;
+                    UILogic._activarVistaCalendarioHistorico();
+
+                } else if (!conBotones) {
+                    botones.classList.add('expanded');
+                    _setIconHistorico(icon, 'completo');
+                    StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'completo');
+                    tiempoExpansionBotones = Date.now();
+
+                } else {
+                    botones.classList.remove('expanded');
+                    if (Date.now() - (tiempoExpansionBotones || 0) > 500) {
+                        _setIconHistorico(icon, 'meses');
+                        StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
+                    } else {
+                        contenido.classList.remove('expanded');
+                        _setIconHistorico(icon, 'cerrado');
+                        StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'cerrado');
+                    }
+                    tiempoExpansionBotones = null;
+                }
+            } catch (e) {
+                console.warn('Error guardando estado histórico:', e);
+            }
+        }
+
+        function iniciarTimerAutoCierreBotones() {
+            if (timerAutoCierreBotones) {
+                clearTimeout(timerAutoCierreBotones);
+                timerAutoCierreBotones = null;
+            }
+
+            timerAutoCierreBotones = setTimeout(() => {
+                const botones = $('botones-historico');
+                const contenido = $('contenido-historico');
+                const icon = $('icon-indicator-historico');
+
+                if (botones && botones.classList.contains('expanded')) {
+                    botones.classList.remove('expanded');
+
+                    if (icon) {
+                        icon.style.transform = '';
+                        icon.classList.add('rotated');
+                    }
+
+                    try {
+                        StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
+                    } catch (e) {
+                        console.warn('Error guardando estado histórico:', e);
+                    }
+
+                    tiempoExpansionBotones = null;
+                }
+
+                timerAutoCierreBotones = null;
+            }, 3000);
+        }
+
+        function cancelarTimerAutoCierreBotones() {
+            if (timerAutoCierreBotones) {
+                clearTimeout(timerAutoCierreBotones);
+                timerAutoCierreBotones = null;
+            }
+        }
+
+        function verificarBloqueoCredito() {
+            const btnCredito = document.getElementById('btn-toggle-credito');
+            if (!btnCredito) return;
+
+            const _bloquear = () => {
+                btnCredito.disabled = true;
+                btnCredito.style.cursor = 'not-allowed';
+            };
+            const _habilitar = () => {
+                btnCredito.disabled = false;
+                btnCredito.style.cursor = 'pointer';
+            };
+
+            if (document.getElementById('edit-fecha').disabled) return _bloquear();
+
+            const e = document.getElementById('edit-entrada').value.trim();
+            const s = document.getElementById('edit-salida').value.trim();
+            const tf = document.getElementById('edit-tiempo-fuera').value.trim() || null;
+
+            const horarioCompleto = e.length === 5 && s.length === 5;
+            if (!horarioCompleto) {
+                if (btnCredito.dataset.activo === "true") toggleCredito();
+                return _bloquear();
+            }
+
+            if (TiposRegistro.esRegistroEspecial(e, s)) return _bloquear();
+
+            const calcTemp = D.calcularHoras(e, s, tf, null);
+            const objetivoEdicion = D.objetivoEdicionEnVivo();
+            if (!calcTemp || calcTemp.total >= objetivoEdicion) return _bloquear();
+
+            _habilitar();
+        }
+
+        function setBloqueoEdicionGrupo(bloqueado) {
+            edicionGrupoBloqueada = bloqueado;
+            _setBloqueoEdicionGenerico(bloqueado, {
+                btnLockId: 'btn-lock-grupo-toggle',
+                inputIds: ['edit-grupo-tipo', 'edit-grupo-desde', 'edit-grupo-hasta'],
+                modalId: 'modal-editar-grupo',
+                excluirBotones: 'button:not(#btn-lock-grupo-toggle):not(.btn-cancel)'
+            });
+        }
+
+        function toggleBloqueoEdicionGrupo() {
+            setBloqueoEdicionGrupo(!edicionGrupoBloqueada);
+        }
+
+        function cerrarEdicionGrupo() {
+            ModalManager.cerrar('modal-editar-grupo', () => {
+                D.setGrupoEnEdicion(null);
+                document.dispatchEvent(new Event('scroll'));
+            });
+        }
+
+        return {
+            agruparRegistrosConsecutivos,
+            actualizarListaRegistros,
+            cerrarEdicion,
+            setBloqueoEdicion,
+            toggleBloqueoEdicion,
+            toggleCredito,
+            _actualizarHintEdicion,
+            _initListenerAccionesLista,
+            _initListenerToggleAnio,
+            _initListenerToggleMes,
+            actualizarHintGrupo,
+            mostrarFiltros,
+            cerrarFiltros,
+            toggleHistorico,
+            iniciarTimerAutoCierreBotones,
+            cancelarTimerAutoCierreBotones,
+            verificarBloqueoCredito,
+            setBloqueoEdicionGrupo,
+            toggleBloqueoEdicionGrupo,
+            cerrarEdicionGrupo,
+            setTiempoExpansionBotones: (v) => { tiempoExpansionBotones = v; }
+        };
+    })(SecurityAndUtils, DataManagement, UICore);
+
+    // ====================================================================
+    //                     MÓDULO UI ESTADISTICAS
+    // ====================================================================
+    const UIEstadisticas = (function (S, D, UICore) {
+        const {
+            formatoDiferencia, mostrarToast, _setBtnActivo, _poblarSelect,
+            _animarSlideElemento, _posicionarPopup, _registrarCierrePopup,
+            toggleSeccionGen, registrarSwipe, _animarFadeSwap
+        } = UICore;
+
+        let modoEstadisticas = 'mensual';
 
         function calcularRegularidad(desviacionMinutos) {
             if (desviacionMinutos === null) return '--:--';
@@ -2668,9 +4938,11 @@
             const promedioEntrada = avgMin(registrosValidos.map(r => TimeUtils.horaAMinutos(r.entrada)));
             const promedioSalida = avgMin(registrosValidos.map(r => TimeUtils.horaAMinutos(r.salida)));
 
-            const remotos = conteosPorTipo['remotos'] || 0;
+            const totalRemotos = registrosRango
+                .filter(r => r.entrada && r.entrada === r.salida && TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === 'remoto')
+                .reduce((s, r) => s + D.objetivoDeRegistro(r), 0);
             const totalHorasTrabajadas = registrosValidos.reduce((s, r) => s + r.total, 0);
-            const totalHoras = totalHorasTrabajadas + (remotos * D.horasDiarias());
+            const totalHoras = totalHorasTrabajadas + totalRemotos;
             const promDiario = totalHorasTrabajadas / registrosValidos.length;
             let hPromedio = Math.floor(promDiario), mPromedio = Math.round((promDiario - hPromedio) * 60);
             if (mPromedio === 60) { hPromedio++; mPromedio = 0; }
@@ -2784,6 +5056,589 @@
             }
             const stats = calcularEstadisticasMes(mesAnio);
             _renderizarStats(stats, { mostrarBtnReporte: true });
+        }
+
+        function _renderSelectorStats() {
+            const anioEl = $('select-anio-stats');
+            const mesEl = $('select-mes-stats');
+            const semEl = $('select-semana-stats');
+            const labelEl = $('label-periodo-toggle');
+            if (modoEstadisticas === 'anual') {
+                if (anioEl) anioEl.classList.remove('hidden');
+                if (mesEl) mesEl.classList.add('hidden');
+                if (semEl) semEl.classList.add('hidden');
+                if (labelEl) labelEl.textContent = 'Anual';
+                poblarSelectorAnios();
+            } else if (modoEstadisticas === 'semanal') {
+                if (anioEl) anioEl.classList.add('hidden');
+                if (mesEl) mesEl.classList.add('hidden');
+                if (semEl) semEl.classList.remove('hidden');
+                if (labelEl) labelEl.textContent = 'Semanal';
+                poblarSelectorSemanas();
+                actualizarEstadisticasSemana(semEl?.value);
+            } else {
+                if (anioEl) anioEl.classList.add('hidden');
+                if (mesEl) mesEl.classList.remove('hidden');
+                if (semEl) semEl.classList.add('hidden');
+                if (labelEl) labelEl.textContent = 'Mensual';
+                poblarSelectorMeses();
+            }
+        }
+
+        function calcularEstadisticasAnio(anio) {
+            const anioNum = parseInt(anio);
+            const registros = D.registros().filter(r => parseInt(r.fecha.substring(0, 4)) === anioNum);
+            let fechaDesde = `${anioNum}-01-01`;
+
+            const desdeEnero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false);
+            if (!desdeEnero && registros.length > 0) {
+                const primerRegistro = registros.reduce((min, r) => r.fecha < min ? r.fecha : min, registros[0].fecha);
+                if (primerRegistro > fechaDesde) {
+                    fechaDesde = primerRegistro;
+                }
+            }
+
+            return _calcularEstadisticasRango(registros, {
+                regularidadPorMes: true,
+                desde: fechaDesde,
+                hasta: `${anioNum}-12-31`
+            });
+        }
+
+
+        function poblarSelectorAnios() {
+            const anios = [...new Set(D.registros().map(r => r.fecha.substring(0, 4)))].sort().reverse();
+            const anioActual = String(new Date().getFullYear());
+            _poblarSelect('select-anio-stats', anios, a => a, anioActual, actualizarEstadisticasAnio);
+        }
+
+        function actualizarEstadisticasAnio(anio) {
+            const stats = calcularEstadisticasAnio(anio);
+            _renderizarStats(stats, { mostrarBtnReporte: true });
+        }
+
+        function _obtenerSemanas() {
+            const semanas = new Map();
+            D.registros().forEach(r => {
+                const d = new Date(r.fecha + 'T00:00:00');
+                const lunes = TimeUtils.obtenerLunes(d);
+                const key = TimeUtils.formatearFechaLocal(lunes);
+                if (!semanas.has(key)) semanas.set(key, lunes);
+            });
+            return Array.from(semanas.keys()).sort().reverse();
+        }
+
+        function _formatearSemana(lunesISO) {
+            const lunes = new Date(lunesISO + 'T00:00:00');
+            const domingo = new Date(lunes);
+            domingo.setDate(lunes.getDate() + 6);
+            const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+            const dL = lunes.getDate();
+            const dD = domingo.getDate();
+            const mL = meses[lunes.getMonth()];
+            const mD = meses[domingo.getMonth()];
+            if (lunes.getMonth() === domingo.getMonth()) {
+                return `${dL} al ${dD} de ${mD}`;
+            }
+            return `${dL} ${mL} al ${dD} ${mD}`;
+        }
+
+        function poblarSelectorSemanas() {
+            const semanas = _obtenerSemanas();
+            const lunesISO = TimeUtils.formatearFechaLocal(TimeUtils.obtenerLunes());
+            _poblarSelect('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana, UILogic._agruparMesesPorAnio);
+        }
+
+        function calcularEstadisticasSemana(lunesISO) {
+            if (!lunesISO) return _calcularEstadisticasRango([], { regularidadPorMes: false });
+            const lunes = new Date(lunesISO + 'T00:00:00');
+            const domingo = new Date(lunes);
+            domingo.setDate(lunes.getDate() + 6);
+            const hasta = TimeUtils.formatearFechaLocal(domingo);
+            const registros = D.registros().filter(r => r.fecha >= lunesISO && r.fecha <= hasta);
+            return _calcularEstadisticasRango(registros, { regularidadPorMes: false, desde: lunesISO, hasta });
+        }
+
+        function actualizarEstadisticasSemana(lunesISO) {
+            const stats = calcularEstadisticasSemana(lunesISO);
+            _renderizarStats(stats, { mostrarBtnReporte: false });
+        }
+
+        function _animarCambioStats(fn) {
+            _animarFadeSwap($('form-stats'), fn);
+        }
+
+        function _cambiarPeriodoStats(selectId, actualizarFn) {
+            const v = $(selectId)?.value;
+            if (v !== undefined) _animarCambioStats(() => actualizarFn(v));
+        }
+        function cambiarMesStats() { _cambiarPeriodoStats('select-mes-stats', actualizarEstadisticas); }
+        function cambiarSemanaStats() { _cambiarPeriodoStats('select-semana-stats', actualizarEstadisticasSemana); }
+        function cambiarAnioStats() { _cambiarPeriodoStats('select-anio-stats', actualizarEstadisticasAnio); }
+
+        function togglePeriodoStats(direccion = 1) {
+            if (_popupStatEl) { _popupStatEl.remove(); _popupStatEl = null; }
+            const selectMes = $('select-mes-stats');
+            const selectAnio = $('select-anio-stats');
+            const label = $('label-periodo-toggle');
+            const selectSemana = $('select-semana-stats');
+
+            const orden = ['mensual', 'anual', 'semanal'];
+            const idx = orden.indexOf(modoEstadisticas);
+            modoEstadisticas = orden[(idx + direccion + orden.length) % orden.length];
+            try { StorageHelper.setItem(STORAGE_KEYS.MODO_ESTADISTICAS, modoEstadisticas); } catch (e) { }
+
+            _animarSlideElemento(document.getElementById('stats-inner'), direccion, () => {
+                selectMes.classList.add('hidden');
+                selectAnio.classList.add('hidden');
+                if (selectSemana) selectSemana.classList.add('hidden');
+                if (modoEstadisticas === 'anual') {
+                    selectAnio.classList.remove('hidden');
+                    if (label) label.textContent = 'Anual';
+                    poblarSelectorAnios();
+                } else if (modoEstadisticas === 'semanal') {
+                    if (selectSemana) selectSemana.classList.remove('hidden');
+                    if (label) label.textContent = 'Semanal';
+                    poblarSelectorSemanas();
+                } else {
+                    selectMes.classList.remove('hidden');
+                    if (label) label.textContent = 'Mensual';
+                    poblarSelectorMeses();
+                }
+            });
+        }
+
+        function poblarSelectorMeses() {
+            const meses = [...new Set(D.registros().map(r => r.fecha.substring(0, 7)))].sort().reverse();
+            const mesActual = TimeUtils.formatearFechaLocal(new Date()).slice(0, 7);
+            _poblarSelect('select-mes-stats', meses, UILogic._nombreMesCapitalizado, mesActual, actualizarEstadisticas, UILogic._agruparMesesPorAnio);
+        }
+
+        function _sumarHorasEfectivas(regs) {
+            return regs.reduce((sum, r) => {
+                const t = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                if (t && t.id === 'remoto') return sum + D.objetivoDeRegistro(r);
+                if (!t) return sum + r.total;
+                return sum;
+            }, 0);
+        }
+
+        function _resolverPeriodoDatos(esAnual) {
+            if (esAnual) {
+                const anio = $('select-anio-stats')?.value;
+                if (!anio) { mostrarToast('No hay año seleccionado', 'error'); return null; }
+                const anioNum = parseInt(anio);
+                return {
+                    periodoLabel: anio,
+                    nombreArchivo: `reporte_${anio}.txt`,
+                    registrosPeriodo: D.registros().filter(r => parseInt(r.fecha.substring(0, 4)) === anioNum),
+                    stats: calcularEstadisticasAnio(anio),
+                    mesSeleccionado: null
+                };
+            }
+            const selectMes = $('select-mes-stats');
+            const mes = selectMes?.value;
+            if (!mes) { mostrarToast('No hay mes seleccionado', 'error'); return null; }
+            const [año, mesNum] = mes.split('-').map(Number);
+            return {
+                periodoLabel: selectMes.options[selectMes.selectedIndex].text,
+                nombreArchivo: `reporte_${mes}.txt`,
+                registrosPeriodo: D.registros().filter(r => {
+                    const [aReg, mReg] = r.fecha.split('-').map(Number);
+                    return aReg === año && mReg === mesNum;
+                }),
+                stats: calcularEstadisticasMes(mes),
+                mesSeleccionado: mes
+            };
+        }
+
+        function _seccionDetalleAnual(registrosPeriodo) {
+            const mesesOrdenados = [...new Set(registrosPeriodo.map(r => r.fecha.substring(0, 7)))].sort();
+            let seccion = `
+
+────────────────────────────────────────────────────────────────
+
+📅 TOTALES POR MES
+────────────────────────────────────────────────────────────────
+
+`;
+            mesesOrdenados.forEach(claveMes => {
+                const regsM = registrosPeriodo.filter(r => r.fecha.startsWith(claveMes));
+                const normales = regsM.filter(r => !TiposRegistro.esRegistroEspecial(r.entrada, r.salida) && r.entrada && r.salida);
+                const especiales = regsM.filter(r => TiposRegistro.esRegistroEspecial(r.entrada, r.salida));
+                const notas = TiposRegistro.obtenerTodosLosTipos()
+                    .map(t => {
+                        const n = especiales.filter(r => TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === t.id).length;
+                        return n ? `${n} ${t.labelPlural.toLowerCase()}` : null;
+                    })
+                    .filter(Boolean);
+                const nombreMes = TimeUtils.formatoTituloMes(claveMes).split(' ')[0];
+                seccion += `   ${nombreMes.padEnd(12)} ${TimeUtils.horasATexto(_sumarHorasEfectivas(regsM), 'short').padEnd(10)}  (${normales.length} jornadas)`;
+                if (notas.length) seccion += `  [${notas.join(', ')}]`;
+                seccion += '\n';
+            });
+            return seccion;
+        }
+
+        function _seccionDetalleMensual(registrosPeriodo) {
+            let seccion = `
+
+──────────────────────────────────────────────────────────────────
+
+📋 DETALLE DIARIO
+──────────────────────────────────────────────────────────────────
+
+`;
+            const ordenados = [...registrosPeriodo].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+            ordenados.forEach(r => {
+                const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                const fecha = r.fecha.split('-').reverse().join('/');
+                const dia = TimeUtils.obtenerNombreDia(r.fecha);
+                let linea;
+                if (tipoEspecial) {
+                    linea = `${fecha}  ${dia.padEnd(10)} ${tipoEspecial.label.toUpperCase()}`;
+                } else {
+                    const entrada = r.entrada || '--:--';
+                    const salida = r.salida || '--:--';
+                    const total = r.salida ? TimeUtils.horasATexto(r.total, 'short') : 'Incompleto';
+                    const tiempoFuera = r.tiempoFuera ? ` (${r.tiempoFuera} fuera)` : '';
+                    const infoAsueto = (r.credito && r.credito !== '00:00') ? ' [SALIDA TEMPRANO]' : '';
+                    const indicador = r.salida ? (horasGte(r.total, D.objetivoDeRegistro(r)) ? '✓ ' : '✗ ') : '  ';
+                    linea = `${fecha}  ${dia.padEnd(10)} ${entrada} → ${salida}  [${total}]${tiempoFuera}${infoAsueto} ${indicador}`;
+                }
+                seccion += linea + '\n';
+            });
+            return seccion;
+        }
+
+        function _agruparRegistrosPorSemana(registros) {
+            const semanas = new Map();
+            registros.forEach(r => {
+                const lunes = TimeUtils.obtenerLunesSemanaISO(r.fecha);
+                if (!semanas.has(lunes)) {
+                    const base = { trabajados: [] };
+                    TiposRegistro.obtenerTodosLosTipos().forEach(t => { base[t.labelPlural.toLowerCase()] = []; });
+                    semanas.set(lunes, base);
+                }
+                const semana = semanas.get(lunes);
+                const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                if (tipoEspecial) {
+                    const cat = tipoEspecial.labelPlural.toLowerCase();
+                    if (semana[cat]) semana[cat].push(r);
+                } else {
+                    semana.trabajados.push(r);
+                }
+            });
+            return semanas;
+        }
+
+        function generarReporte() {
+            const esAnual = modoEstadisticas === 'anual';
+            const periodo = _resolverPeriodoDatos(esAnual);
+            if (!periodo) return;
+            const { periodoLabel, registrosPeriodo, stats, nombreArchivo, mesSeleccionado } = periodo;
+
+            const reporte = {
+
+                header: () => `
+================================================================
+REPORTE DE HORAS TRABAJADAS                   
+================================================================
+
+📅 Período: ${periodoLabel}
+📊 Generado: ${new Date().toLocaleDateString('es-ES')} ${new Date().toLocaleTimeString('es-ES')}
+
+────────────────────────────────────────────────────────────────`,
+
+                resumenGeneral: () => {
+                    const lineasTipos = TiposRegistro.obtenerTodosLosTipos()
+                        .map(t => `   • ${(t.label + ':').padEnd(24)}${stats[t.labelPlural.toLowerCase()] || 0}`)
+                        .join('\n');
+                    return `
+
+📈 RESUMEN GENERAL
+────────────────────────────────────────────────────────────────
+
+   • Jornadas:               ${stats.diasTrabajados}
+${lineasTipos}
+   • Salidas Temprano:       ${stats.compensaciones}
+   • Entrada promedio:       ${stats.entradaPromedio}
+   • Salida promedio:        ${stats.salidaPromedio}
+   • Promedio diario:        ${stats.promedioDiario}
+   
+   • Total horas trabajadas: ${TimeUtils.horasATexto(_sumarHorasEfectivas(registrosPeriodo), 'short')}
+   • Saldo:                  ${stats.bufferPeriodo !== null ? TimeUtils.horasATexto(stats.bufferPeriodo, 'short') : 'N/A'}`;
+                },
+
+                detallePeriodo: () => esAnual
+                    ? _seccionDetalleAnual(registrosPeriodo)
+                    : _seccionDetalleMensual(registrosPeriodo),
+
+                totalesPorSemana: () => {
+                    if (esAnual || !mesSeleccionado) return '';
+                    const [añoActual, mesActual] = mesSeleccionado.split('-').map(Number);
+                    const primerDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual - 1, 1));
+                    const ultimaDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual, 0));
+
+                    const semanas = _agruparRegistrosPorSemana(registrosPeriodo);
+                    const semanasOrdenadas = [...semanas.entries()].sort((a, b) => new Date(a[0]) - new Date(b[0]));
+                    if (!semanasOrdenadas.length) return '';
+
+                    let seccion = `
+
+────────────────────────────────────────────────────────────────
+
+📅 TOTALES POR SEMANA
+────────────────────────────────────────────────────────────────
+
+`;
+                    const semanasIncompletas = [];
+
+                    semanasOrdenadas.forEach(([lunesOriginal, datos], index) => {
+                        let totalSemanal = datos.trabajados.reduce((sum, r) => sum + r.total, 0);
+                        if (datos.remotos?.length) totalSemanal += datos.remotos.reduce((sum, r) => sum + D.objetivoDeRegistro(r), 0);
+
+                        const fechaLunes = TimeUtils.parsearFechaLocal(lunesOriginal);
+                        const fechaDomingo = new Date(fechaLunes);
+                        fechaDomingo.setDate(fechaLunes.getDate() + 6);
+                        const domingo = TimeUtils.formatearFechaLocal(fechaDomingo);
+
+                        let lunes = lunesOriginal, fechaFin = domingo, esIncompleta = false, continuaEn = '';
+
+                        if (domingo > ultimaDiaMes) {
+                            fechaFin = ultimaDiaMes;
+                            esIncompleta = true;
+                            const mesSig = mesActual === 12 ? 1 : mesActual + 1;
+                            const añoSig = mesActual === 12 ? añoActual + 1 : añoActual;
+                            continuaEn = `continúa en ${new Date(añoSig, mesSig - 1, 1).toLocaleDateString('es-ES', { month: 'long' })}`;
+                        }
+                        if (lunes < primerDiaMes) {
+                            lunes = primerDiaMes;
+                            esIncompleta = true;
+                            const mesAnt = mesActual === 1 ? 12 : mesActual - 1;
+                            const añoAnt = mesActual === 1 ? añoActual - 1 : añoActual;
+                            continuaEn = `viene de ${new Date(añoAnt, mesAnt - 1, 1).toLocaleDateString('es-ES', { month: 'long' })}`;
+                        }
+
+                        seccion += `   Semana ${index + 1} (${lunes.split('-').reverse().join('/')} - ${fechaFin.split('-').reverse().join('/')})${esIncompleta ? '*' : ''}:\n`;
+                        seccion += `      └─ ${TimeUtils.horasATexto(totalSemanal, 'short')}`;
+
+                        const notasExtras = TiposRegistro.obtenerTodosLosTipos()
+                            .map(t => {
+                                const clave = t.labelPlural.toLowerCase();
+                                return datos[clave]?.length ? `${datos[clave].length} ${clave}` : null;
+                            })
+                            .filter(Boolean);
+                        if (notasExtras.length) seccion += ` [${notasExtras.join(', ')}]`;
+                        seccion += '\n\n';
+
+                        if (esIncompleta && continuaEn) semanasIncompletas.push(`* Semana ${index + 1}: ${continuaEn}`);
+                    });
+
+                    if (semanasIncompletas.length) seccion += semanasIncompletas.join('\n') + '\n';
+                    return seccion;
+                },
+
+                configuracion: () => `
+
+────────────────────────────────────────────────────────────────
+
+⚙️ Ajustes
+────────────────────────────────────────────────────────────────
+
+   • Horas diarias:          ${D.horasDiarias()}${StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true) ? '' : ' (objetivo estampado por registro)'}
+   • Días hábiles/semana:    ${D.diasHabiles().map(d => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d]).join(', ')}
+   • Horas semanales:        ${D.horasSemanales()}`,
+
+                footer: () => `
+
+────────────────────────────────────────────────────────────────
+
+Generado por Sistema Lushibosca
+`
+            };
+
+            const contenido =
+                reporte.header() +
+                reporte.resumenGeneral() +
+                reporte.detallePeriodo() +
+                reporte.totalesPorSemana() +
+                reporte.configuracion() +
+                reporte.footer();
+
+            try {
+                const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = Object.assign(document.createElement('a'), { href: url, download: nombreArchivo });
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                mostrarToast(esAnual ? 'Reporte anual generado' : 'Reporte generado', 'success');
+            } catch (e) {
+                console.error('Error generando reporte:', e);
+                mostrarToast('Error al generar reporte', 'error');
+            }
+        }
+
+        const DESCRIPCIONES_STATS = {
+            'stat-tiempo-total': { titulo: 'Tiempo Total', desc: 'Suma de todas las horas trabajadas en el período seleccionado.' },
+            'stat-promedio-diario': { titulo: 'Promedio Diario', desc: 'Promedio de horas trabajadas por jornada en el período.' },
+            'stat-entrada-promedio': { titulo: 'Entrada Promedio', desc: 'Hora de entrada promedio entre todas las jornadas del período.' },
+            'stat-salida-promedio': { titulo: 'Salida Promedio', desc: 'Hora de salida promedio entre todas las jornadas del período.' },
+            'stat-regularidad-entrada': { titulo: 'Entrada Regular', desc: 'Qué tan constante es tu hora de entrada. Muestra la desviación promedio en minutos respecto al horario habitual: hasta 20m es Alta, hasta 40m Media, y más de 40m Baja.' },
+            'stat-regularidad-jornada': { titulo: 'Jornada Regular', desc: 'Qué tan constante es la duración de tu jornada. Muestra la desviación promedio en minutos respecto a la duración habitual: hasta 20m es Alta, hasta 40m Media, y más de 40m Baja.' },
+            'stat-tiempo-fuera-total': { titulo: 'Tiempo Fuera', desc: 'Suma de los tiempos fuera (salidas del establecimiento, almuerzo, etc.) registrados en las jornadas del período.' },
+            'stat-saldo': { titulo: 'Saldo', desc: 'Diferencia entre las horas trabajadas y las horas objetivo del período, según tus ajustes de horas diarias, días hábiles y cálculos de saldo.' },
+            'stat-dias-trabajados': { titulo: 'Jornadas', desc: 'Cantidad de jornadas con entrada y salida completas registradas en el período.' },
+            'stat-compensaciones': { titulo: 'Salidas Temprano', desc: 'Cantidad de jornadas en las que se registró un crédito por salida anticipada.' },
+        };
+
+        let _popupStatEl = null;
+
+        function _popupStat(event, statId) {
+            event.stopPropagation();
+            if (_popupStatEl) { _popupStatEl.remove(); _popupStatEl = null; }
+
+            let info = DESCRIPCIONES_STATS[statId];
+            if (statId === 'stat-saldo' && info) {
+                if (modoEstadisticas === 'anual') {
+                    const desdeEnero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false);
+                    const modoTexto = desdeEnero
+                        ? 'Actualmente el saldo se calcula a partir del PRIMER DÍA del año.'
+                        : 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del año.';
+                    info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
+                } else if (modoEstadisticas === 'mensual') {
+                    const desdePrimero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false);
+                    const modoTexto = desdePrimero
+                        ? 'Actualmente el saldo se calcula a partir del PRIMER DÍA del mes.'
+                        : 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del mes.';
+                    info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
+                }
+            }
+            if (statId === 'stat-tiempo-fuera-total' && info) {
+                const ignorarTF = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_TF, false, true);
+                const modoTexto = ignorarTF
+                    ? 'Actualmente NO SE RESTA el tiempo fuera del tiempo total.'
+                    : 'Actualmente SE RESTA el tiempo fuera del tiempo total.';
+                info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
+            }
+            if (statId === 'stat-promedio-diario' && info) {
+                info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>Actualmente las horas diarias objetivo son ${D.horasDiarias()}h.</strong>` };
+            }
+            if (!info) {
+                const valueEl = $(statId);
+                const label = valueEl?.closest('.stat-item')?.querySelector('.stat-label');
+                const tipoMatch = TiposRegistro.obtenerTodosLosTipos().find(t => statId === `stat-${t.labelPlural.toLowerCase()}`);
+                info = {
+                    titulo: S.escapeHtml(label ? label.textContent : 'Estadística'),
+                    desc: tipoMatch
+                        ? `Cantidad de jornadas registradas como "${S.escapeHtml(tipoMatch.label)}" en el período.`
+                        : 'Detalle de esta estadística.'
+                };
+            }
+
+            const popup = document.createElement('div');
+            popup.className = 'stat-popup';
+            popup.id = '_stat-popup';
+            popup.dataset.statId = statId;
+            popup.innerHTML = `
+                <div class="stat-popup-titulo">${S.escapeHtml(info.titulo)}</div>
+                <div class="stat-popup-desc">${info.desc}</div>`;
+            popup.style.visibility = 'hidden';
+            document.body.appendChild(popup);
+            _popupStatEl = popup;
+
+            _registrarCierrePopup(popup, '.stat-item', item => item.dataset.statId === popup.dataset.statId, () => { _popupStatEl = null; });
+            _posicionarPopup(popup, event);
+        }
+
+        function _onclickStatItem(event) {
+            const item = event.currentTarget;
+            const valueEl = item.querySelector('.stat-value');
+            if (!valueEl || !valueEl.id) return;
+            if (_popupStatEl && _popupStatEl.dataset.statId === valueEl.id) {
+                _popupStatEl.remove();
+                _popupStatEl = null;
+                return;
+            }
+            item.dataset.statId = valueEl.id;
+            _popupStat(event, valueEl.id);
+        }
+
+        function _bindStatItemPopups(container) {
+            const root = container || document;
+            root.querySelectorAll('.stat-item').forEach(item => {
+                if (item._statPopupBound) return;
+                item._statPopupBound = true;
+                item.addEventListener('click', _onclickStatItem);
+            });
+        }
+
+        function toggleStats() {
+            toggleSeccionGen('form-stats', 'icon-indicator-stats', STORAGE_KEYS.STATS_EXPANDIDO, () => {
+                registrarSwipe($('form-stats'), dir => togglePeriodoStats(dir));
+                if (modoEstadisticas === 'anual') {
+                    poblarSelectorAnios();
+                } else if (modoEstadisticas === 'semanal') {
+                    poblarSelectorSemanas();
+                    actualizarEstadisticasSemana($('select-semana-stats')?.value);
+                } else {
+                    poblarSelectorMeses();
+                    const selectMes = $('select-mes-stats');
+                    if (selectMes && selectMes.value) {
+                        actualizarEstadisticas(selectMes.value);
+                    } else {
+                        actualizarEstadisticas();
+                    }
+                }
+            });
+        }
+
+        return {
+            _calcularEstadisticasRango,
+            _renderizarStats,
+            calcularEstadisticasMes,
+            actualizarEstadisticas,
+            _renderSelectorStats,
+            calcularEstadisticasAnio,
+            poblarSelectorAnios,
+            actualizarEstadisticasAnio,
+            poblarSelectorSemanas,
+            calcularEstadisticasSemana,
+            actualizarEstadisticasSemana,
+            cambiarMesStats,
+            cambiarSemanaStats,
+            cambiarAnioStats,
+            togglePeriodoStats,
+            poblarSelectorMeses,
+            generarReporte,
+            _popupStat,
+            _onclickStatItem,
+            _bindStatItemPopups,
+            toggleStats,
+            setModoEstadisticas: (v) => { modoEstadisticas = v; }
+        };
+    })(SecurityAndUtils, DataManagement, UICore);
+
+    // ====================================================================
+    //                     MÓDULO UI TARJETA DE FICHAJE
+    // ====================================================================
+    const UITarjetaFichaje = (function (S, D, UICore) {
+        const {
+            formatoDiferencia, mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
+            _setBtnActivo, _setBtnDisabled, _flashCampo, registrarSwipe, _animarFadeSwap,
+            _animarSlideElemento, toggleSeccionGen, DUR_ANIM, _crearOpcion, setIconoBtn
+        } = UICore;
+
+        let modoLoteActivo = false;
+        let _timerAutoVista = null;
+
+        function setProgressBarColor(progressEl, status) {
+            if (!progressEl) return;
+            progressEl.className = 'progress-fill';
+            progressEl.classList.add(status);
+            if (status === 'blue') progressEl.classList.add('shimmer');
         }
 
         let _fondoCard = 'golden-gate';
@@ -2957,7 +5812,6 @@
 
             const registrosMap = new Map(registrosSemana.map(r => [r.fecha, r]));
             const diasHabilesObj = D.diasHabiles();
-            const horasDiariasObj = D.horasDiarias();
 
             const EPS = 1e-6;
             const pendientes = [];
@@ -2971,7 +5825,7 @@
                 if (esRemoto) {
                     delta = 0;
                 } else if (r && !esEspecial && r.salida) {
-                    const objetivo = _esFechaHabil(isoDate, diasHabilesObj) ? horasDiariasObj : 0;
+                    const objetivo = _esFechaHabil(isoDate, diasHabilesObj) ? D.objetivoDeRegistro(r) : 0;
                     delta = r.total - objetivo;
                 }
 
@@ -3022,10 +5876,21 @@
             const registrosSemana = registros.filter(r => r.fecha >= ini && r.fecha <= fechaLimite);
             const totalSemana = registrosSemana.reduce((sum, r) => {
                 const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                return sum + (tipo?.id === 'remoto' ? horasDiarias : tipo ? 0 : r.total);
+                return sum + (tipo?.id === 'remoto' ? D.objetivoDeRegistro(r) : tipo ? 0 : r.total);
             }, 0);
 
-            const objetivoSemana = Math.max(0, horasSemanales - D.calcularHorasFeriadoEnRango(ini, fn));
+            const registrosSemanaCompletaPorFecha = new Map(
+                registros.filter(r => r.fecha >= ini && r.fecha <= fn).map(r => [r.fecha, r])
+            );
+            let objetivoSemana = 0;
+            for (const isoDate of TimeUtils.generarRangoFechas(ini, fn)) {
+                if (!diasHabiles.includes(TimeUtils.parsearFechaLocal(isoDate).getDay())) continue;
+                const rDia = registrosSemanaCompletaPorFecha.get(isoDate);
+                if (!rDia) { objetivoSemana += horasDiarias; continue; }
+                const tipoDia = TiposRegistro.obtenerTipoPorCodigo(rDia.entrada, rDia.salida);
+                if (tipoDia && tipoDia.id !== 'remoto') continue;
+                objetivoSemana += D.objetivoDeRegistro(rDia);
+            }
             const todosEspeciales = _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias);
 
             const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
@@ -3116,7 +5981,7 @@
                 mensaje, mostrarMensaje,
                 colorBarra, anchoBarra: prog,
                 colorBorde, estadoFondo,
-                hint: 'Toca para ver Hoy',
+                hint: 'Tocá para ver Hoy',
                 hintEsHTML: false,
             };
         }
@@ -3166,8 +6031,8 @@
             if (objetivoDiario === 0) return labelCero;
             if (cumplido) {
                 const extra = tiempoHoy - objetivoDiario;
-                if (bufferSemanal < 0 && Math.abs(bufferSemanal) > extra) return 'Te podes ir, pero debés tiempo';
-                return extra > 0 ? `Te podes ir (+${TimeUtils.horasATexto(extra)})` : 'Te podes ir';
+                if (bufferSemanal < 0 && Math.abs(bufferSemanal) > extra) return 'Te podés ir, pero debés tiempo';
+                return extra > 0 ? `Te podés ir (+${TimeUtils.horasATexto(extra)})` : 'Te podés ir';
             }
             const faltante = objetivoDiario - tiempoHoy;
             const textoHoras = TimeUtils.horasATexto(faltante);
@@ -3179,19 +6044,21 @@
 
         function derivarVistaHoy(est) {
             const { regHoy, tiempoHoy, horasDiarias, esDiaHabil, tipoEspecialHoy, bufferSemanal, diasHabiles } = est;
-            const objetivoDiario = horasDiarias;
+            const objetivoDiario = regHoy ? D.objetivoDeRegistro(regHoy) : horasDiarias;
 
             if (!regHoy || !regHoy.entrada) {
 
                 if (est.ayerAbierto) {
-                    const objetivoDiarioAyerAplica = _esFechaHabil(est.ayerStr, diasHabiles) ? objetivoDiario : 0;
+                    const objetivoDiarioAyerAplica = _esFechaHabil(est.ayerStr, diasHabiles)
+                        ? (est.regAyer ? D.objetivoDeRegistro(est.regAyer) : objetivoDiario)
+                        : 0;
                     const prog = _calcularProgreso(tiempoHoy, objetivoDiarioAyerAplica);
                     const cumplido = _estaCumplido(tiempoHoy, objetivoDiarioAyerAplica);
                     const colorBarra = objetivoDiarioAyerAplica === 0 ? 'blue' : (cumplido ? 'green' : 'blue');
                     const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAyerAplica, bufferSemanal, 'En curso (cruce de medianoche)');
 
                     const nombreDiaAyer = TimeUtils.obtenerNombreDia(est.ayerStr);
-                    let hint = 'Toca Fichar para registrar salida';
+                    let hint = 'Tocá Fichar para registrar salida';
                     let hintEsHTML = false;
                     const regAyer = est.regAyer;
                     if (regAyer && regAyer.entrada && objetivoDiarioAyerAplica > 0 && !TiposRegistro.esRegistroEspecial(regAyer.entrada, regAyer.salida)) {
@@ -3217,7 +6084,7 @@
                     mostrarMensaje: horasDiarias > 0,
                     colorBarra: 'blue', anchoBarra: 0,
                     colorBorde: 'transparent', estadoFondo: 'esperando',
-                    hint: 'Toca para ver la Semana', hintEsHTML: false,
+                    hint: 'Tocá para ver la Semana', hintEsHTML: false,
                 };
             }
 
@@ -3234,7 +6101,7 @@
                     colorBarra: tipoEspecialHoy.color, anchoBarra: 100,
                     colorBorde: tipoEspecialHoy.color,
                     estadoFondo: 'especial', estadoFondoColor: tipoEspecialHoy.color,
-                    hint: 'Toca para ver la Semana', hintEsHTML: false,
+                    hint: 'Tocá para ver la Semana', hintEsHTML: false,
                 }, avisoAyerHint);
             }
 
@@ -3281,7 +6148,7 @@
                 mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAplica, bufferSemanal);
             }
 
-            let hint = 'Toca para ver la Semana';
+            let hint = 'Tocá para ver la Semana';
             let hintEsHTML = false;
             if (regHoy.entrada && !dayClosed && objetivoDiarioAplica > 0 && !TiposRegistro.esRegistroEspecial(regHoy.entrada, regHoy.salida)) {
                 ({ hint, hintEsHTML } = _calcularHintSalidaEstimada(regHoy, objetivoDiarioAplica, bufferSemanal, diasHabiles));
@@ -3432,47 +6299,6 @@
             }
         }
 
-        function _renderSelectorStats() {
-            const anioEl = $('select-anio-stats');
-            const mesEl = $('select-mes-stats');
-            const semEl = $('select-semana-stats');
-            const labelEl = $('label-periodo-toggle');
-            if (modoEstadisticas === 'anual') {
-                if (anioEl) anioEl.classList.remove('hidden');
-                if (mesEl) mesEl.classList.add('hidden');
-                if (semEl) semEl.classList.add('hidden');
-                if (labelEl) labelEl.textContent = 'Anual';
-                poblarSelectorAnios();
-            } else if (modoEstadisticas === 'semanal') {
-                if (anioEl) anioEl.classList.add('hidden');
-                if (mesEl) mesEl.classList.add('hidden');
-                if (semEl) semEl.classList.remove('hidden');
-                if (labelEl) labelEl.textContent = 'Semanal';
-                poblarSelectorSemanas();
-                actualizarEstadisticasSemana(semEl?.value);
-            } else {
-                if (anioEl) anioEl.classList.add('hidden');
-                if (mesEl) mesEl.classList.remove('hidden');
-                if (semEl) semEl.classList.add('hidden');
-                if (labelEl) labelEl.textContent = 'Mensual';
-                poblarSelectorMeses();
-            }
-        }
-
-        function _getCSSdur(varName) {
-            const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-            if (!raw) return 300;
-            return raw.endsWith('ms') ? parseFloat(raw) : parseFloat(raw) * 1000;
-        }
-        const DUR_ANIM = () => _getCSSdur('--dur-anim');
-        const DUR_CALENDARIO = () => _getCSSdur('--dur-calendario');
-
-        function _animarFadeSwap(el, fn) {
-            if (!el) { fn(); return; }
-            el.classList.add('fade-out');
-            setTimeout(() => { fn(); el.classList.remove('fade-out'); }, DUR_ANIM());
-        }
-
         function _animarCambioCard(renderFn) {
             const els = [
                 $('stats-semana'),
@@ -3498,7 +6324,7 @@
 
         function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false) {
             if (!soloReloj) {
-                actualizarListaRegistros(D.registros(), idNuevo);
+                UILogic.actualizarListaRegistros(D.registros(), idNuevo);
             }
 
             const est = calcularEstadoCard();
@@ -3509,14 +6335,14 @@
             _renderTitulo(vista);
             _renderCard(vista);
             _renderBarra(vista);
-            _renderSelectorStats();
+            UILogic._renderSelectorStats();
             actualizarEstadoBotonTimerMain();
-            if (_vistaHistoricoCalendario) {
+            if (UILogic.getVistaHistoricoCalendario()) {
                 const selector = document.getElementById('calendario-selector-meses');
                 if (selector && selector.style.display !== 'none') {
-                    _cerrarSelectorMeses(idNuevo);
+                    UILogic._cerrarSelectorMeses(idNuevo);
                 } else {
-                    _renderizarCalendario(idNuevo);
+                    UILogic._renderizarCalendario(idNuevo);
                 }
             }
 
@@ -3534,42 +6360,6 @@
             }
         }
 
-        /**
-         * Factory para pares toggle/actualizarEstado de configuraciones booleanas.
-         *
-         * @param {object} cfg
-         * @param {function(): boolean}  cfg.getVal        - Lee el valor actual.
-         * @param {function(boolean): void} cfg.setVal     - Persiste el nuevo valor.
-         * @param {string}               cfg.btnId         - ID del botón a marcar con btn-activo.
-         * @param {string}               cfg.mensajeOn     - Toast cuando queda activo.
-         * @param {string}               cfg.mensajeOff    - Toast cuando queda inactivo.
-         * @param {function(boolean): void} [cfg.onAfterToggle] - Efecto secundario opcional.
-         * @returns {{ toggle: function, actualizarEstado: function }}
-         */
-        function _crearToggleConfig({ getVal, setVal, btnId, mensajeOn, mensajeOff, onAfterToggle }) {
-            function actualizarEstado() {
-                _setBtnActivo(btnId, getVal());
-            }
-            function toggle() {
-                const nuevo = !getVal();
-                setVal(nuevo);
-                actualizarEstado();
-                mostrarToast(nuevo ? mensajeOn : mensajeOff, 'info');
-                onAfterToggle?.(nuevo);
-            }
-            return { toggle, actualizarEstado };
-        }
-
-        function alternarTema() {
-            const temaOscuro = !StorageHelper.getBoolean(STORAGE_KEYS.TEMA_OSCURO, true);
-            document.documentElement.classList.toggle('dark-mode', temaOscuro);
-            StorageHelper.setItem(STORAGE_KEYS.TEMA_OSCURO, temaOscuro);
-            ['theme-toggle', 'theme-toggle-modal', 'btn-tema-selector'].forEach(id => {
-                const icon = document.getElementById(id)?.querySelector('use');
-                if (icon) icon.setAttribute('href', temaOscuro ? '#icon-sun' : '#icon-moon');
-            });
-        }
-
         function alternarVista() {
             if (_timerAutoVista) { clearTimeout(_timerAutoVista); _timerAutoVista = null; }
             const card = document.getElementById('stats-card');
@@ -3585,9 +6375,584 @@
             });
         }
 
-        function _setBtnActivo(id, activo) {
-            const btn = document.getElementById(id);
-            if (btn) btn.classList.toggle('btn-activo', activo);
+        function pegarHoraActual(id) {
+            const input = document.getElementById(id);
+            if (!input) return;
+            if (input.value.trim() !== '') {
+                input.value = '';
+            } else {
+                input.value = TimeUtils.obtenerHoraActual();
+            }
+            input.dispatchEvent(new Event('input'));
+        }
+
+        function limpiarCampo(id) {
+            const input = document.getElementById(id);
+            if (input) {
+                input.value = '';
+                input.dispatchEvent(new Event('input'));
+            }
+        }
+
+        const sumarMinutosAHora = TimeUtils.sumarMinutosAHora;
+
+        function _actualizarCardTimerRunning(card, storageKey) {
+            if (!card) return;
+            card.classList.add('timer-running');
+            const titulo = card.querySelector('h2');
+            if (!titulo) return;
+            const vistaActual = D.vistaActual();
+            const icono = vistaActual === 'semana'
+                ? '<svg class="icon"><use href="#icon-calendar-simple"/></svg>'
+                : '<svg class="icon"><use href="#icon-clock"/></svg>';
+            const contexto = vistaActual === 'semana' ? 'Esta Semana' : TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy());
+            titulo.innerHTML = `${icono} ${contexto} - <svg class="icon"><use href="#icon-exit"/></svg> Tiempo fuera `;
+            const breakCounter = Object.assign(document.createElement('span'), {
+                id: 'break-counter', className: 'break-counter-label'
+            });
+            titulo.appendChild(breakCounter);
+            _iniciarContadorBreak(storageKey);
+        }
+
+        function actualizarEstadoBotonTimerMain() {
+            const btn = document.getElementById('btn-timer-main');
+            const card = document.getElementById('stats-card');
+            if (!btn) return;
+
+            if (modoLoteActivo) { btn.disabled = true; return; }
+
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const registroHoy = D.registros().find(r => r.fecha === hoy);
+            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+            const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
+            const isRunning = StorageHelper.getItem(storageKey) !== null;
+            const icon = btn.querySelector('use');
+            const diaCerrado = registroHoy?.salida?.trim() !== '' && !!registroHoy?.salida;
+
+            if (!isRunning && (!registroHoy || diaCerrado)) {
+                Object.assign(btn, { disabled: true, title: diaCerrado ? 'Día finalizado' : 'Debés fichar entrada primero' });
+            } else {
+                Object.assign(btn, { disabled: false, title: isRunning ? 'Detener tiempo fuera' : 'Iniciar tiempo fuera' });
+            }
+
+            icon.setAttribute('href', '#icon-exit');
+            if (isRunning) {
+                btn.classList.add('running');
+                Object.assign(btn.style, { color: 'var(--c-red)', borderColor: 'var(--c-red)' });
+                _actualizarCardTimerRunning(card, storageKey);
+            } else {
+                btn.classList.remove('running');
+                Object.assign(btn.style, { color: 'var(--text-main)', borderColor: 'var(--border)' });
+                if (card) card.classList.remove('timer-running');
+                _detenerContadorBreak();
+            }
+        }
+
+        let _breakCounterInterval = null;
+
+        function _iniciarContadorBreak(storageKey) {
+            _detenerContadorBreak();
+            function _actualizarContador() {
+                const el = document.getElementById('break-counter');
+                if (!el) { _detenerContadorBreak(); return; }
+                const start = parseInt(StorageHelper.getItem(storageKey));
+                if (isNaN(start)) { el.textContent = ''; _detenerContadorBreak(); return; }
+                const totalSeg = Math.floor((Date.now() - start) / 1000);
+                const mins = Math.floor(totalSeg / 60);
+                const horas = Math.floor(mins / 60);
+                const minsResto = mins % 60;
+                if (horas > 0) {
+                    el.textContent = `${horas}h ${minsResto}m`;
+                } else {
+                    el.textContent = `${mins}m`;
+                }
+            }
+            _actualizarContador();
+            _breakCounterInterval = setInterval(_actualizarContador, 1000);
+        }
+
+        function _detenerContadorBreak() {
+            if (_breakCounterInterval) {
+                clearInterval(_breakCounterInterval);
+                _breakCounterInterval = null;
+            }
+        }
+
+        async function _detenerTimerBreak(registroHoy, storageKey, storedStart) {
+            const totalSeg = Math.floor((Date.now() - parseInt(storedStart)) / 1000);
+
+            if (totalSeg < 30) {
+                StorageHelper.removeItem(storageKey);
+                mostrarToast('Tiempo muy corto, no se registró', 'info');
+                actualizarUI(); return;
+            }
+            if (!registroHoy) {
+                StorageHelper.removeItem(storageKey);
+                mostrarToast('No hay registro para hoy, tiempo fuera descartado', 'warning');
+                actualizarUI(); return;
+            }
+
+            const minutos = Math.floor(totalSeg / 60) + (totalSeg % 60 >= 30 ? 1 : 0);
+            registroHoy.tiempoFuera = sumarMinutosAHora(registroHoy.tiempoFuera || '00:00', minutos);
+            const t = D.calcularHoras(registroHoy.entrada, registroHoy.salida, registroHoy.tiempoFuera);
+            registroHoy.horas = t?.horas || 0; registroHoy.minutos = t?.minutos || 0; registroHoy.total = t?.total || 0;
+            HistoryManager.saveState(D.registros());
+            StorageHelper.removeItem(storageKey);
+            await D.guardarYActualizar(registroHoy.id);
+            const ignorarTF = D.getIgnorarTiempoFuera();
+            const mensajeToast = ignorarTF
+                ? (minutos === 1
+                    ? 'Se registró 1 minuto de tiempo fuera (cálculo ignorado)'
+                    : `Se registraron ${minutos} minutos de tiempo fuera (cálculo ignorado)`)
+                : (minutos === 1 ? 'Se descontó 1 minuto al registro de hoy' : `Se descontaron ${minutos} minutos al registro de hoy`);
+            mostrarToast(mensajeToast, ignorarTF ? 'info' : 'success');
+        }
+
+        async function toggleTimerBreakMain() {
+            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+            const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
+            const storedStart = StorageHelper.getItem(storageKey);
+            const registroHoy = D.registros().find(r => r.fecha === TimeUtils.obtenerFechaHoy());
+
+            if (!storedStart && !registroHoy) { mostrarToast('Debés crear un registro para hoy primero', 'warning'); return; }
+
+            if (!storedStart) {
+                StorageHelper.setItem(storageKey, Date.now());
+                mostrarToast('Tiempo fuera iniciado', 'info');
+            } else {
+                await _detenerTimerBreak(registroHoy, storageKey, storedStart);
+            }
+            actualizarEstadoBotonTimerMain();
+        }
+
+        function toggleModoLote(deltaSwipe, conAnimacion = true) {
+            const modoContenedor = document.getElementById('modo-contenedor');
+            const modoNormal = document.getElementById('modo-normal');
+            const modoLote = document.getElementById('modo-lote');
+            const btnTexto = document.getElementById('btn-registrar-texto');
+            const btnTimer = document.getElementById('btn-timer-main');
+            const btn = document.getElementById('btn-agregar');
+
+            modoLoteActivo = !modoLoteActivo;
+            const delta = deltaSwipe !== undefined ? deltaSwipe : (modoLoteActivo ? 1 : -1);
+
+            const aplicarCambiosLote = () => {
+                modoNormal.style.display = 'none';
+                modoLote.classList.remove('fade-out');
+                modoLote.style.display = 'block';
+
+                document.getElementById('lote-tipo').value = 'feriado';
+                document.getElementById('lote-fecha-desde').value = '';
+                document.getElementById('lote-fecha-hasta').value = '';
+
+                btnTexto.textContent = 'Fichar Lote';
+                btn.style.background = '';
+                btn.style.color = '';
+
+                setIconoBtn(btn, '#icon-save');
+
+                btnTimer.disabled = true;
+
+                actualizarBotonLote();
+            };
+
+            const aplicarCambiosNormal = () => {
+                modoLote.style.display = 'none';
+                modoNormal.style.display = 'block';
+                UILogic.resetearBoton(btn);
+                actualizarEstadoBotonTimerMain();
+            };
+
+            if (conAnimacion) {
+                _animarSlideElemento(modoContenedor, delta, modoLoteActivo ? aplicarCambiosLote : aplicarCambiosNormal);
+            } else {
+                modoLoteActivo ? aplicarCambiosLote() : aplicarCambiosNormal();
+            }
+        }
+
+        async function ejecutarAccionRegistro() {
+            if (modoLoteActivo) {
+                await registrarLoteDesdeCard();
+            } else {
+                await DataManagement.agregarRegistro();
+            }
+
+            if (modoLoteActivo) {
+                setTimeout(() => actualizarBotonLote(), 100);
+            }
+        }
+
+        function _limpiarCamposLote() {
+            document.getElementById('lote-fecha-desde').value = '';
+            document.getElementById('lote-fecha-hasta').value = '';
+        }
+
+        async function _registrarEspecialHoy(tipo) {
+            const fechaHoy = UILogic.obtenerFechaHoy();
+            if (DataManagement.registros().find(r => r.fecha === fechaHoy)) {
+                mostrarToast('Ya existe un registro para hoy', 'warning'); return;
+            }
+            try {
+                await DataManagement.registrarDiaEspecial(fechaHoy, tipo);
+                _limpiarCamposLote();
+            } catch (e) { console.error('Error al registrar:', e); }
+        }
+
+        async function _registrarEspecialFecha(desde, tipo) {
+            if (DataManagement.registros().find(r => r.fecha === desde)) {
+                mostrarToast('Ya existe un registro para esa fecha', 'warning'); return;
+            }
+            try {
+                await DataManagement.registrarDiaEspecial(desde, tipo);
+                UILogic.aplicarFeedbackCampos([
+                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
+                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: false }
+                ]);
+                _limpiarCamposLote();
+            } catch (e) { console.error('Error al registrar:', e); }
+        }
+
+        async function registrarLoteDesdeCard() {
+            const inputDesde = document.getElementById('lote-fecha-desde');
+            const inputHasta = document.getElementById('lote-fecha-hasta');
+            const tipo = document.getElementById('lote-tipo').value;
+
+            if ((inputDesde.value === '' && inputDesde.validity && !inputDesde.validity.valid) ||
+                (inputHasta.value === '' && inputHasta.validity && !inputHasta.validity.valid)) {
+                mostrarToast('Fecha inválida', 'error'); return;
+            }
+
+            const desde = inputDesde.value;
+            const hasta = inputHasta.value;
+
+            if (!desde && !hasta) {
+                if (!inputDesde.checkValidity() || !inputHasta.checkValidity()) {
+                    mostrarToast('Revisá las fechas ingresadas', 'error'); return;
+                }
+                if (tipo === 'normal') { mostrarToast('Completá los campos Desde y Hasta.', 'info'); return; }
+                await _registrarEspecialHoy(tipo); return;
+            }
+
+            if (desde && !hasta) {
+                if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); return; }
+                await _registrarEspecialFecha(desde, tipo); return;
+            }
+
+            if (!desde && hasta) { mostrarToast('Completá ambos campos', 'info'); return; }
+            if (desde > hasta) { mostrarToast('La fecha inicial debe ser inferior a la final', 'error'); return; }
+
+            if (tipo !== 'normal' && !TiposRegistro.obtenerCodigosPorTipo(tipo)) {
+                mostrarToast('Tipo de registro inválido', 'error'); return;
+            }
+
+            try {
+                if (tipo === 'normal') await DataManagement.borrarPeriodoDirecto(desde, hasta);
+                else await DataManagement.registrarVacacionesDirecto(desde, hasta, tipo);
+                UILogic.aplicarFeedbackCampos([
+                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
+                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: true }
+                ]);
+                _limpiarCamposLote();
+            } catch (e) { console.error('Error en operación de lote:', e); }
+        }
+
+
+        function poblarSelectoresTipos() {
+            const tipos = TiposRegistro.obtenerTodosLosTipos();
+
+            const cfg = [
+                { id: 'lote-tipo', getLabel: t => `${t.emoji} ${t.label}`, extra: [{ value: 'normal', text: '🕒 Jornadas (borrar)' }] },
+                { id: 'filtro-tipo', getLabel: t => `${t.emoji} ${t.labelPlural}`, prefix: '<option value="">Todos</option><option value="normal">🕒 Jornadas</option>' },
+                { id: 'edit-grupo-tipo', getLabel: t => `${t.emoji} ${t.label}` },
+            ];
+
+            cfg.forEach(({ id, getLabel, prefix = '', extra = [] }) => {
+                const sel = $(id);
+                if (!sel) return;
+                sel.innerHTML = prefix;
+                tipos.forEach(t => sel.appendChild(_crearOpcion(t.id, getLabel(t))));
+                extra.forEach(e => sel.appendChild(_crearOpcion(e.value, e.text)));
+            });
+        }
+
+        function _setBtnError(btn, btnTexto, mensaje) {
+            btnTexto.textContent = mensaje;
+            btn.style.color = 'var(--c-red)';
+            setIconoBtn(btn, '#icon-save');
+        }
+
+        function _actualizarBtnNormal(btn, btnTexto, desde, hasta) {
+            const n = DataManagement.registros().filter(r =>
+                r.fecha >= desde && r.fecha <= hasta && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
+            ).length;
+            if (n > 0) {
+                btnTexto.textContent = `Borrar (${n})`;
+                btn.style.color = 'var(--c-red)';
+                setIconoBtn(btn, '#icon-trash');
+            } else {
+                btnTexto.textContent = 'Sin Registros';
+                btn.style.color = 'var(--text-muted)';
+                setIconoBtn(btn, '#icon-save');
+            }
+        }
+
+        function _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales) {
+            const codigosTipo = TiposRegistro.obtenerCodigosPorTipo(tipo);
+            if (!codigosTipo) {
+                btnTexto.textContent = 'Fichar'; setIconoBtn(btn, '#icon-save'); return;
+            }
+            const yaRegistrados = DataManagement.registros().filter(r =>
+                r.fecha >= desde && r.fecha <= hasta &&
+                r.entrada === codigosTipo.entrada && r.salida === codigosTipo.salida
+            ).length;
+            const diasOcupados = DataManagement.registros().filter(r => r.fecha >= desde && r.fecha <= hasta).length;
+            const disponibles = diasTotales - diasOcupados;
+            const sobreescribirOtros = diasOcupados - yaRegistrados;
+
+            if (disponibles === 0 && yaRegistrados === diasTotales) {
+                btnTexto.textContent = `Fichado (${diasTotales})`;
+                btn.style.color = 'var(--text-muted)';
+            } else if (disponibles === diasTotales) {
+                btnTexto.textContent = `Fichar (${diasTotales})`;
+            } else if (sobreescribirOtros > 0) {
+                btnTexto.textContent = `Fichar (${disponibles} - ${sobreescribirOtros})`;
+            } else {
+                btnTexto.textContent = `Fichar (${disponibles})`;
+            }
+            setIconoBtn(btn, '#icon-save');
+        }
+
+        function actualizarBotonLote() {
+            const tipo = document.getElementById('lote-tipo').value;
+            const desde = document.getElementById('lote-fecha-desde').value;
+            const hasta = document.getElementById('lote-fecha-hasta').value;
+            const btn = document.getElementById('btn-agregar');
+            const btnTexto = document.getElementById('btn-registrar-texto');
+            btn.style.background = '';
+            btn.style.color = '';
+
+            if (!desde && !hasta) { btnTexto.textContent = 'Fichar'; setIconoBtn(btn, '#icon-save'); return; }
+            if (!desde && hasta) { _setBtnError(btn, btnTexto, 'Requiere Rango'); return; }
+
+            if (desde && !hasta) {
+                if (tipo === 'normal') { _setBtnError(btn, btnTexto, 'Requiere Rango'); return; }
+                const existe = DataManagement.registros().find(r => r.fecha === desde);
+                btnTexto.textContent = existe ? 'Fichado' : 'Fichar';
+                if (existe) btn.style.color = 'var(--text-muted)';
+                setIconoBtn(btn, '#icon-save');
+                return;
+            }
+
+            if (!TimeUtils.validarFecha(desde)) { _setBtnError(btn, btnTexto, 'Fecha Inicial Inválida'); return; }
+            if (!TimeUtils.validarFecha(hasta)) { _setBtnError(btn, btnTexto, 'Fecha Final Inválida'); return; }
+            if (desde > hasta) { _setBtnError(btn, btnTexto, 'Rango Inválido'); return; }
+
+            const diasTotales = Math.ceil(Math.abs(TimeUtils.parsearFechaLocal(hasta) - TimeUtils.parsearFechaLocal(desde)) / 864e5) + 1;
+
+            if (tipo === 'normal') _actualizarBtnNormal(btn, btnTexto, desde, hasta);
+            else _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales);
+        }
+
+        function toggleFormulario() {
+            const el = $('form-registro');
+            const estabaExpandido = el.classList.contains('expanded');
+
+            toggleSeccionGen('form-registro', 'icon-indicator-form', STORAGE_KEYS.FORMULARIO_EXPANDIDO);
+
+            if (estabaExpandido) {
+                $('entrada').value = '';
+                $('salida').value = '';
+                $('fecha').value = TimeUtils.obtenerFechaHoy();
+
+                const loteDesde = $('lote-fecha-desde');
+                const loteHasta = $('lote-fecha-hasta');
+                const loteTipo = $('lote-tipo');
+
+                if (loteDesde) loteDesde.value = '';
+                if (loteHasta) loteHasta.value = '';
+                if (loteTipo) loteTipo.value = 'feriado';
+
+                if (modoLoteActivo) {
+                    setTimeout(() => {
+                        if (modoLoteActivo) {
+                            toggleModoLote(undefined, false);
+                        }
+                    }, 350);
+                } else {
+                    actualizarEstadoBotonTimerMain();
+                }
+            }
+        }
+
+        const _FLASH_SCROLL_DELAY = 500;
+
+        function _irAFicharConFecha(fecha, esEspecial) {
+            const tarjeta = document.getElementById('card-registrar');
+            const formulario = document.getElementById('form-registro');
+            const estaExpandido = formulario && formulario.classList.contains('expanded');
+
+            if (!estaExpandido) toggleFormulario();
+
+            _scrollACardFichar(tarjeta);
+
+            const retraso = estaExpandido ? 0 : DUR_ANIM() + 80;
+
+            const aplicarFecha = () => {
+                if (esEspecial) {
+                    const desde = document.getElementById('lote-fecha-desde');
+                    const hasta = document.getElementById('lote-fecha-hasta');
+                    if (desde) desde.value = fecha;
+                    if (hasta) hasta.value = fecha;
+                    setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta', 'lote-tipo'), _FLASH_SCROLL_DELAY);
+                } else {
+                    const input = document.getElementById('fecha');
+                    if (input) input.value = fecha;
+                    setTimeout(() => _flashCampo('fecha', 'entrada', 'salida'), _FLASH_SCROLL_DELAY);
+                }
+            };
+
+            setTimeout(() => {
+                const necesitaCambiarModo = esEspecial ? !modoLoteActivo : modoLoteActivo;
+                if (necesitaCambiarModo) {
+                    toggleModoLote();
+                    setTimeout(aplicarFecha, DUR_ANIM() + 50);
+                } else {
+                    aplicarFecha();
+                }
+            }, retraso);
+        }
+
+        function _scrollACardFichar(el) {
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const headerEl = document.querySelector('.header');
+            const headerH = headerEl ? headerEl.offsetHeight : 0;
+            const margen = headerH + 8;
+            if (rect.top >= margen && rect.bottom <= window.innerHeight) return;
+            window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: 'smooth' });
+        }
+
+        function alternarFechaActual(id) {
+            const c = document.getElementById(id);
+            if (!c) return;
+            if (c.value.trim() !== '') {
+                c.value = '';
+            } else {
+                c.value = TimeUtils.obtenerFechaHoy();
+            }
+
+            actualizarBotonLote();
+            if (id === 'edit-grupo-desde' || id === 'edit-grupo-hasta') {
+                c.dispatchEvent(new Event('change'));
+            }
+        }
+
+        return {
+            setFondoCard,
+            toggleFondoCard,
+            _esFechaHabil,
+            _cubiertoPorSaldo,
+            calcularEstadoCard,
+            derivarVistaSemana,
+            derivarVistaHoy,
+            actualizarUI,
+            alternarVista,
+            actualizarEstadoBotonTimerMain,
+            toggleTimerBreakMain,
+            toggleModoLote,
+            ejecutarAccionRegistro,
+            registrarLoteDesdeCard,
+            poblarSelectoresTipos,
+            actualizarBotonLote,
+            toggleFormulario,
+            _irAFicharConFecha,
+            _scrollACardFichar,
+            alternarFechaActual,
+            pegarHoraActual,
+            limpiarCampo,
+            getFondoCard: () => _fondoCard,
+            setTimerAutoVista: (v) => { _timerAutoVista = v; },
+            sumarMinutosAHora,
+            _getLabelFondo,
+            _iniciarCicloStats
+        };
+    })(SecurityAndUtils, DataManagement, UICore);
+
+    const UILogic = (function (S, D, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje) {
+
+        const {
+            formatoDiferencia, registrarSwipe, debounce, _crearPressHold,
+            _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
+            mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON,
+            mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
+            _getCSSdur, DUR_ANIM, DUR_CALENDARIO, _crearToggleConfig, _setBtnActivo,
+            _crearOpcion, _poblarSelect, setIconoBtn, _setBtnDisabled,
+            _posicionarPopup, _registrarCierrePopup, _flashCampo,
+            _limpiarClonVisual, _finalizarSlidePendiente, _animarSlideElemento, toggleSeccionGen,
+            _animarFadeSwap
+        } = UICore;
+
+        const {
+            renderizarListaPerfiles, abrirSelectorPerfiles, crearPerfilDesdeSelector,
+            cerrarSelectorPerfiles, abrirEditorPerfil, cerrarEditorPerfil,
+            guardarEdicionPerfil, eliminarPerfilDesdeEditor
+        } = UIPerfiles;
+
+        const {
+            abrirSelectorMesesCalendario, _cerrarSelectorMeses, _activarVistaCalendarioHistorico, _renderizarCalendario,
+            toggleVistaHistorico, _popupCalendario, _popupCalendarioDiaSinRegistro,
+            _popupCalendarioHover, _onclickCalendarioDia, _cerrarPopupCalendarioHover,
+            navegarCalendario, irHoyCalendario, _agruparMesesPorAnio, _nombreMesCapitalizado,
+            getVistaHistoricoCalendario, setVistaHistoricoCalendario
+        } = UICalendario;
+
+        const {
+            mostrarImportar, cerrarImportar, mostrarExportar, cerrarExportar,
+            ejecutarExportacion, toggleCamposRangoExport, actualizarEstadoBotonesGist,
+            actualizarBotonesHistorico, abrirModalGist, cerrarModalGist, guardarConfigGist,
+            toggleVerToken, abrirGistEnBrowser, gistMergeCancelar, gistMergeAplicar,
+            toggleGistBackup, toggleGistMerge, cambiarLimiteSync, iniciarCambioLimite,
+            detenerCambioLimite, gistSubir, gistBajar
+        } = UIGistYRespaldo;
+
+        const {
+            agruparRegistrosConsecutivos, actualizarListaRegistros, cerrarEdicion,
+            setBloqueoEdicion, toggleBloqueoEdicion, toggleCredito, _actualizarHintEdicion,
+            _initListenerAccionesLista, _initListenerToggleAnio, _initListenerToggleMes,
+            actualizarHintGrupo, mostrarFiltros, cerrarFiltros, toggleHistorico,
+            iniciarTimerAutoCierreBotones, cancelarTimerAutoCierreBotones,
+            verificarBloqueoCredito, setBloqueoEdicionGrupo, toggleBloqueoEdicionGrupo,
+            cerrarEdicionGrupo, setTiempoExpansionBotones
+        } = UIHistorico;
+
+        const {
+            _calcularEstadisticasRango, _renderizarStats, calcularEstadisticasMes,
+            actualizarEstadisticas, _renderSelectorStats, calcularEstadisticasAnio,
+            poblarSelectorAnios, actualizarEstadisticasAnio, poblarSelectorSemanas,
+            calcularEstadisticasSemana, actualizarEstadisticasSemana, cambiarMesStats,
+            cambiarSemanaStats, cambiarAnioStats, togglePeriodoStats, poblarSelectorMeses,
+            generarReporte, _popupStat, _onclickStatItem, _bindStatItemPopups, toggleStats,
+            setModoEstadisticas
+        } = UIEstadisticas;
+
+        const {
+            setFondoCard, toggleFondoCard, _esFechaHabil, _cubiertoPorSaldo, calcularEstadoCard,
+            derivarVistaSemana, derivarVistaHoy, actualizarUI, alternarVista,
+            actualizarEstadoBotonTimerMain, toggleTimerBreakMain, toggleModoLote,
+            ejecutarAccionRegistro, registrarLoteDesdeCard, poblarSelectoresTipos,
+            actualizarBotonLote, toggleFormulario, _irAFicharConFecha, _scrollACardFichar,
+            alternarFechaActual, pegarHoraActual, limpiarCampo, getFondoCard, setTimerAutoVista,
+            sumarMinutosAHora, _getLabelFondo, _iniciarCicloStats
+        } = UITarjetaFichaje;
+
+        function alternarTema() {
+            const temaOscuro = !StorageHelper.getBoolean(STORAGE_KEYS.TEMA_OSCURO, true);
+            document.documentElement.classList.toggle('dark-mode', temaOscuro);
+            StorageHelper.setItem(STORAGE_KEYS.TEMA_OSCURO, temaOscuro);
+            ['theme-toggle', 'theme-toggle-modal', 'btn-tema-selector'].forEach(id => {
+                const icon = document.getElementById(id)?.querySelector('use');
+                if (icon) icon.setAttribute('href', temaOscuro ? '#icon-sun' : '#icon-moon');
+            });
         }
 
         const { toggle: toggleIgnorarTiempoFuera, actualizarEstado: actualizarEstadoBotonIgnorarTF } =
@@ -3605,8 +6970,8 @@
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.HOVER_POPUP, false),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.HOVER_POPUP, v),
                 btnId: 'btn-toggle-hover-popup',
-                mensajeOn: 'Se muestra popup automatico en calendario',
-                mensajeOff: 'No se muestra popup automatico en calendario',
+                mensajeOn: 'Se muestra popup automático en calendario',
+                mensajeOff: 'No se muestra popup automático en calendario',
             });
 
         const { toggle: toggleSaldoDesdeEnero, actualizarEstado: actualizarEstadoBotonSaldoDesdeEnero } =
@@ -3614,7 +6979,7 @@
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.SALDO_DESDE_ENERO, v),
                 btnId: 'btn-toggle-saldo-enero',
-                mensajeOn: 'Cálculo de saldo anual desde el primer dia del año',
+                mensajeOn: 'Cálculo de saldo anual desde el primer día del año',
                 mensajeOff: 'Cálculo de saldo anual desde el primer registro del año',
                 onAfterToggle: () => { actualizarUI(); }
             });
@@ -3634,10 +6999,57 @@
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false, true),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, v, true),
                 btnId: 'btn-toggle-logica-cubierto',
-                mensajeOn: 'Lógica de cubierto por saldo en los registros desactivada',
-                mensajeOff: 'Lógica de cubierto por saldo en los registros activada',
+                mensajeOn: 'Los registros no cubren el faltante con saldo horario',
+                mensajeOff: 'Los registros cubren el faltante según el saldo horario disponible',
                 onAfterToggle: () => { actualizarUI(); }
             });
+
+        const { toggle: toggleObjetivoPorRegistro, actualizarEstado: actualizarEstadoBotonObjetivoPorRegistro } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, v, true),
+                btnId: 'btn-toggle-objetivo-registro',
+                mensajeOn: 'Las horas diarias objetivo cambian según el valor global configurado',
+                mensajeOff: 'Las horas diarias objetivo de los registros son independientes',
+                onAfterToggle: () => { actualizarUI(); actualizarEstadoBotonAplicarHoras(); }
+            });
+
+        function actualizarEstadoBotonAplicarHoras() {
+            const modoGlobal = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true);
+            _setBtnDisabled('btn-aplicar-horas-todos', modoGlobal);
+        }
+
+        async function aplicarHorasConfiguradasATodos() {
+            const btn = $('btn-aplicar-horas-todos');
+            if (btn && btn.disabled) return;
+
+            const horas = D.horasDiarias();
+            const totalRegistros = D.registros().length;
+            if (totalRegistros === 0) {
+                mostrarToast('No hay registros para actualizar', 'info');
+                return;
+            }
+
+            const confirmado = await ModalManager.confirmar(
+                `Se va a aplicar el objetivo de ${TimeUtils.horasATexto(horas, 'short')} a los ${totalRegistros} registro${totalRegistros !== 1 ? 's' : ''} existentes, reemplazando el objetivo individual de cada uno (y recalculando la Salida Temprano donde corresponda). Esta acción no se puede deshacer.`,
+                'Aplicar',
+                '#icon-aplicar-horas'
+            );
+            if (!confirmado) return;
+
+            const { aplicados, creditosRecalculados } = D.aplicarHorasATodosLosRegistros();
+            const guardado = await D.guardarYActualizar();
+            if (guardado) {
+                actualizarUI();
+                let mensaje = aplicados > 0
+                    ? `Objetivo actualizado en ${aplicados} registro${aplicados !== 1 ? 's' : ''}`
+                    : 'Los registros ya tenían este objetivo';
+                if (creditosRecalculados > 0) {
+                    mensaje += ` (${creditosRecalculados} con Salida Temprano recalculada)`;
+                }
+                mostrarToast(mensaje, 'success');
+            }
+        }
 
         const { toggle: togglePersistirTarjetas, actualizarEstado: actualizarEstadoBotonPersistir } =
             _crearToggleConfig({
@@ -3807,134 +7219,17 @@
             document.addEventListener('mouseup', endDrag);
         }
 
-        function cerrarEdicion() {
-            ModalManager.cerrar('modal-editar', () => {
-                D.setEditandoId(null);
-                document.dispatchEvent(new Event('scroll'));
-            });
-        }
-
-        function mostrarImportar(desdeLista = false) {
-            _modalAbiertoDesdeLista = desdeLista;
-            ModalManager.alternar(desdeLista ? null : 'modal-config', 'modal-importar', null, () => {
-                $('file-import').value = '';
-
-                const nombreEl = document.getElementById('nombre-archivo-seleccionado');
-                if (nombreEl) {
-                    nombreEl.style.display = 'none';
-                    nombreEl.textContent = '';
-                }
-
-                const btnCombinar = document.getElementById('btn-combinar');
-                const btnReemplazar = document.getElementById('btn-reemplazar');
-
-                if (btnCombinar) {
-                    btnCombinar.disabled = true;
-                }
-                if (btnReemplazar) {
-                    btnReemplazar.disabled = true;
-                }
-
-                const btnVolverI = $('btn-volver-importar');
-                if (btnVolverI) {
-                    btnVolverI.lastChild.textContent = desdeLista ? ' Cerrar' : ' Volver';
-                    btnVolverI.querySelector('use').setAttribute('href', desdeLista ? '#icon-cancelar' : '#icon-undo');
-                }
-                setTimeout(() => $('file-import').click(), 50);
-            });
-        }
-
-        function cerrarImportar() {
-            if (!_modalAbiertoDesdeLista) {
-                ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
-            }
-            ModalManager.alternar('modal-importar', _modalAbiertoDesdeLista ? null : 'modal-config');
-            _modalAbiertoDesdeLista = false;
-        }
-
-        function calcularEstadisticasAnio(anio) {
-            const anioNum = parseInt(anio);
-            const registros = D.registros().filter(r => parseInt(r.fecha.substring(0, 4)) === anioNum);
-            let fechaDesde = `${anioNum}-01-01`;
-
-            const desdeEnero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false);
-            if (!desdeEnero && registros.length > 0) {
-                const primerRegistro = registros.reduce((min, r) => r.fecha < min ? r.fecha : min, registros[0].fecha);
-                if (primerRegistro > fechaDesde) {
-                    fechaDesde = primerRegistro;
-                }
-            }
-
-            return _calcularEstadisticasRango(registros, {
-                regularidadPorMes: true,
-                desde: fechaDesde,
-                hasta: `${anioNum}-12-31`
-            });
-        }
-
-        function _crearOpcion(value, text, selected = false) {
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = text;
-            if (selected) { opt.selected = true; opt.setAttribute('selected', ''); }
-            return opt;
-        }
-
-        function _poblarSelect(selectId, items, getLabel, selDefault, actualizarFn, agruparFn = null) {
-            const select = $(selectId);
-            if (!select) return;
-            const selActual = select.value;
-            select.innerHTML = '';
-            if (!items.length) { select.appendChild(_crearOpcion('', 'Sin registros')); actualizarFn(null); return; }
-            const sel = (selActual && items.includes(selActual))
-                ? selActual
-                : (items.includes(selDefault)
-                    ? selDefault
-                    : (items.find(k => k <= selDefault) || items[items.length - 1]));
-            if (agruparFn) {
-                agruparFn(items).forEach((claves, grupo) => {
-                    const grp = document.createElement('optgroup');
-                    grp.label = grupo;
-                    claves.forEach(k => grp.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
-                    select.appendChild(grp);
-                });
-            } else {
-                items.forEach(k => select.appendChild(_crearOpcion(k, getLabel(k), k === sel)));
-            }
-            actualizarFn(sel);
-        }
-
-        function poblarSelectorAnios() {
-            const anios = [...new Set(D.registros().map(r => r.fecha.substring(0, 4)))].sort().reverse();
-            const anioActual = String(new Date().getFullYear());
-            _poblarSelect('select-anio-stats', anios, a => a, anioActual, actualizarEstadisticasAnio);
-        }
-
-        function actualizarEstadisticasAnio(anio) {
-            const stats = calcularEstadisticasAnio(anio);
-            _renderizarStats(stats, { mostrarBtnReporte: true });
-        }
-
-        function pegarHoraActual(id) {
-            const input = document.getElementById(id);
-            if (!input) return;
-            if (input.value.trim() !== '') {
-                input.value = '';
-            } else {
-                input.value = TimeUtils.obtenerHoraActual();
-            }
-            input.dispatchEvent(new Event('input'));
-        }
-
-        function limpiarCampo(id) {
-            const input = document.getElementById(id);
-            if (input) {
-                input.value = '';
-                input.dispatchEvent(new Event('input'));
-            }
-        }
+        let _resolverOnboarding = null;
 
         function cerrarConfig() {
+            if (document.body.classList.contains('config-onboarding')) {
+                setTimeout(() => document.body.classList.remove('config-onboarding'), 350);
+                StorageHelper.setItem(STORAGE_KEYS.BIENVENIDA_VISTA, true, true);
+                if (_resolverOnboarding) {
+                    _resolverOnboarding();
+                    _resolverOnboarding = null;
+                }
+            }
             const padre = ModalManager.getPadre('modal-config');
             if (padre) {
                 ModalManager.alternar('modal-config', padre);
@@ -3943,1771 +7238,35 @@
             }
         }
 
-        function _obtenerSemanas() {
-            const semanas = new Map();
-            D.registros().forEach(r => {
-                const d = new Date(r.fecha + 'T00:00:00');
-                const lunes = TimeUtils.obtenerLunes(d);
-                const key = TimeUtils.formatearFechaLocal(lunes);
-                if (!semanas.has(key)) semanas.set(key, lunes);
-            });
-            return Array.from(semanas.keys()).sort().reverse();
-        }
-
-        function _formatearSemana(lunesISO) {
-            const lunes = new Date(lunesISO + 'T00:00:00');
-            const domingo = new Date(lunes);
-            domingo.setDate(lunes.getDate() + 6);
-            const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-            const dL = lunes.getDate();
-            const dD = domingo.getDate();
-            const mL = meses[lunes.getMonth()];
-            const mD = meses[domingo.getMonth()];
-            if (lunes.getMonth() === domingo.getMonth()) {
-                return `${dL} al ${dD} de ${mD}`;
-            }
-            return `${dL} ${mL} al ${dD} ${mD}`;
-        }
-
-        function poblarSelectorSemanas() {
-            const semanas = _obtenerSemanas();
-            const lunesISO = TimeUtils.formatearFechaLocal(TimeUtils.obtenerLunes());
-            _poblarSelect('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana, _agruparMesesPorAnio);
-        }
-
-        function calcularEstadisticasSemana(lunesISO) {
-            if (!lunesISO) return _calcularEstadisticasRango([], { regularidadPorMes: false });
-            const lunes = new Date(lunesISO + 'T00:00:00');
-            const domingo = new Date(lunes);
-            domingo.setDate(lunes.getDate() + 6);
-            const hasta = TimeUtils.formatearFechaLocal(domingo);
-            const registros = D.registros().filter(r => r.fecha >= lunesISO && r.fecha <= hasta);
-            return _calcularEstadisticasRango(registros, { regularidadPorMes: false, desde: lunesISO, hasta });
-        }
-
-        function actualizarEstadisticasSemana(lunesISO) {
-            const stats = calcularEstadisticasSemana(lunesISO);
-            _renderizarStats(stats, { mostrarBtnReporte: false });
-        }
-
-        function _animarCambioStats(fn) {
-            _animarFadeSwap($('form-stats'), fn);
-        }
-
-        function cambiarSemanaStats() {
-            const v = $('select-semana-stats')?.value;
-            if (v !== undefined) _animarCambioStats(() => actualizarEstadisticasSemana(v));
-        }
-
-        function cambiarAnioStats() {
-            const v = $('select-anio-stats')?.value;
-            if (v !== undefined) _animarCambioStats(() => actualizarEstadisticasAnio(v));
-        }
-
-        function togglePeriodoStats(direccion = 1) {
-            if (_popupStatEl) { _popupStatEl.remove(); _popupStatEl = null; }
-            const selectMes = $('select-mes-stats');
-            const selectAnio = $('select-anio-stats');
-            const label = $('label-periodo-toggle');
-            const selectSemana = $('select-semana-stats');
-
-            const orden = ['mensual', 'anual', 'semanal'];
-            const idx = orden.indexOf(modoEstadisticas);
-            modoEstadisticas = orden[(idx + direccion + orden.length) % orden.length];
-            try { StorageHelper.setItem(STORAGE_KEYS.MODO_ESTADISTICAS, modoEstadisticas); } catch (e) { }
-
-            _animarSlideElemento(document.getElementById('stats-inner'), direccion, () => {
-                selectMes.classList.add('hidden');
-                selectAnio.classList.add('hidden');
-                if (selectSemana) selectSemana.classList.add('hidden');
-                if (modoEstadisticas === 'anual') {
-                    selectAnio.classList.remove('hidden');
-                    if (label) label.textContent = 'Anual';
-                    poblarSelectorAnios();
-                } else if (modoEstadisticas === 'semanal') {
-                    if (selectSemana) selectSemana.classList.remove('hidden');
-                    if (label) label.textContent = 'Semanal';
-                    poblarSelectorSemanas();
-                } else {
-                    selectMes.classList.remove('hidden');
-                    if (label) label.textContent = 'Mensual';
-                    poblarSelectorMeses();
-                }
-            });
-        }
-
-        function _agruparMesesPorAnio(mesesOrdenados) {
-            const map = new Map();
-            mesesOrdenados.forEach(mesAnio => {
-                const anio = mesAnio.substring(0, 4);
-                if (!map.has(anio)) map.set(anio, []);
-                map.get(anio).push(mesAnio);
-            });
-            return map;
-        }
-
-        function _nombreMesCapitalizado(mesAnio) {
-            const [a, m] = mesAnio.split('-');
-            const nombre = new Date(a, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
-            return nombre.charAt(0).toUpperCase() + nombre.slice(1).replace('.', '');
-        }
-
-        function poblarSelectorMeses() {
-            const meses = [...new Set(D.registros().map(r => r.fecha.substring(0, 7)))].sort().reverse();
-            const mesActual = TimeUtils.formatearFechaLocal(new Date()).slice(0, 7);
-            _poblarSelect('select-mes-stats', meses, _nombreMesCapitalizado, mesActual, actualizarEstadisticas, _agruparMesesPorAnio);
-        }
-
-        function cambiarMesStats() {
-            const v = $('select-mes-stats')?.value;
-            if (v !== undefined) _animarCambioStats(() => actualizarEstadisticas(v));
-        }
-
-        function _sumarHorasEfectivas(regs, horasDiarias) {
-            return regs.reduce((sum, r) => {
-                const t = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                if (t && t.id === 'remoto') return sum + horasDiarias;
-                if (!t) return sum + r.total;
-                return sum;
-            }, 0);
-        }
-
-        function _resolverPeriodoDatos(esAnual) {
-            if (esAnual) {
-                const anio = $('select-anio-stats')?.value;
-                if (!anio) { mostrarToast('No hay año seleccionado', 'error'); return null; }
-                const anioNum = parseInt(anio);
-                return {
-                    periodoLabel: anio,
-                    nombreArchivo: `reporte_${anio}.txt`,
-                    registrosPeriodo: D.registros().filter(r => parseInt(r.fecha.substring(0, 4)) === anioNum),
-                    stats: calcularEstadisticasAnio(anio),
-                    mesSeleccionado: null
-                };
-            }
-            const selectMes = $('select-mes-stats');
-            const mes = selectMes?.value;
-            if (!mes) { mostrarToast('No hay mes seleccionado', 'error'); return null; }
-            const [año, mesNum] = mes.split('-').map(Number);
-            return {
-                periodoLabel: selectMes.options[selectMes.selectedIndex].text,
-                nombreArchivo: `reporte_${mes}.txt`,
-                registrosPeriodo: D.registros().filter(r => {
-                    const [aReg, mReg] = r.fecha.split('-').map(Number);
-                    return aReg === año && mReg === mesNum;
-                }),
-                stats: calcularEstadisticasMes(mes),
-                mesSeleccionado: mes
-            };
-        }
-
-        function _seccionDetalleAnual(registrosPeriodo, horasDiariasObjetivo) {
-            const mesesOrdenados = [...new Set(registrosPeriodo.map(r => r.fecha.substring(0, 7)))].sort();
-            let seccion = `
-
-────────────────────────────────────────────────────────────────
-
-📅 TOTALES POR MES
-────────────────────────────────────────────────────────────────
-
-`;
-            mesesOrdenados.forEach(claveMes => {
-                const regsM = registrosPeriodo.filter(r => r.fecha.startsWith(claveMes));
-                const normales = regsM.filter(r => !TiposRegistro.esRegistroEspecial(r.entrada, r.salida) && r.entrada && r.salida);
-                const especiales = regsM.filter(r => TiposRegistro.esRegistroEspecial(r.entrada, r.salida));
-                const notas = TiposRegistro.obtenerTodosLosTipos()
-                    .map(t => {
-                        const n = especiales.filter(r => TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === t.id).length;
-                        return n ? `${n} ${t.labelPlural.toLowerCase()}` : null;
-                    })
-                    .filter(Boolean);
-                const nombreMes = TimeUtils.formatoTituloMes(claveMes).split(' ')[0];
-                seccion += `   ${nombreMes.padEnd(12)} ${TimeUtils.horasATexto(_sumarHorasEfectivas(regsM, horasDiariasObjetivo), 'short').padEnd(10)}  (${normales.length} jornadas)`;
-                if (notas.length) seccion += `  [${notas.join(', ')}]`;
-                seccion += '\n';
-            });
-            return seccion;
-        }
-
-        function _seccionDetalleMensual(registrosPeriodo, horasDiariasObjetivo) {
-            let seccion = `
-
-──────────────────────────────────────────────────────────────────
-
-📋 DETALLE DIARIO
-──────────────────────────────────────────────────────────────────
-
-`;
-            const ordenados = [...registrosPeriodo].sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-            ordenados.forEach(r => {
-                const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                const fecha = r.fecha.split('-').reverse().join('/');
-                const dia = TimeUtils.obtenerNombreDia(r.fecha);
-                let linea;
-                if (tipoEspecial) {
-                    linea = `${fecha}  ${dia.padEnd(10)} ${tipoEspecial.label.toUpperCase()}`;
-                } else {
-                    const entrada = r.entrada || '--:--';
-                    const salida = r.salida || '--:--';
-                    const total = r.salida ? TimeUtils.horasATexto(r.total, 'short') : 'Incompleto';
-                    const tiempoFuera = r.tiempoFuera ? ` (${r.tiempoFuera} fuera)` : '';
-                    const infoAsueto = (r.credito && r.credito !== '00:00') ? ' [SALIDA TEMPRANO]' : '';
-                    const indicador = r.salida ? (horasGte(r.total, horasDiariasObjetivo) ? '✓ ' : '✗ ') : '  ';
-                    linea = `${fecha}  ${dia.padEnd(10)} ${entrada} → ${salida}  [${total}]${tiempoFuera}${infoAsueto} ${indicador}`;
-                }
-                seccion += linea + '\n';
-            });
-            return seccion;
-        }
-
-        function _agruparRegistrosPorSemana(registros) {
-            const semanas = new Map();
-            registros.forEach(r => {
-                const lunes = TimeUtils.obtenerLunesSemanaISO(r.fecha);
-                if (!semanas.has(lunes)) {
-                    const base = { trabajados: [] };
-                    TiposRegistro.obtenerTodosLosTipos().forEach(t => { base[t.labelPlural.toLowerCase()] = []; });
-                    semanas.set(lunes, base);
-                }
-                const semana = semanas.get(lunes);
-                const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                if (tipoEspecial) {
-                    const cat = tipoEspecial.labelPlural.toLowerCase();
-                    if (semana[cat]) semana[cat].push(r);
-                } else {
-                    semana.trabajados.push(r);
-                }
-            });
-            return semanas;
-        }
-
-        function generarReporte() {
-            const esAnual = modoEstadisticas === 'anual';
-            const periodo = _resolverPeriodoDatos(esAnual);
-            if (!periodo) return;
-            const { periodoLabel, registrosPeriodo, stats, nombreArchivo, mesSeleccionado } = periodo;
-            const horasDiariasObjetivo = D.horasDiarias();
-
-            const reporte = {
-
-                header: () => `
-================================================================
-REPORTE DE HORAS TRABAJADAS                   
-================================================================
-
-📅 Período: ${periodoLabel}
-📊 Generado: ${new Date().toLocaleDateString('es-ES')} ${new Date().toLocaleTimeString('es-ES')}
-
-────────────────────────────────────────────────────────────────`,
-
-                resumenGeneral: () => {
-                    const lineasTipos = TiposRegistro.obtenerTodosLosTipos()
-                        .map(t => `   • ${(t.label + ':').padEnd(24)}${stats[t.labelPlural.toLowerCase()] || 0}`)
-                        .join('\n');
-                    return `
-
-📈 RESUMEN GENERAL
-────────────────────────────────────────────────────────────────
-
-   • Jornadas:               ${stats.diasTrabajados}
-${lineasTipos}
-   • Salidas Temprano:       ${stats.compensaciones}
-   • Entrada promedio:       ${stats.entradaPromedio}
-   • Salida promedio:        ${stats.salidaPromedio}
-   • Promedio diario:        ${stats.promedioDiario}
-   
-   • Total horas trabajadas: ${TimeUtils.horasATexto(_sumarHorasEfectivas(registrosPeriodo, horasDiariasObjetivo), 'short')}
-   • Saldo:                  ${stats.bufferPeriodo !== null ? TimeUtils.horasATexto(stats.bufferPeriodo, 'short') : 'N/A'}`;
-                },
-
-                detallePeriodo: () => esAnual
-                    ? _seccionDetalleAnual(registrosPeriodo, horasDiariasObjetivo)
-                    : _seccionDetalleMensual(registrosPeriodo, horasDiariasObjetivo),
-
-                totalesPorSemana: () => {
-                    if (esAnual || !mesSeleccionado) return '';
-                    const [añoActual, mesActual] = mesSeleccionado.split('-').map(Number);
-                    const primerDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual - 1, 1));
-                    const ultimaDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual, 0));
-
-                    const semanas = _agruparRegistrosPorSemana(registrosPeriodo);
-                    const semanasOrdenadas = [...semanas.entries()].sort((a, b) => new Date(a[0]) - new Date(b[0]));
-                    if (!semanasOrdenadas.length) return '';
-
-                    let seccion = `
-
-────────────────────────────────────────────────────────────────
-
-📅 TOTALES POR SEMANA
-────────────────────────────────────────────────────────────────
-
-`;
-                    const semanasIncompletas = [];
-
-                    semanasOrdenadas.forEach(([lunesOriginal, datos], index) => {
-                        let totalSemanal = datos.trabajados.reduce((sum, r) => sum + r.total, 0);
-                        if (datos.remotos?.length) totalSemanal += datos.remotos.length * horasDiariasObjetivo;
-
-                        const fechaLunes = TimeUtils.parsearFechaLocal(lunesOriginal);
-                        const fechaDomingo = new Date(fechaLunes);
-                        fechaDomingo.setDate(fechaLunes.getDate() + 6);
-                        const domingo = TimeUtils.formatearFechaLocal(fechaDomingo);
-
-                        let lunes = lunesOriginal, fechaFin = domingo, esIncompleta = false, continuaEn = '';
-
-                        if (domingo > ultimaDiaMes) {
-                            fechaFin = ultimaDiaMes;
-                            esIncompleta = true;
-                            const mesSig = mesActual === 12 ? 1 : mesActual + 1;
-                            const añoSig = mesActual === 12 ? añoActual + 1 : añoActual;
-                            continuaEn = `continúa en ${new Date(añoSig, mesSig - 1, 1).toLocaleDateString('es-ES', { month: 'long' })}`;
-                        }
-                        if (lunes < primerDiaMes) {
-                            lunes = primerDiaMes;
-                            esIncompleta = true;
-                            const mesAnt = mesActual === 1 ? 12 : mesActual - 1;
-                            const añoAnt = mesActual === 1 ? añoActual - 1 : añoActual;
-                            continuaEn = `viene de ${new Date(añoAnt, mesAnt - 1, 1).toLocaleDateString('es-ES', { month: 'long' })}`;
-                        }
-
-                        seccion += `   Semana ${index + 1} (${lunes.split('-').reverse().join('/')} - ${fechaFin.split('-').reverse().join('/')})${esIncompleta ? '*' : ''}:\n`;
-                        seccion += `      └─ ${TimeUtils.horasATexto(totalSemanal, 'short')}`;
-
-                        const notasExtras = TiposRegistro.obtenerTodosLosTipos()
-                            .map(t => {
-                                const clave = t.labelPlural.toLowerCase();
-                                return datos[clave]?.length ? `${datos[clave].length} ${clave}` : null;
-                            })
-                            .filter(Boolean);
-                        if (notasExtras.length) seccion += ` [${notasExtras.join(', ')}]`;
-                        seccion += '\n\n';
-
-                        if (esIncompleta && continuaEn) semanasIncompletas.push(`* Semana ${index + 1}: ${continuaEn}`);
-                    });
-
-                    if (semanasIncompletas.length) seccion += semanasIncompletas.join('\n') + '\n';
-                    return seccion;
-                },
-
-                configuracion: () => `
-
-────────────────────────────────────────────────────────────────
-
-⚙️ Ajustes
-────────────────────────────────────────────────────────────────
-
-   • Horas diarias:          ${D.horasDiarias()}
-   • Días hábiles/semana:    ${D.diasHabiles().map(d => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d]).join(', ')}
-   • Horas semanales:        ${D.horasSemanales()}`,
-
-                footer: () => `
-
-────────────────────────────────────────────────────────────────
-
-Generado por Sistema Lushibosca
-`
-            };
-
-            const contenido =
-                reporte.header() +
-                reporte.resumenGeneral() +
-                reporte.detallePeriodo() +
-                reporte.totalesPorSemana() +
-                reporte.configuracion() +
-                reporte.footer();
-
-            try {
-                const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = Object.assign(document.createElement('a'), { href: url, download: nombreArchivo });
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                mostrarToast(esAnual ? 'Reporte anual generado' : 'Reporte generado', 'success');
-            } catch (e) {
-                console.error('Error generando reporte:', e);
-                mostrarToast('Error al generar reporte', 'error');
-            }
-        }
-
-        const sumarMinutosAHora = TimeUtils.sumarMinutosAHora;
-
-        function _actualizarCardTimerRunning(card, storageKey) {
-            if (!card) return;
-            card.classList.add('timer-running');
-            const titulo = card.querySelector('h2');
-            if (!titulo) return;
-            const vistaActual = D.vistaActual();
-            const icono = vistaActual === 'semana'
-                ? '<svg class="icon"><use href="#icon-calendar-simple"/></svg>'
-                : '<svg class="icon"><use href="#icon-clock"/></svg>';
-            const contexto = vistaActual === 'semana' ? 'Esta Semana' : TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy());
-            titulo.innerHTML = `${icono} ${contexto} - <svg class="icon"><use href="#icon-exit"/></svg> Tiempo fuera `;
-            const breakCounter = Object.assign(document.createElement('span'), {
-                id: 'break-counter', className: 'break-counter-label'
-            });
-            titulo.appendChild(breakCounter);
-            _iniciarContadorBreak(storageKey);
-        }
-
-        function actualizarEstadoBotonTimerMain() {
-            const btn = document.getElementById('btn-timer-main');
-            const card = document.getElementById('stats-card');
-            if (!btn) return;
-
-            if (modoLoteActivo) { btn.disabled = true; return; }
-
-            const hoy = TimeUtils.obtenerFechaHoy();
-            const registroHoy = D.registros().find(r => r.fecha === hoy);
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
-            const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
-            const isRunning = StorageHelper.getItem(storageKey) !== null;
-            const icon = btn.querySelector('use');
-            const diaCerrado = registroHoy?.salida?.trim() !== '' && !!registroHoy?.salida;
-
-            if (!isRunning && (!registroHoy || diaCerrado)) {
-                Object.assign(btn, { disabled: true, title: diaCerrado ? 'Día finalizado' : 'Debes fichar entrada primero' });
-            } else {
-                Object.assign(btn, { disabled: false, title: isRunning ? 'Detener tiempo fuera' : 'Iniciar tiempo fuera' });
-            }
-
-            icon.setAttribute('href', '#icon-exit');
-            if (isRunning) {
-                btn.classList.add('running');
-                Object.assign(btn.style, { color: 'var(--c-red)', borderColor: 'var(--c-red)' });
-                _actualizarCardTimerRunning(card, storageKey);
-            } else {
-                btn.classList.remove('running');
-                Object.assign(btn.style, { color: 'var(--text-main)', borderColor: 'var(--border)' });
-                if (card) card.classList.remove('timer-running');
-                _detenerContadorBreak();
-            }
-        }
-
-        let _breakCounterInterval = null;
-
-        function _iniciarContadorBreak(storageKey) {
-            _detenerContadorBreak();
-            function _actualizarContador() {
-                const el = document.getElementById('break-counter');
-                if (!el) { _detenerContadorBreak(); return; }
-                const start = parseInt(StorageHelper.getItem(storageKey));
-                if (isNaN(start)) { el.textContent = ''; _detenerContadorBreak(); return; }
-                const totalSeg = Math.floor((Date.now() - start) / 1000);
-                const mins = Math.floor(totalSeg / 60);
-                const horas = Math.floor(mins / 60);
-                const minsResto = mins % 60;
-                if (horas > 0) {
-                    el.textContent = `${horas}h ${minsResto}m`;
-                } else {
-                    el.textContent = `${mins}m`;
-                }
-            }
-            _actualizarContador();
-            _breakCounterInterval = setInterval(_actualizarContador, 1000);
-        }
-
-        function _detenerContadorBreak() {
-            if (_breakCounterInterval) {
-                clearInterval(_breakCounterInterval);
-                _breakCounterInterval = null;
-            }
-        }
-
-        async function _detenerTimerBreak(registroHoy, storageKey, storedStart) {
-            const totalSeg = Math.floor((Date.now() - parseInt(storedStart)) / 1000);
-
-            if (totalSeg < 30) {
-                StorageHelper.removeItem(storageKey);
-                mostrarToast('Tiempo muy corto, no se registró', 'info');
-                actualizarUI(); return;
-            }
-            if (!registroHoy) {
-                StorageHelper.removeItem(storageKey);
-                mostrarToast('No hay registro para hoy, tiempo fuera descartado', 'warning');
-                actualizarUI(); return;
-            }
-
-            const minutos = Math.floor(totalSeg / 60) + (totalSeg % 60 >= 30 ? 1 : 0);
-            registroHoy.tiempoFuera = sumarMinutosAHora(registroHoy.tiempoFuera || '00:00', minutos);
-            const t = D.calcularHoras(registroHoy.entrada, registroHoy.salida, registroHoy.tiempoFuera);
-            registroHoy.horas = t?.horas || 0; registroHoy.minutos = t?.minutos || 0; registroHoy.total = t?.total || 0;
-            HistoryManager.saveState(D.registros());
-            StorageHelper.removeItem(storageKey);
-            await D.guardarYActualizar(registroHoy.id);
-            const ignorarTF = D.getIgnorarTiempoFuera();
-            const mensajeToast = ignorarTF
-                ? (minutos === 1
-                    ? 'Se registró 1 minuto de tiempo fuera (cálculo ignorado)'
-                    : `Se registraron ${minutos} minutos de tiempo fuera (cálculo ignorado)`)
-                : (minutos === 1 ? 'Se descontó 1 minuto al registro de hoy' : `Se descontaron ${minutos} minutos al registro de hoy`);
-            mostrarToast(mensajeToast, ignorarTF ? 'info' : 'success');
-        }
-
-        async function toggleTimerBreakMain() {
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
-            const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
-            const storedStart = StorageHelper.getItem(storageKey);
-            const registroHoy = D.registros().find(r => r.fecha === TimeUtils.obtenerFechaHoy());
-
-            if (!storedStart && !registroHoy) { mostrarToast('Debes crear un registro para hoy primero', 'warning'); return; }
-
-            if (!storedStart) {
-                StorageHelper.setItem(storageKey, Date.now());
-                mostrarToast('Tiempo fuera iniciado', 'info');
-            } else {
-                await _detenerTimerBreak(registroHoy, storageKey, storedStart);
-            }
-            actualizarEstadoBotonTimerMain();
-        }
-
-        function _setBloqueoEdicionGenerico(bloqueado, { btnLockId, inputIds, modalId, excluirBotones }) {
-            const btnLock = $(btnLockId);
-            if (btnLock) {
-                const icon = btnLock.querySelector('use');
-                icon.setAttribute('href', bloqueado ? '#icon-lock' : '#icon-lock-open');
-                btnLock.title = bloqueado ? "Desbloquear edición" : "Bloquear edición";
-                btnLock.style.color = 'var(--text-main)';
-                btnLock.style.background = bloqueado ? 'var(--c-red)' : 'var(--c-green)';
-            }
-
-            inputIds.forEach(id => {
-                const el = $(id);
-                if (el) el.disabled = bloqueado;
+        function _precargarCamposConfig() {
+            const elHoras = $('config-horas-diarias');
+            elHoras.dataset.valor = D.horasDiarias();
+            elHoras.textContent = TimeUtils.horasATexto(D.horasDiarias(), 'short');
+
+            const diasActivos = D.diasHabiles();
+            const checkboxes = document.querySelectorAll('input[name="dia-habil"]');
+            checkboxes.forEach(cb => {
+                cb.checked = diasActivos.includes(parseInt(cb.value));
+                cb.onchange = UILogic.actualizarFeedbackConfig;
             });
 
-            const modal = $(modalId);
-            if (modal) {
-                const botones = modal.querySelectorAll(excluirBotones);
-                botones.forEach(btn => {
-                    btn.disabled = bloqueado;
-                });
-            }
-        }
-
-        function setBloqueoEdicion(bloqueado) {
-            edicionBloqueada = bloqueado;
-            _setBloqueoEdicionGenerico(bloqueado, {
-                btnLockId: 'btn-lock-toggle',
-                inputIds: ['edit-fecha', 'edit-entrada', 'edit-salida', 'edit-tiempo-fuera', 'edit-notas'],
-                modalId: 'modal-editar',
-                excluirBotones: 'button:not(#btn-lock-toggle):not(.btn-cancel):not(#btn-toggle-credito)'
-            });
-            verificarBloqueoCredito();
-        }
-
-        function toggleBloqueoEdicion() {
-            setBloqueoEdicion(!edicionBloqueada);
-        }
-
-        function renderizarListaPerfiles() {
-            const lista = document.getElementById('lista-perfiles-botones');
-            if (!lista) return;
-
-            lista.innerHTML = '';
-            window.PerfilManager.obtenerListaPerfiles().forEach(p => {
-                const container = Object.assign(document.createElement('div'), {
-                    className: `btn-perfil-select ${p.esActual ? 'activo' : ''}`
-                });
-                if (p.esActual) container.style.cursor = 'default';
-
-                const countText = `${p.totalRegistros} registro${p.totalRegistros !== 1 ? 's' : ''}`;
-                const infoSection = Object.assign(document.createElement('div'), { className: 'btn-perfil-info' });
-                infoSection.appendChild(Object.assign(document.createElement('div'), { className: 'btn-perfil-nombre', textContent: p.nombre }));
-                const badge = Object.assign(document.createElement('div'), {
-                    className: 'btn-perfil-badge',
-                    textContent: p.esActual ? `${countText} · Activo` : countText
-                });
-                if (p.esActual) badge.style.color = 'var(--c-green)';
-                infoSection.appendChild(badge);
-
-                const editBtn = Object.assign(document.createElement('button'), {
-                    className: 'btn-perfil-edit',
-                    innerHTML: '<svg class="icon"><use href="#icon-edit"/></svg>',
-                    title: 'Editar perfil',
-                    onclick: (e) => { e.stopPropagation(); UILogic.abrirEditorPerfil(p.id); }
-                });
-
-                container.onclick = () => { if (!p.esActual) window.PerfilManager.cambiarPerfil(p.id); };
-                container.appendChild(infoSection);
-                container.appendChild(editBtn);
-                lista.appendChild(container);
-            });
-        }
-
-        function _cerrarSelectorMeses(idResaltar = null) {
-            const grid = document.getElementById('calendario-grid');
-            const selector = document.getElementById('calendario-selector-meses');
-            const navBotones = document.getElementById('calendario-nav-botones');
-            _animarFadeSwap(selector, () => {
-                selector.style.display = 'none';
-                navBotones.style.display = 'flex';
-                grid.style.display = 'grid';
-                grid.classList.add('fade-out');
-                grid.offsetHeight;
-                _renderizarCalendario(idResaltar);
-                grid.classList.remove('fade-out');
-            });
-        }
-
-        function abrirSelectorMesesCalendario() {
-            const grid = document.getElementById('calendario-grid');
-            const selector = document.getElementById('calendario-selector-meses');
-            const navBotones = document.getElementById('calendario-nav-botones');
-            const titulo = document.getElementById('calendario-titulo-mes');
-
-            if (selector.style.display !== 'none') { _cerrarSelectorMeses(); return; }
-
-            const mesesOrdenados = [...new Set(D.registros().map(r => r.fecha.substring(0, 7)))].sort().reverse();
-            selector.innerHTML = '';
-
-            if (mesesOrdenados.length === 0) {
-                const emptyEl = Object.assign(document.createElement('div'), {
-                    className: 'empty-state empty-state--calendario',
-                    textContent: 'No hay registros'
-                });
-                selector.appendChild(emptyEl);
-            } else {
-                const hoy = new Date();
-                const anioActual = _calendarioMes ? _calendarioMes.anio : hoy.getFullYear();
-                const mesActual = _calendarioMes ? _calendarioMes.mes : hoy.getMonth();
-
-                _agruparMesesPorAnio(mesesOrdenados).forEach((meses, anioStr) => {
-                    const separador = Object.assign(document.createElement('div'), {
-                        className: 'selector-meses-anio-header',
-                        textContent: anioStr
-                    });
-                    selector.appendChild(separador);
-
-                    meses.forEach(mesAnio => {
-                        const [aStr, mesStr] = mesAnio.split('-');
-                        const anio = parseInt(aStr), mes = parseInt(mesStr) - 1;
-                        const btn = Object.assign(document.createElement('button'), {
-                            className: 'btn-mes-calendario',
-                            textContent: _nombreMesCapitalizado(mesAnio)
-                        });
-                        if (anio === anioActual && mes === mesActual) btn.classList.add('activo');
-                        btn.onclick = (e) => { e.stopPropagation(); _calendarioMes = { anio, mes }; _cerrarSelectorMeses(); };
-                        selector.appendChild(btn);
-                    });
-                });
-            }
-
-            selector.style.height = grid.getBoundingClientRect().height + 'px';
-            _animarFadeSwap(grid, () => {
-                grid.style.display = 'none';
-                navBotones.style.display = 'none';
-                titulo.innerHTML = '<svg class="icon"><use href="#icon-back" /></svg> Volver';
-                selector.style.display = 'grid';
-                selector.classList.add('fade-out');
-                selector.offsetHeight;
-                selector.classList.remove('fade-out');
-            });
-        }
-
-        function abrirSelectorPerfiles() {
-            ModalManager.abrir('modal-selector-perfiles', () => {
-                const inputNuevo = document.getElementById('nombre-nuevo-perfil-selector');
-                if (inputNuevo) inputNuevo.value = '';
-
-                renderizarListaPerfiles();
-
-                const temaOscuro = document.documentElement.classList.contains('dark-mode');
-                const toggleBtnModal = document.getElementById('theme-toggle-modal');
-
-                if (toggleBtnModal) {
-                    const icon = toggleBtnModal.querySelector('use');
-                    if (temaOscuro) {
-                        icon.setAttribute('href', '#icon-sun');
-                    } else {
-                        icon.setAttribute('href', '#icon-moon');
-                    }
-                }
-            });
-        }
-
-        function _validarNombrePerfil(nombre, perfiles) {
-            if (!nombre) return 'Ingresa un nombre para el perfil';
-            if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/.test(nombre)) return 'El nombre contiene caracteres no válidos.\n Solo letras, números y espacios.';
-            if (Object.values(perfiles).some(p => p.nombre.toLowerCase().trim() === nombre.toLowerCase().trim())) return 'Ya existe un perfil con ese nombre';
-            if (Object.keys(perfiles).length >= PerfilManager.MAX_PERFILES) return `Máximo de perfiles alcanzado (${PerfilManager.MAX_PERFILES})`;
-            return null;
-        }
-
-        function crearPerfilDesdeSelector() {
-            const input = document.getElementById('nombre-nuevo-perfil-selector');
-            if (!input) return;
-            const nombre = S.sanitizeString(input.value.trim(), 30);
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
-
-            const error = _validarNombrePerfil(nombre, perfiles);
-            if (error) { mostrarToast(error, 'error'); return; }
-
-            const id = 'perfil_' + S.generarIDSeguro();
-            perfiles[id] = { nombre, registros: [], diasHabiles: [1, 2, 3, 4, 5], horasDiarias: 7 };
-
-            try {
-                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
-            } catch (e) {
-                console.error('Error al guardar perfil:', e);
-                delete perfiles[id];
-                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
-                return;
-            }
-
-            if (window.PerfilManager) window.PerfilManager.inicializar();
-            mostrarToast(`Perfil "${nombre}" creado`, 'success');
-            input.value = '';
-            renderizarListaPerfiles();
-            requestAnimationFrame(() => {
-                const ultimo = document.getElementById('lista-perfiles-botones')?.lastElementChild;
-                if (ultimo) { ultimo.style.animation = 'zoomIn 0.3s ease-out'; ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
-            });
-        }
-
-        function cerrarSelectorPerfiles() {
-            ModalManager.cerrar('modal-selector-perfiles');
+            UILogic.actualizarFeedbackConfig();
+            actualizarEstadoBotonIgnorarTF();
+            UILogic.actualizarEstadoBotonAplicarHoras();
+            const lbl = $('hint-fondo-label');
+            if (lbl) lbl.textContent = _getLabelFondo(UILogic.getFondoCard());
         }
 
         function mostrarconfig() {
-            ModalManager.alternar('modal-selector-perfiles', 'modal-config', null, () => {
-                {
-                    const elHoras = $('config-horas-diarias');
-                    elHoras.dataset.valor = D.horasDiarias();
-                    elHoras.textContent = TimeUtils.horasATexto(D.horasDiarias(), 'short');
-                }
-
-                const diasActivos = D.diasHabiles();
-                const checkboxes = document.querySelectorAll('input[name="dia-habil"]');
-                checkboxes.forEach(cb => {
-                    cb.checked = diasActivos.includes(parseInt(cb.value));
-                    cb.onchange = UILogic.actualizarFeedbackConfig;
-                });
-
-                UILogic.actualizarFeedbackConfig();
-                actualizarEstadoBotonIgnorarTF();
-                const lbl = $('hint-fondo-label');
-                if (lbl) lbl.textContent = _getLabelFondo(_fondoCard);
-            });
+            ModalManager.alternar('modal-selector-perfiles', 'modal-config', null, _precargarCamposConfig);
         }
 
-        function abrirEditorPerfil(perfilId) {
-            perfilEnEdicion = perfilId;
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
-            const perfil = perfiles[perfilId];
-
-            if (!perfil) {
-                mostrarToast('Perfil no encontrado', 'error');
-                return;
-            }
-
-            document.getElementById('nombre-perfil-editar').value = perfil.nombre;
-            document.getElementById('id-perfil-editar').value = perfilId;
-
-            const btnEliminar = document.getElementById('btn-eliminar-perfil-editor');
-            if (btnEliminar) {
-                btnEliminar.disabled = (perfilId === 'default');
-            }
-
-            ModalManager.alternar('modal-selector-perfiles', 'modal-editar-perfil');
+        function mostrarConfigOnboarding() {
+            document.body.classList.add('config-onboarding');
+            ModalManager.abrir('modal-config', _precargarCamposConfig);
+            return new Promise(resolve => { _resolverOnboarding = resolve; });
         }
 
-        function cerrarEditorPerfil() {
-            perfilEnEdicion = null;
-            ModalManager.alternar('modal-editar-perfil', 'modal-selector-perfiles', null, () => {
-                const inputNuevo = document.getElementById('nombre-nuevo-perfil-selector');
-                if (inputNuevo) inputNuevo.value = '';
-                renderizarListaPerfiles();
-            });
-        }
-
-        function _validarNombrePerfilEdicion(nuevoNombre, perfiles, excluirId) {
-            if (!nuevoNombre) return 'Ingresa un nombre válido';
-            if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/.test(nuevoNombre)) return 'Caracteres no permitidos en el nombre.';
-            if (!perfiles[excluirId]) return 'Perfil no encontrado';
-            const norm = nuevoNombre.toLowerCase().trim();
-            if (Object.entries(perfiles).some(([id, p]) => id !== excluirId && p.nombre.toLowerCase().trim() === norm)) return 'Ya existe otro perfil con ese nombre';
-            return null;
-        }
-
-        function guardarEdicionPerfil() {
-            if (!perfilEnEdicion) return;
-            const nuevoNombre = S.sanitizeString(document.getElementById('nombre-perfil-editar').value.trim(), 30);
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
-
-            const error = _validarNombrePerfilEdicion(nuevoNombre, perfiles, perfilEnEdicion);
-            if (error) { mostrarToast(error, 'error'); return; }
-
-            if (perfiles[perfilEnEdicion].nombre === nuevoNombre) {
-                mostrarToast('Sin cambios', 'info'); cerrarEditorPerfil(); return;
-            }
-
-            const nombreAnterior = perfiles[perfilEnEdicion].nombre;
-            perfiles[perfilEnEdicion].nombre = nuevoNombre;
-            try {
-                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
-            } catch (e) {
-                console.error('Error al guardar perfil:', e);
-                perfiles[perfilEnEdicion].nombre = nombreAnterior;
-                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
-                return;
-            }
-
-            if (perfilEnEdicion === window.PerfilManager?.obtenerPerfilActual()) {
-                const btnTexto = document.getElementById('nombre-perfil-header');
-                if (btnTexto) btnTexto.textContent = nuevoNombre;
-            }
-            if (window.PerfilManager) window.PerfilManager.inicializar();
-            mostrarToast('Perfil actualizado', 'success');
-            cerrarEditorPerfil();
-        }
-
-        function _limpiarClavesPerfil(pid) {
-            ['breakStartTime', STORAGE_KEYS.HISTORY, STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO,
-                'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS
-            ].forEach(k => StorageHelper.removeItem(`${k}_${pid}`));
-        }
-
-        async function eliminarPerfilDesdeEditor() {
-            if (!perfilEnEdicion || perfilEnEdicion === 'default') {
-                mostrarToast('No se puede eliminar el perfil Principal', 'error'); return;
-            }
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
-            const perfil = perfiles[perfilEnEdicion];
-            if (!perfil) { mostrarToast('Perfil no encontrado', 'error'); return; }
-
-            if (!await ModalManager.confirmar(`¿Estás seguro de que querés eliminar el perfil "${perfil.nombre}"? Esta acción no se puede deshacer.`, 'Eliminar')) return;
-
-            _limpiarClavesPerfil(perfilEnEdicion);
-            delete perfiles[perfilEnEdicion];
-            try {
-                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
-            } catch (e) {
-                console.error('Error al eliminar perfil:', e); mostrarToast('Error al guardar: almacenamiento lleno', 'error'); return;
-            }
-
-            if (perfilEnEdicion === window.PerfilManager?.obtenerPerfilActual()) {
-                try {
-                    if (!StorageHelper.setItem(STORAGE_KEYS.PERFIL_ACTIVO, 'default')) throw new Error('quota');
-                } catch (e) {
-                    console.error('Error al guardar perfil activo:', e); mostrarToast('Error al guardar: almacenamiento lleno', 'error'); return;
-                }
-                mostrarToast('Perfil eliminado. Recargando...', 'success');
-                setTimeout(() => location.reload(), 1000);
-            } else {
-                window.PerfilManager?.inicializar();
-                mostrarToast('Perfil eliminado', 'success');
-                cerrarEditorPerfil();
-            }
-        }
-
-        function toggleModoLote(deltaSwipe, conAnimacion = true) {
-            const modoContenedor = document.getElementById('modo-contenedor');
-            const modoNormal = document.getElementById('modo-normal');
-            const modoLote = document.getElementById('modo-lote');
-            const btnTexto = document.getElementById('btn-registrar-texto');
-            const btnTimer = document.getElementById('btn-timer-main');
-            const btn = document.getElementById('btn-agregar');
-
-            modoLoteActivo = !modoLoteActivo;
-            const delta = deltaSwipe !== undefined ? deltaSwipe : (modoLoteActivo ? 1 : -1);
-
-            const aplicarCambiosLote = () => {
-                modoNormal.style.display = 'none';
-                modoLote.classList.remove('fade-out');
-                modoLote.style.display = 'block';
-
-                document.getElementById('lote-tipo').value = 'feriado';
-                document.getElementById('lote-fecha-desde').value = '';
-                document.getElementById('lote-fecha-hasta').value = '';
-
-                btnTexto.textContent = 'Fichar Lote';
-                btn.style.background = '';
-                btn.style.color = '';
-
-                setIconoBtn(btn, '#icon-save');
-
-                btnTimer.disabled = true;
-
-                actualizarBotonLote();
-            };
-
-            const aplicarCambiosNormal = () => {
-                modoLote.style.display = 'none';
-                modoNormal.style.display = 'block';
-                UILogic.resetearBoton(btn);
-                actualizarEstadoBotonTimerMain();
-            };
-
-            if (conAnimacion) {
-                _animarSlideElemento(modoContenedor, delta, modoLoteActivo ? aplicarCambiosLote : aplicarCambiosNormal);
-            } else {
-                modoLoteActivo ? aplicarCambiosLote() : aplicarCambiosNormal();
-            }
-        }
-
-        async function ejecutarAccionRegistro() {
-            if (modoLoteActivo) {
-                await registrarLoteDesdeCard();
-            } else {
-                await DataManagement.agregarRegistro();
-            }
-
-            if (modoLoteActivo) {
-                setTimeout(() => actualizarBotonLote(), 100);
-            }
-        }
-
-        function _limpiarCamposLote() {
-            document.getElementById('lote-fecha-desde').value = '';
-            document.getElementById('lote-fecha-hasta').value = '';
-        }
-
-        async function _registrarEspecialHoy(tipo) {
-            const fechaHoy = UILogic.obtenerFechaHoy();
-            if (DataManagement.registros().find(r => r.fecha === fechaHoy)) {
-                mostrarToast('Ya existe un registro para hoy', 'warning'); return;
-            }
-            try {
-                await DataManagement.registrarDiaEspecial(fechaHoy, tipo);
-                _limpiarCamposLote();
-            } catch (e) { console.error('Error al registrar:', e); }
-        }
-
-        async function _registrarEspecialFecha(desde, tipo) {
-            if (DataManagement.registros().find(r => r.fecha === desde)) {
-                mostrarToast('Ya existe un registro para esa fecha', 'warning'); return;
-            }
-            try {
-                await DataManagement.registrarDiaEspecial(desde, tipo);
-                aplicarFeedbackCampos([
-                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
-                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: false }
-                ]);
-                _limpiarCamposLote();
-            } catch (e) { console.error('Error al registrar:', e); }
-        }
-
-        async function registrarLoteDesdeCard() {
-            const inputDesde = document.getElementById('lote-fecha-desde');
-            const inputHasta = document.getElementById('lote-fecha-hasta');
-            const tipo = document.getElementById('lote-tipo').value;
-
-            if ((inputDesde.value === '' && inputDesde.validity && !inputDesde.validity.valid) ||
-                (inputHasta.value === '' && inputHasta.validity && !inputHasta.validity.valid)) {
-                mostrarToast('Fecha inválida', 'error'); return;
-            }
-
-            const desde = inputDesde.value;
-            const hasta = inputHasta.value;
-
-            if (!desde && !hasta) {
-                if (!inputDesde.checkValidity() || !inputHasta.checkValidity()) {
-                    mostrarToast('Revisa las fechas ingresadas', 'error'); return;
-                }
-                if (tipo === 'normal') { mostrarToast('Completa los campos Desde y Hasta.', 'info'); return; }
-                await _registrarEspecialHoy(tipo); return;
-            }
-
-            if (desde && !hasta) {
-                if (tipo === 'normal') { mostrarToast('Completa ambos campos', 'info'); return; }
-                await _registrarEspecialFecha(desde, tipo); return;
-            }
-
-            if (!desde && hasta) { mostrarToast('Completa ambos campos', 'info'); return; }
-            if (desde > hasta) { mostrarToast('La fecha inicial debe ser inferior a la final', 'error'); return; }
-
-            if (tipo !== 'normal' && !TiposRegistro.obtenerCodigosPorTipo(tipo)) {
-                mostrarToast('Tipo de registro inválido', 'error'); return;
-            }
-
-            try {
-                if (tipo === 'normal') await DataManagement.borrarPeriodoDirecto(desde, hasta);
-                else await DataManagement.registrarVacacionesDirecto(desde, hasta, tipo);
-                aplicarFeedbackCampos([
-                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
-                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: true }
-                ]);
-                _limpiarCamposLote();
-            } catch (e) { console.error('Error en operación de lote:', e); }
-        }
-
-        function setIconoBtn(btn, icono) {
-            const use = btn.querySelector('svg use');
-            if (use) use.setAttribute('href', icono);
-        }
-
-        function poblarSelectoresTipos() {
-            const tipos = TiposRegistro.obtenerTodosLosTipos();
-
-            const cfg = [
-                { id: 'lote-tipo', getLabel: t => `${t.emoji} ${t.label}`, extra: [{ value: 'normal', text: '🕒 Jornadas (borrar)' }] },
-                { id: 'filtro-tipo', getLabel: t => `${t.emoji} ${t.labelPlural}`, prefix: '<option value="">Todos</option><option value="normal">🕒 Jornadas</option>' },
-                { id: 'edit-grupo-tipo', getLabel: t => `${t.emoji} ${t.label}` },
-            ];
-
-            cfg.forEach(({ id, getLabel, prefix = '', extra = [] }) => {
-                const sel = $(id);
-                if (!sel) return;
-                sel.innerHTML = prefix;
-                tipos.forEach(t => sel.appendChild(_crearOpcion(t.id, getLabel(t))));
-                extra.forEach(e => sel.appendChild(_crearOpcion(e.value, e.text)));
-            });
-        }
-
-        function _setBtnError(btn, btnTexto, mensaje) {
-            btnTexto.textContent = mensaje;
-            btn.style.color = 'var(--c-red)';
-            setIconoBtn(btn, '#icon-save');
-        }
-
-        function _actualizarBtnNormal(btn, btnTexto, desde, hasta) {
-            const n = DataManagement.registros().filter(r =>
-                r.fecha >= desde && r.fecha <= hasta && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
-            ).length;
-            if (n > 0) {
-                btnTexto.textContent = `Borrar (${n})`;
-                btn.style.color = 'var(--c-red)';
-                setIconoBtn(btn, '#icon-trash');
-            } else {
-                btnTexto.textContent = 'Sin Registros';
-                btn.style.color = 'var(--text-muted)';
-                setIconoBtn(btn, '#icon-save');
-            }
-        }
-
-        function _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales) {
-            const codigosTipo = TiposRegistro.obtenerCodigosPorTipo(tipo);
-            if (!codigosTipo) {
-                btnTexto.textContent = 'Fichar'; setIconoBtn(btn, '#icon-save'); return;
-            }
-            const yaRegistrados = DataManagement.registros().filter(r =>
-                r.fecha >= desde && r.fecha <= hasta &&
-                r.entrada === codigosTipo.entrada && r.salida === codigosTipo.salida
-            ).length;
-            const diasOcupados = DataManagement.registros().filter(r => r.fecha >= desde && r.fecha <= hasta).length;
-            const disponibles = diasTotales - diasOcupados;
-            const sobreescribirOtros = diasOcupados - yaRegistrados;
-
-            if (disponibles === 0 && yaRegistrados === diasTotales) {
-                btnTexto.textContent = `Fichado (${diasTotales})`;
-                btn.style.color = 'var(--text-muted)';
-            } else if (disponibles === diasTotales) {
-                btnTexto.textContent = `Fichar (${diasTotales})`;
-            } else if (sobreescribirOtros > 0) {
-                btnTexto.textContent = `Fichar (${disponibles} - ${sobreescribirOtros})`;
-            } else {
-                btnTexto.textContent = `Fichar (${disponibles})`;
-            }
-            setIconoBtn(btn, '#icon-save');
-        }
-
-        function actualizarBotonLote() {
-            const tipo = document.getElementById('lote-tipo').value;
-            const desde = document.getElementById('lote-fecha-desde').value;
-            const hasta = document.getElementById('lote-fecha-hasta').value;
-            const btn = document.getElementById('btn-agregar');
-            const btnTexto = document.getElementById('btn-registrar-texto');
-            btn.style.background = '';
-            btn.style.color = '';
-
-            if (!desde && !hasta) { btnTexto.textContent = 'Fichar'; setIconoBtn(btn, '#icon-save'); return; }
-            if (!desde && hasta) { _setBtnError(btn, btnTexto, 'Requiere Rango'); return; }
-
-            if (desde && !hasta) {
-                if (tipo === 'normal') { _setBtnError(btn, btnTexto, 'Requiere Rango'); return; }
-                const existe = DataManagement.registros().find(r => r.fecha === desde);
-                btnTexto.textContent = existe ? 'Fichado' : 'Fichar';
-                if (existe) btn.style.color = 'var(--text-muted)';
-                setIconoBtn(btn, '#icon-save');
-                return;
-            }
-
-            if (!TimeUtils.validarFecha(desde)) { _setBtnError(btn, btnTexto, 'Fecha Inicial Inválida'); return; }
-            if (!TimeUtils.validarFecha(hasta)) { _setBtnError(btn, btnTexto, 'Fecha Final Inválida'); return; }
-            if (desde > hasta) { _setBtnError(btn, btnTexto, 'Rango Inválido'); return; }
-
-            const diasTotales = Math.ceil(Math.abs(TimeUtils.parsearFechaLocal(hasta) - TimeUtils.parsearFechaLocal(desde)) / 864e5) + 1;
-
-            if (tipo === 'normal') _actualizarBtnNormal(btn, btnTexto, desde, hasta);
-            else _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales);
-        }
-
-        function toggleCredito() {
-            const btn = document.getElementById('btn-toggle-credito');
-            const estaActivo = btn.dataset.activo === "true";
-
-            btn.dataset.activo = estaActivo ? "false" : "true";
-            _setBtnActivo('btn-toggle-credito', !estaActivo);
-            mostrarToast(!estaActivo ? 'Asueto | Salida temprano activado' : 'Asueto | Salida temprano desactivado', 'info');
-        }
-
-        function mostrarExportar(desdeLista = false) {
-            _modalAbiertoDesdeLista = desdeLista;
-            ModalManager.alternar(desdeLista ? null : 'modal-config', 'modal-exportar', null, () => {
-                const tipoSelect = document.getElementById('tipo-exportacion');
-                if (tipoSelect) tipoSelect.value = 'todo';
-
-                const camposRango = document.getElementById('campos-rango-exportar');
-                if (camposRango) camposRango.classList.remove('expanded');
-
-                document.getElementById('export-fecha-desde').value = '';
-                document.getElementById('export-fecha-hasta').value = '';
-
-                const btnVolverE = $('btn-volver-exportar');
-                if (btnVolverE) {
-                    btnVolverE.lastChild.textContent = desdeLista ? ' Cerrar' : ' Volver';
-                    btnVolverE.querySelector('use').setAttribute('href', desdeLista ? '#icon-cancelar' : '#icon-undo');
-                }
-            });
-        }
-
-        function cerrarExportar() {
-            if (!_modalAbiertoDesdeLista) {
-                ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
-            }
-            ModalManager.alternar('modal-exportar', _modalAbiertoDesdeLista ? null : 'modal-config');
-            _modalAbiertoDesdeLista = false;
-        }
-
-        function toggleCamposRangoExport() {
-            const tipo = document.getElementById('tipo-exportacion').value;
-            const camposRango = document.getElementById('campos-rango-exportar');
-
-            camposRango.classList.toggle('expanded', tipo === 'rango');
-        }
-
-        async function ejecutarExportacion() {
-            const tipo = document.getElementById('tipo-exportacion').value;
-            const btn = document.querySelector('#modal-exportar .btn-export');
-
-            btn.disabled = true;
-
-            try {
-                if (tipo === 'todo') {
-                    D.exportarJSON();
-                    cerrarExportar();
-
-                } else if (tipo === 'mes-actual') {
-                    const mesActual = TimeUtils.formatearFechaLocal(new Date()).slice(0, 7);
-                    await exportarRango(mesActual, mesActual, true);
-
-                } else if (tipo === 'rango') {
-                    const desde = S.sanitizeString(document.getElementById('export-fecha-desde').value, 10);
-                    const hasta = S.sanitizeString(document.getElementById('export-fecha-hasta').value, 10);
-
-                    if (!desde || !hasta) {
-                        mostrarToast('Completa ambas fechas', 'error');
-                        btn.disabled = false;
-                        return;
-                    }
-
-                    if (!TimeUtils.validarFecha(desde) || !TimeUtils.validarFecha(hasta)) {
-                        mostrarToast('Fechas inválidas', 'error');
-                        btn.disabled = false;
-                        return;
-                    }
-
-                    if (desde > hasta) {
-                        mostrarToast('La fecha inicial debe ser anterior a la final', 'error');
-                        btn.disabled = false;
-                        return;
-                    }
-
-                    await exportarRango(desde, hasta, false);
-                }
-
-            } catch (error) {
-                console.error('Error en exportación:', error);
-                mostrarToast('Error al exportar', 'error');
-            } finally {
-                btn.disabled = false;
-            }
-        }
-
-        function _filtrarRegistrosRango(desde, hasta, esMes) {
-            if (esMes) {
-                const [año, mes] = desde.split('-').map(Number);
-                return D.registros().filter(r => {
-                    const [aReg, mReg] = r.fecha.split('-').map(Number);
-                    return aReg === año && mReg === mes;
-                });
-            }
-            return D.registros().filter(r => r.fecha >= desde && r.fecha <= hasta);
-        }
-
-        async function exportarRango(desde, hasta, esMes = false) {
-            const registrosFiltrados = _filtrarRegistrosRango(desde, hasta, esMes);
-            if (registrosFiltrados.length === 0) { mostrarToast('No hay registros en ese rango', 'warning'); return; }
-
-            const fechaLocal = TimeUtils.fechaLocalISOFull();
-            const fechaHoy = fechaLocal.substring(0, 10);
-
-            const data = {
-                registros: registrosFiltrados,
-                diasHabiles: D.diasHabiles(),
-                horasDiarias: D.horasDiarias(),
-                fecha: fechaLocal,
-                version: S.SECURITY_LIMITS.SCHEMA_VERSION,
-                hash: await S.calcularHashSHA256(registrosFiltrados),
-                timestamp: Date.now(),
-                rangoExportado: S.sanitizeString(esMes ? `Mes ${desde}` : `${desde} a ${hasta}`, 100)
-            };
-
-            try {
-                const sufijo = esMes ? `_${desde}` : `_${desde}_${hasta}`;
-                descargarJSON(data, `Horarios_${obtenerNombrePerfilSafe()}${sufijo}_${fechaHoy}.json`);
-                mostrarToast(`Exportados ${registrosFiltrados.length} registros${esMes ? ' del mes' : ''}`, 'success');
-                cerrarExportar();
-            } catch (e) {
-                console.error(e);
-                mostrarToast('Error al exportar', 'error');
-            }
-        }
-
-        let _gistModalPadre = null;
-        let _gistAutoSyncTemp = null;
-        let _gistLimitesTemp = null;
-        let _gistLimitesOrig = null;
-        let _gistMergeDesdeModal = false;
-
-        function actualizarEstadoBotonesGist() {
-            const token = document.getElementById('gist-token')?.value.trim() || '';
-            const gistId = document.getElementById('gist-id')?.value.trim() || '';
-            const soloToken = token !== '';
-            const ambosCompletos = soloToken && gistId.length > 10;
-
-            _setBtnDisabled('btn-gist-subir', !soloToken);
-            _setBtnDisabled('btn-gist-bajar', !ambosCompletos);
-            _setBtnDisabled('btn-toggle-gist-backup', !ambosCompletos);
-
-            const estadoBackup = parseInt(_gistAutoSyncTemp ?? GistSync.getAutoSync());
-            _setBtnDisabled('btn-toggle-gist-merge', !(ambosCompletos && estadoBackup === 1));
-        }
-
-        function abrirModalGist() {
-            const modalAbierto = document.querySelector('.modal.show');
-            _gistModalPadre = modalAbierto ? modalAbierto.id : null;
-
-            const tokenInput = document.getElementById('gist-token');
-            const gistIdInput = document.getElementById('gist-id');
-            const lastSyncEl = document.getElementById('gist-ultima-sync');
-
-            if (tokenInput) tokenInput.value = GistSync.getToken();
-            if (gistIdInput) gistIdInput.value = GistSync.getGistId();
-            if (lastSyncEl) {
-                const last = GistSync.getLastSync();
-                lastSyncEl.textContent = last ? `Sincronizado: ${GistSync.formatLastSync(last)}` : 'No sincronizado';
-            }
-
-            const rango = GistSync.getRangoHorario();
-            const desdeEl = document.getElementById('gist-rango-desde');
-            const hastaEl = document.getElementById('gist-rango-hasta');
-            if (desdeEl) desdeEl.value = rango.desde;
-            if (hastaEl) hastaEl.value = rango.hasta;
-
-            _gistAutoSyncTemp = GistSync.getAutoSync();
-            actualizarBotonGistBackup();
-            actualizarBotonGistMerge();
-            actualizarEstadoBotonesGist();
-            ModalManager.cerrarTodos();
-            ModalManager.abrir('modal-gist');
-            if (_gistModalPadre) ModalManager.setPadre('modal-gist', _gistModalPadre);
-            _gistLimitesTemp = null;
-            _actualizarCampoLimite();
-            _gistLimitesOrig = { bajar: GistSync.getSyncLimite('bajar'), subir: GistSync.getSyncLimite('subir') };
-        }
-
-        function _gistGuardarCredencialesSiModalAbierto() {
-            if (document.getElementById('modal-gist')?.classList.contains('show')) {
-                GistSync.saveCredentials(
-                    document.getElementById('gist-token')?.value.trim() || '',
-                    document.getElementById('gist-id')?.value.trim() || ''
-                );
-            }
-        }
-
-        function _setBtnDisabled(id, disabled) {
-            const btn = document.getElementById(id);
-            if (!btn) return;
-            btn.disabled = disabled;
-        }
-
-        function actualizarBotonesHistorico() {
-            const btnRespaldar = document.getElementById('btn-hist-respaldar');
-            const btnRestaurar = document.getElementById('btn-hist-restaurar');
-            if (!btnRespaldar || !btnRestaurar) return;
-
-            const tieneGist = GistSync.esGistIdValido(GistSync.getGistId());
-
-            const newRespaldar = btnRespaldar.cloneNode(true);
-            const newRestaurar = btnRestaurar.cloneNode(true);
-            btnRespaldar.parentNode.replaceChild(newRespaldar, btnRespaldar);
-            btnRestaurar.parentNode.replaceChild(newRestaurar, btnRestaurar);
-
-            if (tieneGist) {
-                newRespaldar.title = 'Subir a Gist';
-                newRespaldar.addEventListener('click', () => gistSubir());
-                newRespaldar.querySelector('use').setAttribute('href', '#icon-cloud-upload');
-
-                newRestaurar.title = 'Bajar de Gist';
-                newRestaurar.addEventListener('click', () => gistBajar());
-                newRestaurar.querySelector('use').setAttribute('href', '#icon-cloud-download');
-            } else {
-                newRespaldar.title = 'Respaldar';
-                newRespaldar.addEventListener('click', () => mostrarExportar(true));
-                newRespaldar.querySelector('use').setAttribute('href', '#icon-download');
-
-                newRestaurar.title = 'Restaurar';
-                newRestaurar.addEventListener('click', () => mostrarImportar(true));
-                newRestaurar.querySelector('use').setAttribute('href', '#icon-upload');
-            }
-        }
-
-        function guardarConfigGist() {
-            const token = document.getElementById('gist-token')?.value.trim() || '';
-            const gistId = document.getElementById('gist-id')?.value.trim() || '';
-            const desdeRaw = document.getElementById('gist-rango-desde')?.value || '';
-            const hastaRaw = document.getElementById('gist-rango-hasta')?.value || '';
-
-            if (desdeRaw && !TimeUtils.validarHora(desdeRaw)) {
-                mostrarToast('Hora inicial inválida.', 'error');
-                return;
-            }
-            if (hastaRaw && !TimeUtils.validarHora(hastaRaw)) {
-                mostrarToast('Hora final inválida.', 'error');
-                return;
-            }
-
-            const desde = desdeRaw || '21:00';
-            const hasta = hastaRaw || '00:00';
-
-            const rango = GistSync.getRangoHorario();
-            const limitesCambiaron = _gistLimitesOrig !== null && (
-                _gistLimitesOrig.bajar !== GistSync.getSyncLimite('bajar') ||
-                _gistLimitesOrig.subir !== GistSync.getSyncLimite('subir')
-            );
-            const huboCambios = token !== GistSync.getToken()
-                || gistId !== GistSync.getGistId()
-                || desde !== rango.desde
-                || hasta !== rango.hasta
-                || limitesCambiaron
-                || (_gistAutoSyncTemp !== null && _gistAutoSyncTemp !== GistSync.getAutoSync())
-                || (_gistLimitesTemp !== null);
-
-            if (_gistAutoSyncTemp !== null) GistSync.setAutoSync(_gistAutoSyncTemp);
-            if (_gistLimitesTemp !== null) {
-                GistSync.setSyncLimite('bajar', _gistLimitesTemp.bajar);
-                GistSync.setSyncLimite('subir', _gistLimitesTemp.subir);
-            }
-            GistSync.saveCredentials(token, gistId);
-            GistSync.setRangoHorario(desde, hasta);
-            mostrarToast(huboCambios ? 'Configuración guardada' : 'Sin cambios', huboCambios ? 'success' : 'info');
-            _gistAutoSyncTemp = null;
-            _gistLimitesTemp = null;
-            _gistModalPadre = null;
-            _gistLimitesOrig = null;
-            ModalManager.cerrar('modal-gist');
-            actualizarBotonesHistorico();
-        }
-
-        function cerrarModalGist() {
-            _gistAutoSyncTemp = null;
-            _gistLimitesTemp = null;
-            _gistLimitesOrig = null;
-            if (_gistModalPadre) {
-                const padre = _gistModalPadre;
-                _gistModalPadre = null;
-                ModalManager.alternar('modal-gist', padre);
-                if (padre === 'modal-config') {
-                    ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
-                }
-            } else {
-                ModalManager.cerrar('modal-gist');
-                _gistModalPadre = null;
-            }
-            actualizarBotonesHistorico();
-        }
-
-        function _calcularRegistrosMerge(modo, mergeData) {
-            const { registrosNormalizados, soloEnGist, complementarios = [], data } = mergeData;
-
-            if (modo === 'merge') {
-                if (soloEnGist.length === 0 && complementarios.length === 0) {
-                    return { vacio: true };
-                }
-                if (D.registros().length + soloEnGist.length > S.SECURITY_LIMITS.MAX_REGISTROS) {
-                    return { limiteAlcanzado: true };
-                }
-
-                const registrosActualizados = D.registros().map(local => {
-                    const imp = complementarios.find(c => c.fecha === local.fecha);
-                    if (!imp) return local;
-                    const actualizado = { ...local };
-                    if (!actualizado.salida && imp.salida) actualizado.salida = imp.salida;
-                    if (!actualizado.tiempoFuera && imp.tiempoFuera) actualizado.tiempoFuera = imp.tiempoFuera;
-                    const t = D.calcularHoras(actualizado.entrada, actualizado.salida, actualizado.tiempoFuera || null, actualizado.credito || null);
-                    if (t) { actualizado.horas = t.horas; actualizado.minutos = t.minutos; actualizado.total = t.total; }
-                    return actualizado;
-                });
-
-                const partes = [];
-                if (soloEnGist.length > 0) partes.push(`${soloEnGist.length} día${soloEnGist.length !== 1 ? 's' : ''} nuevo${soloEnGist.length !== 1 ? 's' : ''}`);
-                if (complementarios.length > 0) partes.push(`${complementarios.length} registro${complementarios.length !== 1 ? 's' : ''} completado${complementarios.length !== 1 ? 's' : ''}`);
-
-                return {
-                    registrosFinales: [...registrosActualizados, ...soloEnGist],
-                    mensajeExito: `Combinado: ${partes.join(', ')}`
-                };
-
-            } else {
-                if (Array.isArray(data.diasHabiles)) {
-                    const diasValidos = data.diasHabiles.filter(d => Number.isInteger(d) && d >= 0 && d <= 6);
-                    if (diasValidos.length > 0) D.setDiasHabiles(diasValidos);
-                }
-                if (data.horasDiarias != null) {
-                    const hd = parseFloat(data.horasDiarias);
-                    if (Number.isFinite(hd) && hd >= 0 && hd <= 24) D.setHorasDiarias(hd);
-                }
-                return {
-                    registrosFinales: registrosNormalizados,
-                    mensajeExito: `${registrosNormalizados.length} registros restaurados desde Gist`
-                };
-            }
-        }
-
-        async function gistMergeAplicar(modo, modoAutomatico = false) {
-            if (!_gistMergeData) return;
-            const mergeData = _gistMergeData;
-            _gistMergeData = null;
-
-            const resultado = _calcularRegistrosMerge(modo, mergeData);
-
-            if (resultado.vacio) {
-                ModalManager.cerrar('modal-gist-merge');
-                mostrarToast('Sin datos nuevos para completar', 'info');
-                return;
-            }
-            if (resultado.limiteAlcanzado) {
-                mostrarToast('Límite alcanzado', 'error');
-                return;
-            }
-
-            const { registrosFinales, mensajeExito } = resultado;
-
-            D.registros().splice(0, D.registros().length, ...registrosFinales);
-            D.registros().sort((a, b) => {
-                if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
-                return (b.entrada || '').localeCompare(a.entrada || '');
-            });
-            HistoryManager.saveState(D.registros());
-
-            await D.guardarYActualizar();
-            actualizarUI();
-
-            if (!modoAutomatico) ModalManager.cerrar('modal-gist-merge');
-            const lastSyncEl = document.getElementById('gist-ultima-sync');
-            if (lastSyncEl) lastSyncEl.textContent = `Última sync: ${GistSync.formatLastSync(GistSync.getLastSync())}`;
-            mostrarToast(mensajeExito, 'success');
-
-            const btn = document.getElementById('btn-gist-bajar');
-            if (btn) btn.disabled = false;
-        }
-
-        function gistMergeCancelar() {
-            _gistMergeData = null;
-            const btn = document.getElementById('btn-gist-bajar');
-            if (btn) btn.disabled = false;
-            if (_gistMergeDesdeModal) {
-                _gistMergeDesdeModal = false;
-                ModalManager.alternar('modal-gist-merge', 'modal-gist');
-            } else {
-                ModalManager.cerrar('modal-gist-merge');
-            }
-        }
-
-        function toggleGistMerge() {
-            const actual = GistSync.getMergeBehavior();
-            GistSync.setMergeBehavior(actual === 'merge' ? 'replace' : 'merge');
-            actualizarBotonGistMerge();
-        }
-
-        function actualizarBotonGistMerge() {
-            const hint = document.getElementById('hint-gist-merge');
-            const iconEl = document.getElementById('icon-gist-merge')?.querySelector('use');
-            const esMerge = GistSync.getMergeBehavior() === 'merge';
-            if (hint) hint.textContent = esMerge ? 'Combinar' : 'Reemplazar';
-            if (iconEl) iconEl.setAttribute('href', esMerge ? '#icon-combine' : '#icon-replace-swap');
-        }
-
-        function toggleGistBackup() {
-            const actual = parseInt(_gistAutoSyncTemp ?? GistSync.getAutoSync());
-            _gistAutoSyncTemp = (actual + 1) % 3;
-            actualizarBotonGistBackup();
-            actualizarEstadoBotonesGist();
-            _actualizarCampoLimite();
-        }
-
-        function actualizarBotonGistBackup() {
-            const btn = document.getElementById('btn-toggle-gist-backup');
-            const hint = document.getElementById('hint-gist-backup');
-            const label = document.getElementById('label-gist-backup');
-            const rangoEl = document.getElementById('gist-rango-horario');
-            const estado = _gistAutoSyncTemp ?? GistSync.getAutoSync();
-            if (!btn) return;
-
-            const configs = [
-                { texto: 'Sin automatizar', hint: '', activo: false },
-                { texto: 'Restaurar', hint: '', activo: true },
-                { texto: 'Respaldar', hint: '', activo: true }
-            ];
-            const c = configs[estado];
-            _setBtnActivo(btn.id, c.activo);
-            if (label) label.textContent = c.texto;
-            if (hint) { hint.textContent = c.hint; hint.style.color = c.color; }
-
-            if (rangoEl) {
-                const activo = estado === 1 || estado === 2;
-                rangoEl.classList.toggle('disabled', !activo);
-            }
-        }
-
-        function toggleVerToken() {
-            const input = document.getElementById('gist-token');
-            if (!input) return;
-            input.type = input.type === 'password' ? 'text' : 'password';
-        }
-
-        function abrirGistEnBrowser() {
-            const gistIdRaw = document.getElementById('gist-id')?.value.trim() || GistSync.getGistId();
-            if (gistIdRaw && GistSync.esGistIdValido(gistIdRaw)) {
-                window.open(`https://gist.github.com/${gistIdRaw.trim()}`, '_blank', 'noopener,noreferrer');
-            } else {
-                window.open('https://gist.github.com', '_blank', 'noopener,noreferrer');
-            }
-        }
-
-        function _tipoSyncActual() {
-            const estado = parseInt(_gistAutoSyncTemp ?? GistSync.getAutoSync());
-            return estado === 1 ? 'bajar' : estado === 2 ? 'subir' : null;
-        }
-
-        function _actualizarCampoLimite() {
-            const tipo = _tipoSyncActual();
-            const contenedor = document.getElementById('gist-limite-sync');
-            if (!contenedor) return;
-            if (!tipo) {
-                contenedor.classList.add('disabled');
-                return;
-            }
-            const limite = _gistLimitesTemp ? _gistLimitesTemp[tipo] : GistSync.getSyncLimite(tipo);
-            const input = document.getElementById('gist-limite-valor');
-            const label = document.getElementById('gist-limite-label');
-            if (input) input.textContent = limite;
-            if (label) label.textContent = tipo === 'bajar' ? 'Límite bajadas por hora (0 = sin límite)' : 'Límite subidas por hora (0 = sin límite)';
-            contenedor.classList.remove('disabled');
-        }
-
-        function cambiarLimiteSync(delta) {
-            const tipo = _tipoSyncActual();
-            if (!tipo) return;
-            if (!_gistLimitesTemp) _gistLimitesTemp = { bajar: GistSync.getSyncLimite('bajar'), subir: GistSync.getSyncLimite('subir') };
-            _gistLimitesTemp[tipo] = Math.max(0, Math.min(99, _gistLimitesTemp[tipo] + delta));
-            _actualizarCampoLimite();
-        }
-
-        let _timeoutLimite = null;
-        let _intervaloLimite = null;
-
-        function iniciarCambioLimite(delta) {
-            cambiarLimiteSync(delta);
-            _timeoutLimite = setTimeout(() => {
-                _intervaloLimite = setInterval(() => cambiarLimiteSync(delta), 100);
-            }, 500);
-        }
-
-        function detenerCambioLimite() {
-            if (_timeoutLimite) { clearTimeout(_timeoutLimite); _timeoutLimite = null; }
-            if (_intervaloLimite) { clearInterval(_intervaloLimite); _intervaloLimite = null; }
-        }
-
-
-        async function gistSubir() {
-            _gistGuardarCredencialesSiModalAbierto();
-            const btn = document.getElementById('btn-gist-subir');
-            if (btn) btn.disabled = true;
-            const iconoPerfil = document.getElementById('header-profile-icon');
-            iconoPerfil?.classList.add('icono-spin');
-            _flashCampo('header-profile-btn');
-
-            try {
-                const nuevoId = await GistSync.subir(
-                    D.registros(),
-                    D.diasHabiles(),
-                    D.horasDiarias()
-                );
-                const gistIdInput = document.getElementById('gist-id');
-                if (gistIdInput) gistIdInput.value = nuevoId;
-                const lastSyncEl = document.getElementById('gist-ultima-sync');
-                if (lastSyncEl) lastSyncEl.textContent = `Última sync: ${GistSync.formatLastSync(GistSync.getLastSync())}`;
-                mostrarToast('Datos respaldados en Gist', 'success');
-            } catch (e) {
-                console.error('Gist subir error:', e);
-                mostrarToast('Error al subir', 'error');
-            } finally {
-                if (btn) btn.disabled = false;
-                iconoPerfil?.classList.remove('icono-spin');
-            }
-        }
-
-        let _gistMergeData = null;
-
-        async function _validarDatosGist(data) {
-            if (!data.registros || !Array.isArray(data.registros)) throw new Error('Datos inválidos en el Gist');
-            const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', '_hashNoCoincide'];
-            if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) throw new Error('Estructura del Gist sospechosa');
-            if (data._hashNoCoincide) {
-                const continuar = await ModalManager.confirmar('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
-                if (!continuar) return null;
-            }
-            if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
-                mostrarToast(`Gist de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
-            }
-            const registrosNormalizados = D.normalizarRegistrosImportados(data.registros, D.calcularHoras);
-            if (registrosNormalizados.length === 0) throw new Error('No se encontraron registros válidos');
-            if (registrosNormalizados.length > S.SECURITY_LIMITS.MAX_REGISTROS) throw new Error(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS} registros permitidos`);
-            return registrosNormalizados;
-        }
-
-        function _calcularDiffGist(registrosNormalizados) {
-            const localesPorFecha = new Map(D.registros().map(r => [r.fecha, r]));
-            const gistPorFecha = new Map(registrosNormalizados.map(r => [r.fecha, r]));
-
-            const soloEnGist = registrosNormalizados.filter(r => !localesPorFecha.has(r.fecha));
-            const enAmbos = registrosNormalizados.filter(r => localesPorFecha.has(r.fecha));
-            const soloLocal = D.registros().filter(r => !gistPorFecha.has(r.fecha));
-            const complementarios = enAmbos.filter(imp => {
-                const local = localesPorFecha.get(imp.fecha);
-                return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
-            });
-            return { soloEnGist, enAmbos, soloLocal, complementarios };
-        }
-
-        function _calcularConfigCambios(data) {
-            const cambios = [];
-            if (Array.isArray(data.diasHabiles)) {
-                const diasGist = [...data.diasHabiles].sort().join(',');
-                const diasLocal = [...D.diasHabiles()].sort().join(',');
-                if (diasGist !== diasLocal) cambios.push('días laborales');
-            }
-            if (data.horasDiarias != null && parseFloat(data.horasDiarias) !== D.horasDiarias()) {
-                cambios.push(`horas diarias (${D.horasDiarias()}h → ${parseFloat(data.horasDiarias)}h)`);
-            }
-            return cambios;
-        }
-
-        function _buildResumenMerge(resumenEl, { soloEnGist, enAmbos, soloLocal, complementarios }, registrosNormalizados, configCambios) {
-            resumenEl.innerHTML = '';
-            const _mkSvg = (id) => {
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.setAttribute('class', 'icon');
-                const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-                use.setAttribute('href', id);
-                svg.appendChild(use);
-                return svg;
-            };
-            const _mkStrong = (text, cls) => Object.assign(document.createElement('strong'), { className: cls || '', textContent: String(text) });
-            const _mkRow = (...nodes) => {
-                const d = document.createElement('div');
-                nodes.forEach(n => d.appendChild(typeof n === 'string' ? document.createTextNode(n) : n));
-                return d;
-            };
-
-            const plural = (n) => n !== 1 ? 's' : '';
-            const bloqueFilas = document.createElement('div');
-            bloqueFilas.appendChild(_mkRow(_mkSvg('#icon-cloud'), ` En Gist `, _mkStrong(soloEnGist.length, 'text-green'), ` registro${plural(soloEnGist.length)} nuevos`));
-            const filaAmbos = _mkRow(_mkSvg('#icon-combine'), ` En ambos `, _mkStrong(enAmbos.length), ` registro${plural(enAmbos.length)} (por fecha`);
-            if (complementarios.length > 0) {
-                filaAmbos.appendChild(document.createTextNode(', '));
-                filaAmbos.appendChild(_mkStrong(complementarios.length, 'text-blue'));
-                filaAmbos.appendChild(document.createTextNode(' para completar'));
-            }
-            filaAmbos.appendChild(document.createTextNode(')'));
-            bloqueFilas.appendChild(filaAmbos);
-            bloqueFilas.appendChild(_mkRow(_mkSvg('#icon-save'), ` Local `, _mkStrong(soloLocal.length), ` registro${plural(soloLocal.length)} no subidos`));
-            resumenEl.appendChild(bloqueFilas);
-
-            const configEl = Object.assign(document.createElement('div'), {
-                id: '_gist-config-cambios',
-                textContent: configCambios.length > 0 ? `⚙ Reemplazar cambiará: ${configCambios.join(', ')}` : '⚙ Sin cambios de configuración'
-            });
-            resumenEl.appendChild(configEl);
-
-            const footer = document.createElement('div');
-            footer.className = 'gist-resumen-footer';
-            let txtCombinar = `: agrega ${soloEnGist.length} nuevo(s)`;
-            if (complementarios.length > 0) txtCombinar += `, completa ${complementarios.length} registro(s)`;
-            txtCombinar += ', mantiene los locales';
-            footer.appendChild(_mkStrong('Combinar'));
-            footer.appendChild(document.createTextNode(txtCombinar));
-            footer.appendChild(document.createElement('br'));
-            footer.appendChild(_mkStrong('Reemplazar'));
-            footer.appendChild(document.createTextNode(`: usa los ${registrosNormalizados.length} registros del Gist`));
-            resumenEl.appendChild(footer);
-        }
-
-        async function gistBajar(modoAutomatico = false) {
-            _gistGuardarCredencialesSiModalAbierto();
-            _gistMergeDesdeModal = document.getElementById('modal-gist')?.classList.contains('show') ?? false;
-            const btn = document.getElementById('btn-gist-bajar');
-            if (btn) btn.disabled = true;
-            const iconoPerfil = document.getElementById('header-profile-icon');
-            iconoPerfil?.classList.add('icono-spin');
-            _flashCampo('header-profile-btn');
-
-            try {
-                const data = await GistSync.bajar();
-                const registrosNormalizados = await _validarDatosGist(data);
-                if (!registrosNormalizados) return;
-
-                const diff = _calcularDiffGist(registrosNormalizados);
-                const { soloEnGist, complementarios } = diff;
-                _gistMergeData = { registrosNormalizados, soloEnGist, complementarios, data };
-
-                if (modoAutomatico) {
-                    await gistMergeAplicar(GistSync.getMergeBehavior(), true);
-                } else {
-                    const configCambios = _calcularConfigCambios(data);
-                    const resumenEl = document.getElementById('gist-merge-resumen');
-                    if (resumenEl) _buildResumenMerge(resumenEl, diff, registrosNormalizados, configCambios);
-                    ModalManager.alternar('modal-gist', 'modal-gist-merge');
-                }
-            } catch (e) {
-                console.error('Gist bajar error:', e);
-                mostrarToast('Error al bajar', 'error');
-            } finally {
-                if (btn) btn.disabled = false;
-                iconoPerfil?.classList.remove('icono-spin');
-            }
-        }
-
-        function _actualizarHintEdicion() {
-            const hint = document.getElementById('edit-hint-resumen');
-            if (!hint) return;
-            const e = document.getElementById('edit-entrada')?.value.trim();
-            const s = document.getElementById('edit-salida')?.value.trim();
-            const tf = document.getElementById('edit-tiempo-fuera')?.value.trim();
-            if (!e && !s) { hint.textContent = ''; return; }
-            const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(e, s);
-            if (tipoEspecial) { hint.textContent = tipoEspecial.label; return; }
-            if (e?.length === 5 && s?.length === 5) {
-                const t = D.calcularHoras(e, s, tf || null, null, false);
-                hint.textContent = t ? `Total: ${t.horas}h ${t.minutos}m` : '';
-            } else {
-                hint.textContent = '';
-            }
-        }
 
         function _initGlobales() {
             PerfilManager.inicializar();
@@ -5741,6 +7300,26 @@ Generado por Sistema Lushibosca
             window.PWAInstaller = { instalarApp: PWAInstaller.instalarApp };
             window.PerfilManager = PerfilManager;
             window.UILogic = UILogic;
+
+            D.configurarNotificaciones({
+                actualizarBotonLote, actualizarEstadoBotonTimerMain, actualizarHintGrupo, actualizarUI,
+                aplicarFeedbackCampos, cerrarEdicion, cerrarEdicionGrupo, cerrarFiltros, cerrarImportar,
+                descargarJSON, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
+                obtenerNombrePerfilSafe, resetearBoton, restaurarBotonGuardarEdicion, setBloqueoEdicion,
+                setBloqueoEdicionGrupo, verificarBloqueoCredito
+            });
+            StorageHelper.configurarNotificaciones({ mostrarToast });
+
+            ModalManager.registrarAccionVolver('modal-gist', cerrarModalGist);
+            ModalManager.registrarAccionVolver('modal-gist-merge', gistMergeCancelar);
+            ModalManager.registrarAccionVolver('modal-config', cerrarConfig);
+            ModalManager.registrarAccionVolver('modal-selector-perfiles', cerrarSelectorPerfiles);
+            ModalManager.registrarAccionVolver('modal-editar', cerrarEdicion);
+            ModalManager.registrarAccionVolver('modal-importar', cerrarImportar);
+            ModalManager.registrarAccionVolver('modal-exportar', cerrarExportar);
+            ModalManager.registrarAccionVolver('modal-filtros', cerrarFiltros);
+            ModalManager.registrarAccionVolver('modal-editar-perfil', cerrarEditorPerfil);
+            ModalManager.registrarAccionVolver('modal-editar-grupo', cerrarEdicionGrupo);
         }
 
         function _initListenersFormulario() {
@@ -5837,11 +7416,13 @@ Generado por Sistema Lushibosca
             UILogic.actualizarEstadoBotonSaldoDesdeEnero();
             UILogic.actualizarEstadoBotonSaldoDesdePrimeroDiaMes();
             UILogic.actualizarEstadoBotonLogicaCubierto();
+            UILogic.actualizarEstadoBotonObjetivoPorRegistro();
+            UILogic.actualizarEstadoBotonAplicarHoras();
             UILogic.aplicarVisibilidadCards();
             UILogic.aplicarOrdenCards(UILogic.obtenerOrdenCards());
             UILogic.iniciarDragOrdenCards();
             UILogic.setFondoCard(config.fondoCard || 'golden-gate');
-            modoEstadisticas = config.modoEstadisticas || 'mensual';
+            UILogic.setModoEstadisticas(config.modoEstadisticas || 'mensual');
 
             const perfilActual = PerfilManager.obtenerDatosPerfil();
             D.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
@@ -5862,6 +7443,20 @@ Generado por Sistema Lushibosca
             if (!historialCargado) {
                 HistoryManager.saveState(D.registros());
             }
+
+            const migrados = D.migrarObjetivoHorasFaltante();
+            if (migrados > 0) {
+                console.info(`Migración: ${migrados} registro(s) sin objetivo estampado, asignado el valor global vigente (${D.horasDiarias()}h).`);
+                HistoryManager.parchearRegistrosEnHistorial(r => {
+                    if (typeof r.objetivoHoras !== 'number' || !Number.isFinite(r.objetivoHoras)) {
+                        r.objetivoHoras = D.horasDiarias();
+                        return true;
+                    }
+                    return false;
+                });
+                if (window.PerfilManager) PerfilManager.guardarDatosPerfilActual();
+            }
+
             HistoryManager.updateButtons();
         }
 
@@ -5890,7 +7485,7 @@ Generado por Sistema Lushibosca
                         if (icon) { icon.style.transform = ''; icon.classList.add('rotated'); }
                     } else {
                         const botones = $('botones-historico');
-                        if (botones) { botones.classList.add('expanded'); tiempoExpansionBotones = Date.now(); }
+                        if (botones) { botones.classList.add('expanded'); UILogic.setTiempoExpansionBotones(Date.now()); }
                         if (icon) { icon.classList.remove('rotated'); icon.style.transform = 'rotate(-90deg)'; }
                     }
                 }
@@ -5898,10 +7493,10 @@ Generado por Sistema Lushibosca
                 const usarCalendario = StorageHelper.getBoolean(STORAGE_KEYS.VISTA_HISTORICO_CAL, true);
                 if (usarCalendario) {
                     if ($('contenido-historico')?.classList.contains('expanded')) {
-                        _vistaHistoricoCalendario = false;
+                        setVistaHistoricoCalendario(false);
                         toggleVistaHistorico();
                     } else {
-                        _vistaHistoricoCalendario = true;
+                        setVistaHistoricoCalendario(true);
                     }
                 }
             } catch (e) {
@@ -5943,114 +7538,6 @@ Generado por Sistema Lushibosca
                     e.preventDefault();
                     document.getElementById('btn-redo')?.click();
                 }
-            });
-        }
-
-        function _initListenerAccionesLista(lista) {
-            lista.addEventListener('click', (e) => {
-                const target = e.target.closest('[data-accion]');
-                if (!target) return;
-                if (target.dataset.accion === 'editar-registro') {
-                    const id = target.dataset.registroId;
-                    if (id) D.editarRegistro(id);
-                } else if (target.dataset.accion === 'editar-grupo') {
-                    try {
-                        const grupoData = JSON.parse(target.dataset.grupoData, (k, v) =>
-                            ['__proto__', 'constructor', 'prototype'].includes(k) ? undefined : v
-                        );
-                        const registrosCompletos = D.registros().filter(r => grupoData.registros.includes(r.id));
-                        D.editarGrupo({ registros: registrosCompletos, subtipo: grupoData.subtipo });
-                    } catch (err) { console.error('Error al abrir grupo:', err); }
-                }
-            });
-        }
-
-        function _initListenerToggleAnio(lista) {
-            lista.addEventListener('click', (e) => {
-                const headerAnio = e.target.closest('.registro-mes-header[data-accion="toggle-anio"]');
-                if (!headerAnio) return;
-                e.stopPropagation();
-                const contenedorAnio = headerAnio.closest('.registro-mes-container');
-                if (!contenedorAnio) return;
-                const detalleAnio = contenedorAnio.querySelector(':scope > .registro-mes-detalle');
-                const chevronAnio = headerAnio.querySelector('.chevron-mes');
-                const anioId = headerAnio.dataset.anioId;
-                const abierto = detalleAnio.classList.toggle('expanded');
-                if (chevronAnio) chevronAnio.style.transform = abierto ? 'rotate(180deg)' : 'rotate(0deg)';
-                try { StorageHelper.setItem(STORAGE_KEYS.ANIO_EXPANDIDO(anioId), String(abierto)); } catch (e) { }
-            });
-        }
-
-        function _scrollAlExpandir(contenedor, detalle) {
-            setTimeout(() => {
-                const margenHeader = 80;
-                const alturaVentana = window.innerHeight;
-                const registros = detalle.querySelectorAll('.registro-item');
-                if (!registros.length) return;
-                const r0 = registros[0].getBoundingClientRect();
-                const r1 = registros.length > 1 ? registros[1].getBoundingClientRect() : null;
-                const cortado0 = r0.top < margenHeader || r0.bottom > alturaVentana;
-                const cortado1 = r1 && (r1.top < margenHeader || r1.bottom > alturaVentana);
-                if (cortado0 || cortado1) contenedor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 310);
-        }
-
-        function _initListenerToggleMes(lista) {
-            lista.addEventListener('click', (e) => {
-                const header = e.target.closest('.registro-mes-header');
-                if (!header || header.dataset.accion !== 'toggle-mes') return;
-                e.stopPropagation();
-                const contenedor = header.closest('.registro-mes-container');
-                if (!contenedor) return;
-                const detalle = contenedor.querySelector('.registro-mes-detalle');
-                const chevronIcon = header.querySelector('.chevron-mes');
-
-                if (detalle.classList.contains('expanded')) {
-                    detalle.classList.remove('expanded');
-                    chevronIcon.style.transform = 'rotate(0deg)';
-                    try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'false'); } catch (e) { }
-                    return;
-                }
-
-                const esContenedorAnio = (el) => {
-                    const h = el.closest('.registro-mes-container')?.querySelector('.registro-mes-header');
-                    return h && h.dataset.accion === 'toggle-anio';
-                };
-                const detalleAnioPadre = contenedor.parentElement?.closest('.registro-mes-detalle') || null;
-                const otrosMesesAbiertos = lista.querySelectorAll('.registro-mes-detalle.expanded');
-
-                const _colapsarContenedor = (otro, { datasetKey, storageKeyFn }) => {
-                    otro.classList.remove('expanded');
-                    const oc = otro.closest('.registro-mes-container');
-                    const och = oc?.querySelector('.chevron-mes');
-                    const oHeader = oc?.querySelector('.registro-mes-header');
-                    if (och) och.style.transform = 'rotate(0deg)';
-                    const id = oHeader?.dataset[datasetKey];
-                    if (id) {
-                        try { StorageHelper.setItem(storageKeyFn(id), 'false'); } catch (e) { }
-                    }
-                };
-
-                otrosMesesAbiertos.forEach(otro => {
-                    if (!esContenedorAnio(otro) || otro === detalleAnioPadre) return;
-                    _colapsarContenedor(otro, { datasetKey: 'anioId', storageKeyFn: STORAGE_KEYS.ANIO_EXPANDIDO });
-                });
-
-                const _abrirDetalle = () => {
-                    detalle.classList.add('expanded');
-                    chevronIcon.style.transform = 'rotate(180deg)';
-                    try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'true'); } catch (e) { }
-                    _scrollAlExpandir(contenedor, detalle);
-                };
-
-                const hayOtrosAbiertos = Array.from(otrosMesesAbiertos).some(o => o !== detalle && !esContenedorAnio(o));
-                if (hayOtrosAbiertos) {
-                    otrosMesesAbiertos.forEach(otro => {
-                        if (otro === detalle || esContenedorAnio(otro)) return;
-                        _colapsarContenedor(otro, { datasetKey: 'mesId', storageKeyFn: STORAGE_KEYS.MES_EXPANDIDO });
-                    });
-                }
-                _abrirDetalle();
             });
         }
 
@@ -6102,11 +7589,11 @@ Generado por Sistema Lushibosca
             actualizarBotonesHistorico();
 
             if (D.vistaActual() === 'semana') {
-                _timerAutoVista = setTimeout(() => {
-                    _timerAutoVista = null;
+                setTimerAutoVista(setTimeout(() => {
+                    setTimerAutoVista(null);
                     alternarVista();
                     setTimeout(() => _iniciarCicloStats(), 350);
-                }, 2500);
+                }, 2500));
             }
 
             _initAutoSync();
@@ -6124,923 +7611,6 @@ Generado por Sistema Lushibosca
 
             _actualizarOffsetsStickyMes();
             window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
-        }
-
-        function actualizarHintGrupo() {
-            const hint = document.getElementById('edit-grupo-hint');
-            if (!hint) return;
-            const desde = document.getElementById('edit-grupo-desde')?.value;
-            const hasta = document.getElementById('edit-grupo-hasta')?.value;
-            if (!desde && !hasta) { hint.textContent = ''; return; }
-            if (desde && !hasta) {
-                hint.textContent = `1 día`;
-                return;
-            }
-            if (!TimeUtils.validarFecha(desde) || !TimeUtils.validarFecha(hasta) || desde > hasta) {
-                hint.textContent = 'Rango inválido';
-                return;
-            }
-            const fechaInicio = TimeUtils.parsearFechaLocal(desde);
-            const fechaFin = TimeUtils.parsearFechaLocal(hasta);
-            const diasTotales = Math.ceil(Math.abs(fechaFin - fechaInicio) / (1000 * 60 * 60 * 24)) + 1;
-            hint.textContent = `${diasTotales} día${diasTotales !== 1 ? 's' : ''}`;
-        }
-        ['edit-grupo-desde', 'edit-grupo-hasta'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('change', actualizarHintGrupo);
-        });
-
-        function mostrarFiltros() {
-            if (D.obtenerRegistrosFiltrados().length !== D.registros().length) {
-                D.limpiarFiltros();
-                return;
-            }
-
-            ModalManager.abrir('modal-filtros');
-
-            const aplicarInmediato = () => {
-                const desde = $('filtro-fecha-desde').value;
-                const hasta = $('filtro-fecha-hasta').value;
-                const tipo = $('filtro-tipo').value;
-                D.aplicarFiltrosInmediato(desde, hasta, tipo);
-            };
-
-            ['filtro-fecha-desde', 'filtro-fecha-hasta', 'filtro-tipo'].forEach(id => {
-                const el = $(id);
-                if (el) {
-                    el.removeEventListener('change', aplicarInmediato);
-                    el.addEventListener('change', aplicarInmediato);
-                }
-            });
-        }
-
-        function cerrarFiltros() {
-            ModalManager.cerrar('modal-filtros');
-        }
-
-        function toggleSeccionGen(elementId, iconId, storageKey, callback = null) {
-            const el = $(elementId);
-            const icon = $(iconId);
-            if (!el) return;
-
-            el.classList.toggle('expanded');
-            const isExpanded = el.classList.contains('expanded');
-            if (icon) {
-                if (isExpanded) icon.classList.add('rotated');
-                else icon.classList.remove('rotated');
-            }
-
-            if (StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true)) {
-                StorageHelper.setItem(storageKey, isExpanded);
-            }
-            if (isExpanded && callback) callback();
-        }
-
-        function toggleFormulario() {
-            const el = $('form-registro');
-            const estabaExpandido = el.classList.contains('expanded');
-
-            toggleSeccionGen('form-registro', 'icon-indicator-form', STORAGE_KEYS.FORMULARIO_EXPANDIDO);
-
-            if (estabaExpandido) {
-                $('entrada').value = '';
-                $('salida').value = '';
-                $('fecha').value = TimeUtils.obtenerFechaHoy();
-
-                const loteDesde = $('lote-fecha-desde');
-                const loteHasta = $('lote-fecha-hasta');
-                const loteTipo = $('lote-tipo');
-
-                if (loteDesde) loteDesde.value = '';
-                if (loteHasta) loteHasta.value = '';
-                if (loteTipo) loteTipo.value = 'feriado';
-
-                if (modoLoteActivo) {
-                    setTimeout(() => {
-                        if (modoLoteActivo) {
-                            toggleModoLote(undefined, false);
-                        }
-                    }, 350);
-                } else {
-                    actualizarEstadoBotonTimerMain();
-                }
-            }
-        }
-
-        function _setIconHistorico(icon, estado) {
-            if (!icon) return;
-            icon.classList.toggle('rotated', estado === 'meses');
-            icon.style.transform = estado === 'completo' ? 'rotate(-90deg)' : '';
-        }
-
-        function _activarVistaCalendarioHistorico() {
-            if (!_vistaHistoricoCalendario) return;
-            const lista = document.getElementById('lista-registros');
-            const cal = document.getElementById('vista-calendario-historico');
-            const btnFiltro = document.getElementById('btn-filtro');
-            if (lista) lista.classList.add('hidden');
-            if (cal) cal.classList.remove('hidden');
-            if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
-            _renderizarCalendario();
-        }
-
-        function toggleHistorico() {
-            cancelarTimerAutoCierreBotones();
-            const contenido = $('contenido-historico');
-            const botones = $('botones-historico');
-            const icon = $('icon-indicator-historico');
-            if (!contenido) return;
-
-            const expandido = contenido.classList.contains('expanded');
-            const conBotones = botones.classList.contains('expanded');
-
-            try {
-                if (!expandido) {
-                    contenido.classList.add('expanded');
-                    _setIconHistorico(icon, 'meses');
-                    StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
-                    tiempoExpansionBotones = null;
-                    _activarVistaCalendarioHistorico();
-
-                } else if (!conBotones) {
-                    botones.classList.add('expanded');
-                    _setIconHistorico(icon, 'completo');
-                    StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'completo');
-                    tiempoExpansionBotones = Date.now();
-
-                } else {
-                    botones.classList.remove('expanded');
-                    if (Date.now() - (tiempoExpansionBotones || 0) > 500) {
-                        _setIconHistorico(icon, 'meses');
-                        StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
-                    } else {
-                        contenido.classList.remove('expanded');
-                        _setIconHistorico(icon, 'cerrado');
-                        StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'cerrado');
-                    }
-                    tiempoExpansionBotones = null;
-                }
-            } catch (e) {
-                console.warn('Error guardando estado histórico:', e);
-            }
-        }
-
-        function iniciarTimerAutoCierreBotones() {
-            if (timerAutoCierreBotones) {
-                clearTimeout(timerAutoCierreBotones);
-                timerAutoCierreBotones = null;
-            }
-
-            timerAutoCierreBotones = setTimeout(() => {
-                const botones = $('botones-historico');
-                const contenido = $('contenido-historico');
-                const icon = $('icon-indicator-historico');
-
-                if (botones && botones.classList.contains('expanded')) {
-                    botones.classList.remove('expanded');
-
-                    if (icon) {
-                        icon.style.transform = '';
-                        icon.classList.add('rotated');
-                    }
-
-                    try {
-                        StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
-                    } catch (e) {
-                        console.warn('Error guardando estado histórico:', e);
-                    }
-
-                    tiempoExpansionBotones = null;
-                }
-
-                timerAutoCierreBotones = null;
-            }, 3000);
-        }
-
-        function cancelarTimerAutoCierreBotones() {
-            if (timerAutoCierreBotones) {
-                clearTimeout(timerAutoCierreBotones);
-                timerAutoCierreBotones = null;
-            }
-        }
-
-        let _calendarioMes = null;
-
-        function _renderizarCalendario(idResaltar = null) {
-            const grid = document.getElementById('calendario-grid');
-            const titulo = document.getElementById('calendario-titulo-mes');
-            if (!grid) return;
-
-            if (grid.parentNode) {
-                registrarSwipe(grid.parentNode, dir => navegarCalendario(dir));
-            } else {
-                registrarSwipe(grid, dir => navegarCalendario(dir));
-            }
-
-            const hoy = new Date();
-            const anio = _calendarioMes ? _calendarioMes.anio : hoy.getFullYear();
-            const mes = _calendarioMes ? _calendarioMes.mes : hoy.getMonth();
-            const nombresMes = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-            if (titulo) titulo.textContent = `${nombresMes[mes]} ${anio}`;
-            const fechaStr = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const registrosFiltrados = D.obtenerRegistrosFiltrados();
-            const todosLosRegistros = D.registros();
-            const regsPorFecha = Object.fromEntries(registrosFiltrados.map(r => [r.fecha, r]));
-            const todosRegsPorFecha = Object.fromEntries(todosLosRegistros.map(r => [r.fecha, r]));
-            const horasDiariasObj = D.horasDiarias();
-            const diasHabilesObj = D.diasHabiles();
-            const filtroActivo = D.obtenerRegistrosFiltrados().length !== D.registros().length;
-            const claseDelDia = (fecha) => {
-                const r = regsPorFecha[fecha];
-                if (!r && filtroActivo && todosRegsPorFecha[fecha]) return 'dia-filtrado';
-                if (!r) return 'dia-sin-registro';
-                if (TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
-                    const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                    return `dia-especial-${tipo ? tipo.color : 'purple'}`;
-                }
-                if (r.entrada && !r.salida) return 'dia-en-curso';
-                if (!_esFechaHabil(fecha, diasHabilesObj) || horasGte(r.total, horasDiariasObj)) return 'dia-normal';
-                return _cubiertoPorSaldo(fecha) ? 'dia-cubierto' : 'dia-incompleto';
-            };
-
-            const diasNombre = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-            const primerDia = new Date(anio, mes, 1);
-            const ultimoDia = new Date(anio, mes + 1, 0);
-            const frag = document.createDocumentFragment();
-
-            diasNombre.forEach(d => {
-                const cell = document.createElement('div');
-                cell.className = 'calendario-dia-nombre';
-                cell.textContent = d;
-                frag.appendChild(cell);
-            });
-
-            const offsetInicio = primerDia.getDay();
-            for (let i = 0; i < offsetInicio; i++) {
-                const vacio = document.createElement('div');
-                vacio.className = 'calendario-dia vacio';
-                frag.appendChild(vacio);
-            }
-
-            for (let dia = 1; dia <= ultimoDia.getDate(); dia++) {
-                const fecha = fechaStr(anio, mes, dia);
-                const clase = claseDelDia(fecha);
-                const esHoy = anio === hoy.getFullYear() && mes === hoy.getMonth() && dia === hoy.getDate();
-                const reg = regsPorFecha[fecha];
-                const esNuevo = idResaltar && reg && reg.id === idResaltar;
-
-                const cell = document.createElement('div');
-                let clases = `calendario-dia ${clase}`;
-                if (esHoy) clases += ' hoy';
-                if (esNuevo) clases += ' nuevo-registro-animacion';
-                if (reg) clases += ' cursor-pointer';
-                cell.className = clases;
-                cell.textContent = dia;
-
-                if (reg) {
-                    cell.dataset.regId = reg.id;
-                    cell.addEventListener('click', (e) => UILogic._onclickCalendarioDia(e, reg.id));
-                    cell.addEventListener('mouseenter', (e) => UILogic._popupCalendarioHover(e, reg.id));
-                    cell.addEventListener('mouseleave', (e) => UILogic._cerrarPopupCalendarioHover(e));
-                } else if (clase === 'dia-sin-registro') {
-                    cell.classList.add('cursor-pointer');
-                    cell.dataset.fecha = fecha;
-                    cell.addEventListener('click', (e) => UILogic._popupCalendarioDiaSinRegistro(e, fecha));
-                }
-
-                frag.appendChild(cell);
-            }
-
-            grid.classList.toggle('calendario-filtro-activo', filtroActivo);
-            grid.innerHTML = '';
-            grid.appendChild(frag);
-
-        }
-
-        let _vistaHistoricoCalendario = false;
-
-        function toggleVistaHistorico() {
-            _vistaHistoricoCalendario = !_vistaHistoricoCalendario;
-            try { StorageHelper.setItem(STORAGE_KEYS.VISTA_HISTORICO_CAL, _vistaHistoricoCalendario); } catch (e) { }
-
-            const lista = document.getElementById('lista-registros');
-            const cal = document.getElementById('vista-calendario-historico');
-            const btnFiltro = document.getElementById('btn-filtro');
-            const saliente = _vistaHistoricoCalendario ? lista : cal;
-            const entrante = _vistaHistoricoCalendario ? cal : lista;
-            _animarFadeSwap(saliente, () => {
-                if (saliente) { saliente.classList.add('hidden'); }
-                if (entrante) {
-                    entrante.classList.remove('hidden');
-                    entrante.classList.add('fade-out');
-                    entrante.offsetHeight;
-                    entrante.classList.remove('fade-out');
-                }
-
-                if (_vistaHistoricoCalendario) {
-                    if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
-                    _renderizarCalendario();
-                } else {
-                    if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
-                }
-            });
-
-            const selector = document.getElementById('calendario-selector-meses');
-            const grid = document.getElementById('calendario-grid');
-            const navBotones = document.getElementById('calendario-nav-botones');
-            if (selector && !selector.classList.contains('hidden') && selector.style.display !== 'none') {
-                selector.style.display = 'none';
-                if (grid) grid.style.display = 'grid';
-                if (navBotones) navBotones.style.display = 'flex';
-            }
-        }
-
-        let _popupCalendarioEl = null;
-
-        function _buildInfoHtmlRegistro(reg, horasDiarias) {
-            const esEspecial = TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
-            if (esEspecial) {
-                const tipoConfig = TiposRegistro.obtenerTipoPorCodigo(reg.entrada, reg.salida);
-                const emoji = S.escapeHtml(tipoConfig?.emoji ?? '');
-                const label = tipoConfig ? S.escapeHtml(tipoConfig.label) : S.escapeHtml(reg.entrada);
-                const colorSafe = /^[a-z]+$/.test(tipoConfig?.color || '') ? tipoConfig.color : 'purple';
-                return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>`;
-            }
-            if (reg.entrada && !reg.salida) {
-                const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
-                return `<div class="cal-popup-info cal-popup-info--blue">${esHoy ? 'En curso' : 'Incompleto'}</div>
-                    <div class="cal-popup-3l">Entrada: ${S.escapeHtml(reg.entrada)}</div>`;
-            }
-            const totalHoras = reg.total || 0;
-            const h = Math.floor(totalHoras);
-            const m = Math.round((totalHoras - h) * 60);
-            const totalStr = `${h}h${m > 0 ? ' ' + m + 'm' : ''}`;
-            let tfStr = '';
-            if (reg.tiempoFuera && reg.tiempoFuera !== '00:00') {
-                const [tfH, tfM] = reg.tiempoFuera.split(':').map(Number);
-                tfStr = tfH > 0 ? `${tfH}h${tfM > 0 ? ' ' + tfM + 'm' : ''} fuera` : `${tfM}m fuera`;
-            }
-            let totalConDiff = totalStr, diffColor = '';
-            if (horasDiarias > 0 && _esFechaHabil(reg.fecha, D.diasHabiles())) {
-                const diffText = formatoDiferencia(totalHoras);
-                if (horasGte(totalHoras, horasDiarias)) {
-                    diffColor = 'var(--c-green)';
-                    if (diffText) totalConDiff += ` (${diffText})`;
-                } else if (_cubiertoPorSaldo(reg.fecha)) {
-                    diffColor = 'var(--c-gold)';
-                    totalConDiff += ` (${diffText}) Cubierto`;
-                } else {
-                    diffColor = 'var(--c-red)';
-                    if (diffText) totalConDiff += ` (${diffText})`;
-                }
-            }
-            return `<div class="cal-popup-info${diffColor ? ' cal-popup-info--dynamic' : ''}"${diffColor ? ` data-color="${diffColor}"` : ''}>${totalConDiff}</div>
-                <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} – ${S.escapeHtml(reg.salida)}</div>
-                ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
-        }
-
-        function _posicionarPopup(popup, event) {
-            const el = event.currentTarget || event.target;
-            const rect = el.getBoundingClientRect();
-            const margin = 8;
-            requestAnimationFrame(() => {
-                const pw = popup.offsetWidth, ph = popup.offsetHeight;
-                let top = rect.bottom + 12;
-                let left = rect.left + (rect.width / 2) - (pw / 2);
-                if (left + pw > window.innerWidth - margin) left = window.innerWidth - pw - margin;
-                if (left < margin) left = margin;
-                if (top + ph > window.innerHeight - margin) top = rect.top - ph - 12;
-                if (top < margin) top = margin;
-                popup.style.top = `${top}px`;
-                popup.style.left = `${left}px`;
-                popup.style.visibility = '';
-                setTimeout(() => popup.classList.add('listo'), 350);
-            });
-        }
-
-        function _registrarCierrePopup(popup, selectorTrigger, esMismoTrigger, alCerrar) {
-            const cerrar = () => {
-                popup.remove();
-                if (alCerrar) alCerrar();
-                document.removeEventListener('click', onClick, true);
-                document.removeEventListener('scroll', cerrar, true);
-            };
-            const onClick = (e) => {
-                const trigger = e.target.closest(selectorTrigger);
-                if (trigger && esMismoTrigger(trigger)) return;
-                if (!popup.contains(e.target)) cerrar();
-            };
-            setTimeout(() => {
-                document.addEventListener('click', onClick, { capture: true, passive: true });
-                document.addEventListener('scroll', cerrar, { capture: true, passive: true });
-            }, 10);
-            return cerrar;
-        }
-
-        function _popupCalendario(event, registroId) {
-            event.stopPropagation();
-
-            if (_popupCalendarioEl) { _popupCalendarioEl.remove(); _popupCalendarioEl = null; }
-
-            const reg = D.registros().find(r => r.id === registroId);
-            if (!reg) return;
-
-            const claveMes = reg.fecha.substring(0, 7);
-            const registrosDelMes = D.registros().filter(r => r.fecha.substring(0, 7) === claveMes);
-            const grupos = agruparRegistrosConsecutivos(registrosDelMes);
-            const grupoDelRegistro = grupos.find(g => g.tipo === 'grupo' && g.registros.some(r => r.id === registroId));
-
-            const fechaLabel = S.escapeHtml(new Date(reg.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
-            const infoHtml = _buildInfoHtmlRegistro(reg, D.horasDiarias());
-            const btnGrupoHtml = grupoDelRegistro ? `
-                <button class="cal-popup-btn-edit" id="_cal-popup-btn-grupo">
-                    <svg class="icon"><use href="#icon-grid-group"/></svg>
-                    Editar grupo
-                </button>` : '';
-
-            if (grupoDelRegistro) window._calPopupGrupo = grupoDelRegistro;
-
-            const popup = document.createElement('div');
-            popup.className = 'cal-popup';
-            popup.id = '_cal-popup';
-            popup.dataset.registroId = reg.id;
-            popup.innerHTML = `
-                <div class="cal-popup-fecha">${fechaLabel}</div>
-                ${infoHtml}
-                <button class="cal-popup-btn-edit" id="_cal-popup-btn-edit">
-                    <svg class="icon"><use href="#icon-edit"/></svg>
-                    Editar
-                </button>
-                ${btnGrupoHtml}`;
-
-            _applyDataColors(popup);
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
-            _popupCalendarioEl = popup;
-
-            popup.querySelector('#_cal-popup-btn-edit')?.addEventListener('click', () => {
-                DataManagement.editarRegistro(reg.id);
-                document.getElementById('_cal-popup')?.remove();
-            });
-            popup.querySelector('#_cal-popup-btn-grupo')?.addEventListener('click', () => {
-                DataManagement.editarGrupo(window._calPopupGrupo);
-                document.getElementById('_cal-popup')?.remove();
-            });
-
-            popup.addEventListener('mouseenter', () => clearTimeout(_popupCalendarioHoverTimer));
-            popup.addEventListener('mouseleave', () => {
-                if (_popupCalendarioEsHover) {
-                    _popupCalendarioHoverTimer = setTimeout(() => {
-                        if (_popupCalendarioEl) { _popupCalendarioEl.remove(); _popupCalendarioEl = null; }
-                        _popupCalendarioEsHover = false;
-                    }, 500);
-                }
-            });
-
-            _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.regId === reg.id, () => { _popupCalendarioEl = null; });
-            _posicionarPopup(popup, event);
-        }
-
-        let _popupCalendarioEsHover = false;
-        let _popupCalendarioHoverTimer = null;
-
-        function _popupCalendarioDiaSinRegistro(event, fecha) {
-            event.stopPropagation();
-            clearTimeout(_popupCalendarioHoverTimer);
-            _popupCalendarioEsHover = false;
-
-            if (_popupCalendarioEl) {
-                const mismaFecha = _popupCalendarioEl.dataset.fecha === fecha;
-                _popupCalendarioEl.remove();
-                _popupCalendarioEl = null;
-                if (mismaFecha) return;
-            }
-
-            const esFechaFutura = fecha > TimeUtils.obtenerFechaHoy();
-            const fechaLabel = S.escapeHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
-
-            const popup = document.createElement('div');
-            popup.className = 'cal-popup';
-            popup.id = '_cal-popup';
-            popup.dataset.fecha = fecha;
-            popup.innerHTML = `
-                <div class="cal-popup-fecha">${fechaLabel}</div>
-                <div class="cal-popup-sin-reg">Sin registros</div>
-                ${esFechaFutura ? '' : `<button class="cal-popup-btn-edit cal-popup-btn-accion--normal" id="_cal-popup-btn-normal">
-                    <svg class="icon"><use href="#icon-clock"/></svg>
-                    Jornada regular
-                </button>`}
-                <button class="cal-popup-btn-edit cal-popup-btn-accion--especial" id="_cal-popup-btn-especial">
-                    <svg class="icon"><use href="#icon-calendar-simple"/></svg>
-                    Jornada especial
-                </button>`;
-
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
-            _popupCalendarioEl = popup;
-
-            const cerrarPopup = _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.fecha === fecha, () => { _popupCalendarioEl = null; });
-            popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrarPopup(); _irAFicharConFecha(fecha, false); });
-            popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrarPopup(); _irAFicharConFecha(fecha, true); });
-
-            _posicionarPopup(popup, event);
-        }
-
-        function _flashCampo(...ids) {
-            ids.forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.classList.remove('campo-flash');
-                void el.offsetWidth;
-                el.classList.add('campo-flash');
-                el.addEventListener('animationend', () => el.classList.remove('campo-flash'), { once: true });
-            });
-        }
-
-        const _FLASH_SCROLL_DELAY = 500;
-
-        function _irAFicharConFecha(fecha, esEspecial) {
-            const tarjeta = document.getElementById('card-registrar');
-            const formulario = document.getElementById('form-registro');
-            const estaExpandido = formulario && formulario.classList.contains('expanded');
-
-            if (!estaExpandido) toggleFormulario();
-
-            _scrollACardFichar(tarjeta);
-
-            const retraso = estaExpandido ? 0 : DUR_ANIM() + 80;
-
-            const aplicarFecha = () => {
-                if (esEspecial) {
-                    const desde = document.getElementById('lote-fecha-desde');
-                    const hasta = document.getElementById('lote-fecha-hasta');
-                    if (desde) desde.value = fecha;
-                    if (hasta) hasta.value = fecha;
-                    setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta', 'lote-tipo'), _FLASH_SCROLL_DELAY);
-                } else {
-                    const input = document.getElementById('fecha');
-                    if (input) input.value = fecha;
-                    setTimeout(() => _flashCampo('fecha', 'entrada', 'salida'), _FLASH_SCROLL_DELAY);
-                }
-            };
-
-            setTimeout(() => {
-                const necesitaCambiarModo = esEspecial ? !modoLoteActivo : modoLoteActivo;
-                if (necesitaCambiarModo) {
-                    toggleModoLote();
-                    setTimeout(aplicarFecha, DUR_ANIM() + 50);
-                } else {
-                    aplicarFecha();
-                }
-            }, retraso);
-        }
-
-        function _scrollACardFichar(el) {
-            if (!el) return;
-            const rect = el.getBoundingClientRect();
-            const headerEl = document.querySelector('.header');
-            const headerH = headerEl ? headerEl.offsetHeight : 0;
-            const margen = headerH + 8;
-            if (rect.top >= margen && rect.bottom <= window.innerHeight) return;
-            window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: 'smooth' });
-        }
-
-        function _popupCalendarioHover(event, registroId) {
-            if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return;
-            if (!window.matchMedia('(hover: hover)').matches) return;
-            const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
-            if (stored !== 'true') return;
-            if (_popupCalendarioEl && _popupCalendarioEl.dataset.registroId === registroId) return;
-            if (_popupCalendarioEl && !_popupCalendarioEsHover) return;
-            clearTimeout(_popupCalendarioHoverTimer);
-            _popupCalendarioHoverTimer = setTimeout(() => {
-                _popupCalendarioEsHover = true;
-                _popupCalendario(event, registroId);
-            }, 150);
-        }
-
-        function _onclickCalendarioDia(event, registroId) {
-            const esDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-            const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
-            const hoverActivo = esDesktop && stored === 'true';
-
-            if (hoverActivo) {
-                if (_popupCalendarioEl) {
-                    _popupCalendarioEl.remove();
-                    _popupCalendarioEl = null;
-                }
-                clearTimeout(_popupCalendarioHoverTimer);
-                DataManagement.editarRegistro(registroId);
-            } else {
-                if (_popupCalendarioEl && _popupCalendarioEl.dataset.registroId === registroId) {
-                    _popupCalendarioEl.remove();
-                    _popupCalendarioEl = null;
-                    return;
-                }
-                _popupCalendario(event, registroId);
-            }
-        }
-
-        function _cerrarPopupCalendarioHover(event) {
-            if (!_popupCalendarioEsHover) return;
-            const related = event.relatedTarget;
-            if (related && _popupCalendarioEl && _popupCalendarioEl.contains(related)) return;
-            clearTimeout(_popupCalendarioHoverTimer);
-            _popupCalendarioHoverTimer = setTimeout(() => {
-                if (_popupCalendarioEl) {
-                    _popupCalendarioEl.remove();
-                    _popupCalendarioEl = null;
-                }
-                _popupCalendarioEsHover = false;
-            }, 500);
-        }
-
-        const DESCRIPCIONES_STATS = {
-            'stat-tiempo-total': { titulo: 'Tiempo Total', desc: 'Suma de todas las horas trabajadas en el período seleccionado.' },
-            'stat-promedio-diario': { titulo: 'Promedio Diario', desc: 'Promedio de horas trabajadas por jornada en el período.' },
-            'stat-entrada-promedio': { titulo: 'Entrada Promedio', desc: 'Hora de entrada promedio entre todas las jornadas del período.' },
-            'stat-salida-promedio': { titulo: 'Salida Promedio', desc: 'Hora de salida promedio entre todas las jornadas del período.' },
-            'stat-regularidad-entrada': { titulo: 'Entrada Regular', desc: 'Qué tan constante es tu hora de entrada. Muestra la desviación promedio en minutos respecto al horario habitual: hasta 20m es Alta, hasta 40m Media, y más de 40m Baja.' },
-            'stat-regularidad-jornada': { titulo: 'Jornada Regular', desc: 'Qué tan constante es la duración de tu jornada. Muestra la desviación promedio en minutos respecto a la duración habitual: hasta 20m es Alta, hasta 40m Media, y más de 40m Baja.' },
-            'stat-tiempo-fuera-total': { titulo: 'Tiempo Fuera', desc: 'Suma de los tiempos fuera (salidas del establecimiento, almuerzo, etc.) registrados en las jornadas del período.' },
-            'stat-saldo': { titulo: 'Saldo', desc: 'Diferencia entre las horas trabajadas y las horas objetivo del período, según tus ajustes de horas diarias, días hábiles y cálculos de saldo.' },
-            'stat-dias-trabajados': { titulo: 'Jornadas', desc: 'Cantidad de jornadas con entrada y salida completas registradas en el período.' },
-            'stat-compensaciones': { titulo: 'Salidas Temprano', desc: 'Cantidad de jornadas en las que se registró un crédito por salida anticipada.' },
-        };
-
-        let _popupStatEl = null;
-
-        function _popupStat(event, statId) {
-            event.stopPropagation();
-            if (_popupStatEl) { _popupStatEl.remove(); _popupStatEl = null; }
-
-            let info = DESCRIPCIONES_STATS[statId];
-            if (statId === 'stat-saldo' && info) {
-                if (modoEstadisticas === 'anual') {
-                    const desdeEnero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false);
-                    const modoTexto = desdeEnero
-                        ? 'Actualmente el saldo se calcula a partir del PRIMER DÍA del año.'
-                        : 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del año.';
-                    info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
-                } else if (modoEstadisticas === 'mensual') {
-                    const desdePrimero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false);
-                    const modoTexto = desdePrimero
-                        ? 'Actualmente el saldo se calcula a partir del PRIMER DÍA del mes.'
-                        : 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del mes.';
-                    info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
-                }
-            }
-            if (statId === 'stat-tiempo-fuera-total' && info) {
-                const ignorarTF = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_TF, false, true);
-                const modoTexto = ignorarTF
-                    ? 'Actualmente NO SE RESTA el tiempo fuera del tiempo total.'
-                    : 'Actualmente SE RESTA el tiempo fuera del tiempo total.';
-                info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
-            }
-            if (statId === 'stat-promedio-diario' && info) {
-                info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>Actualmente las horas diarias objetivo son ${D.horasDiarias()}h.</strong>` };
-            }
-            if (!info) {
-                const valueEl = $(statId);
-                const label = valueEl?.closest('.stat-item')?.querySelector('.stat-label');
-                const tipoMatch = TiposRegistro.obtenerTodosLosTipos().find(t => statId === `stat-${t.labelPlural.toLowerCase()}`);
-                info = {
-                    titulo: S.escapeHtml(label ? label.textContent : 'Estadística'),
-                    desc: tipoMatch
-                        ? `Cantidad de jornadas registradas como "${S.escapeHtml(tipoMatch.label)}" en el período.`
-                        : 'Detalle de esta estadística.'
-                };
-            }
-
-            const popup = document.createElement('div');
-            popup.className = 'stat-popup';
-            popup.id = '_stat-popup';
-            popup.dataset.statId = statId;
-            popup.innerHTML = `
-                <div class="stat-popup-titulo">${S.escapeHtml(info.titulo)}</div>
-                <div class="stat-popup-desc">${info.desc}</div>`;
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
-            _popupStatEl = popup;
-
-            _registrarCierrePopup(popup, '.stat-item', item => item.dataset.statId === popup.dataset.statId, () => { _popupStatEl = null; });
-            _posicionarPopup(popup, event);
-        }
-
-        function _onclickStatItem(event) {
-            const item = event.currentTarget;
-            const valueEl = item.querySelector('.stat-value');
-            if (!valueEl || !valueEl.id) return;
-            if (_popupStatEl && _popupStatEl.dataset.statId === valueEl.id) {
-                _popupStatEl.remove();
-                _popupStatEl = null;
-                return;
-            }
-            item.dataset.statId = valueEl.id;
-            _popupStat(event, valueEl.id);
-        }
-
-        function _bindStatItemPopups(container) {
-            const root = container || document;
-            root.querySelectorAll('.stat-item').forEach(item => {
-                if (item._statPopupBound) return;
-                item._statPopupBound = true;
-                item.addEventListener('click', _onclickStatItem);
-            });
-        }
-
-        const _slideAnimEstado = new WeakMap();
-
-        function _limpiarClonVisual(clon) {
-            clon.removeAttribute('id');
-            clon.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
-            return clon;
-        }
-
-        function _finalizarSlidePendiente(el) {
-            const estado = _slideAnimEstado.get(el);
-            if (!estado) return;
-            clearTimeout(estado.timeout);
-            el.style.display = '';
-            estado.wrapper.parentNode?.insertBefore(el, estado.wrapper);
-            estado.wrapper.remove();
-            _slideAnimEstado.delete(el);
-        }
-
-        function _animarSlideElemento(el, delta, mutarFn) {
-            if (!el) { mutarFn(); return; }
-
-            _finalizarSlidePendiente(el);
-
-            const rectViejo = el.getBoundingClientRect();
-            const anchoViejo = rectViejo.width;
-            const altoViejo = rectViejo.height;
-            const margenTop = getComputedStyle(el).marginTop;
-
-            const snapViejo = _limpiarClonVisual(el.cloneNode(true));
-            snapViejo.style.cssText = 'position:absolute;top:0;left:0;width:' + anchoViejo + 'px;pointer-events:none;';
-
-            el.style.visibility = 'hidden';
-            mutarFn();
-
-            const rectNuevo = el.getBoundingClientRect();
-            const anchoNuevo = rectNuevo.width;
-            const altoNuevo = rectNuevo.height;
-
-            const snapNuevo = _limpiarClonVisual(el.cloneNode(true));
-            snapNuevo.style.cssText = 'position:absolute;top:0;width:' + anchoNuevo + 'px;pointer-events:none;left:' + (delta > 0 ? anchoViejo : -anchoNuevo) + 'px;';
-
-            const wrapper = document.createElement('div');
-            wrapper.style.cssText = 'position:relative;overflow:hidden;pointer-events:none;width:' + anchoViejo + 'px;height:calc(' + altoViejo + 'px + ' + margenTop + ');';
-            wrapper.appendChild(snapViejo);
-            wrapper.appendChild(snapNuevo);
-
-            el.parentNode.insertBefore(wrapper, el);
-            el.style.display = 'none';
-            el.style.visibility = '';
-
-            wrapper.offsetHeight;
-            const dur = DUR_CALENDARIO();
-            const easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
-            snapViejo.style.transition = 'transform ' + dur + 'ms ' + easing;
-            snapNuevo.style.transition = 'transform ' + dur + 'ms ' + easing;
-            if (Math.abs(altoNuevo - altoViejo) > 0.5) {
-                wrapper.style.transition = 'height ' + dur + 'ms ' + easing;
-                wrapper.style.height = 'calc(' + altoNuevo + 'px + ' + margenTop + ')';
-            }
-            const tx = (delta > 0 ? -anchoViejo : anchoViejo) + 'px';
-            snapViejo.style.transform = 'translateX(' + tx + ')';
-            snapNuevo.style.transform = 'translateX(' + tx + ')';
-
-            const timeout = setTimeout(() => {
-                el.style.display = '';
-                wrapper.parentNode.insertBefore(el, wrapper);
-                wrapper.remove();
-                _slideAnimEstado.delete(el);
-            }, dur + 20);
-
-            _slideAnimEstado.set(el, { timeout, wrapper });
-        }
-
-        function _animarCalendario(delta, renderFn) {
-            _animarSlideElemento(document.getElementById('calendario-grid'), delta, renderFn);
-        }
-
-        function navegarCalendario(delta) {
-            if (_popupCalendarioEl) {
-                _popupCalendarioEl.remove();
-                _popupCalendarioEl = null;
-            }
-
-            const hoy = new Date();
-            const base = _calendarioMes || { anio: hoy.getFullYear(), mes: hoy.getMonth() };
-            let nuevoMes = base.mes + delta;
-            let nuevoAnio = base.anio;
-            if (nuevoMes > 11) { nuevoMes = 0; nuevoAnio++; }
-            if (nuevoMes < 0) { nuevoMes = 11; nuevoAnio--; }
-            _calendarioMes = { anio: nuevoAnio, mes: nuevoMes };
-            _animarCalendario(delta, () => _renderizarCalendario());
-        }
-
-        function irHoyCalendario() {
-            const hoy = new Date();
-            if (_calendarioMes === null ||
-                (_calendarioMes.anio === hoy.getFullYear() && _calendarioMes.mes === hoy.getMonth())) {
-                return;
-            }
-            const base = _calendarioMes;
-            const delta = (base.anio * 12 + base.mes) > (hoy.getFullYear() * 12 + hoy.getMonth()) ? -1 : 1;
-            _calendarioMes = null;
-            _animarCalendario(delta, () => _renderizarCalendario());
-        }
-
-        function toggleStats() {
-            toggleSeccionGen('form-stats', 'icon-indicator-stats', STORAGE_KEYS.STATS_EXPANDIDO, () => {
-                registrarSwipe($('form-stats'), dir => togglePeriodoStats(dir));
-                if (modoEstadisticas === 'anual') {
-                    poblarSelectorAnios();
-                } else if (modoEstadisticas === 'semanal') {
-                    poblarSelectorSemanas();
-                    actualizarEstadisticasSemana($('select-semana-stats')?.value);
-                } else {
-                    poblarSelectorMeses();
-                    const selectMes = $('select-mes-stats');
-                    if (selectMes && selectMes.value) {
-                        actualizarEstadisticas(selectMes.value);
-                    } else {
-                        actualizarEstadisticas();
-                    }
-                }
-            });
-        }
-
-        function alternarFechaActual(id) {
-            const c = document.getElementById(id);
-            if (!c) return;
-            if (c.value.trim() !== '') {
-                c.value = '';
-            } else {
-                c.value = TimeUtils.obtenerFechaHoy();
-            }
-
-            actualizarBotonLote();
-            if (id === 'edit-grupo-desde' || id === 'edit-grupo-hasta') {
-                c.dispatchEvent(new Event('change'));
-            }
-        }
-
-        function verificarBloqueoCredito() {
-            const btnCredito = document.getElementById('btn-toggle-credito');
-            if (!btnCredito) return;
-
-            const _bloquear = () => {
-                btnCredito.disabled = true;
-                btnCredito.style.cursor = 'not-allowed';
-            };
-            const _habilitar = () => {
-                btnCredito.disabled = false;
-                btnCredito.style.cursor = 'pointer';
-            };
-
-            if (document.getElementById('edit-fecha').disabled) return _bloquear();
-
-            const e = document.getElementById('edit-entrada').value.trim();
-            const s = document.getElementById('edit-salida').value.trim();
-            const tf = document.getElementById('edit-tiempo-fuera').value.trim() || null;
-
-            const horarioCompleto = e.length === 5 && s.length === 5;
-            if (!horarioCompleto) {
-                if (btnCredito.dataset.activo === "true") toggleCredito();
-                return _bloquear();
-            }
-
-            if (TiposRegistro.esRegistroEspecial(e, s)) return _bloquear();
-
-            const calcTemp = D.calcularHoras(e, s, tf, null);
-            if (!calcTemp || calcTemp.total >= D.horasDiarias()) return _bloquear();
-
-            _habilitar();
-        }
-
-        function setBloqueoEdicionGrupo(bloqueado) {
-            edicionGrupoBloqueada = bloqueado;
-            _setBloqueoEdicionGenerico(bloqueado, {
-                btnLockId: 'btn-lock-grupo-toggle',
-                inputIds: ['edit-grupo-tipo', 'edit-grupo-desde', 'edit-grupo-hasta'],
-                modalId: 'modal-editar-grupo',
-                excluirBotones: 'button:not(#btn-lock-grupo-toggle):not(.btn-cancel)'
-            });
-        }
-
-        function toggleBloqueoEdicionGrupo() {
-            setBloqueoEdicionGrupo(!edicionGrupoBloqueada);
-        }
-
-        function cerrarEdicionGrupo() {
-            ModalManager.cerrar('modal-editar-grupo', () => {
-                D.setGrupoEnEdicion(null);
-                document.dispatchEvent(new Event('scroll'));
-            });
         }
 
         function aplicarFeedbackCampos(campos) {
@@ -7103,19 +7673,9 @@ Generado por Sistema Lushibosca
             }
         }
 
-        function iniciarCambioHoras(incremento) {
-            cambiarHorasDiarias(incremento);
-            timeoutInicial = setTimeout(() => {
-                intervaloPulsacion = setInterval(() => {
-                    cambiarHorasDiarias(incremento);
-                }, 100);
-            }, 500);
-        }
-
-        function detenerCambio() {
-            if (timeoutInicial) { clearTimeout(timeoutInicial); timeoutInicial = null; }
-            if (intervaloPulsacion) { clearInterval(intervaloPulsacion); intervaloPulsacion = null; }
-        }
+        const _pressHoldHoras = _crearPressHold(incremento => cambiarHorasDiarias(incremento));
+        function iniciarCambioHoras(incremento) { _pressHoldHoras.iniciar(incremento); }
+        function detenerCambio() { _pressHoldHoras.detener(); }
 
         function cambiarHorasDiarias(incremento) {
             let valorActual = parseFloat($('config-horas-diarias').dataset.valor);
@@ -7132,6 +7692,21 @@ Generado por Sistema Lushibosca
             const esDefault = window.PerfilManager && PerfilManager.obtenerPerfilActual() === 'default';
             if (esDefault) StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, nuevoValor);
             D.guardarYActualizar();
+        }
+
+        const _pressHoldObjetivoEdicion = _crearPressHold(incremento => cambiarObjetivoEdicion(incremento));
+        function iniciarCambioObjetivoEdicion(incremento) { _pressHoldObjetivoEdicion.iniciar(incremento); }
+        function detenerCambioObjetivoEdicion() { _pressHoldObjetivoEdicion.detener(); }
+        
+        function cambiarObjetivoEdicion(incremento) {
+            const el = $('edit-objetivo');
+            if (!el) return;
+            let valorActual = parseFloat(el.dataset.valor);
+            if (isNaN(valorActual)) valorActual = D.horasDiarias();
+            const nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
+            el.dataset.valor = nuevoValor;
+            el.textContent = TimeUtils.horasATexto(nuevoValor, 'short');
+            verificarBloqueoCredito();
         }
 
         function formatearInput(e) {
@@ -7153,9 +7728,12 @@ Generado por Sistema Lushibosca
             toggleTimerBreakMain, actualizarEstadoBotonTimerMain, toggleBloqueoEdicion, setBloqueoEdicion, actualizarEstadoBotonSaldoDesdePrimeroDiaMes,
             actualizarFeedbackConfig, poblarSelectorMeses, abrirSelectorPerfiles, actualizarBotonLote, toggleSaldoDesdeEnero, toggleSaldoDesdePrimeroDiaMes,
             toggleLogicaCubierto, actualizarEstadoBotonLogicaCubierto,
+            toggleObjetivoPorRegistro, actualizarEstadoBotonObjetivoPorRegistro,
+            aplicarHorasConfiguradasATodos, actualizarEstadoBotonAplicarHoras,
+            iniciarCambioObjetivoEdicion, detenerCambioObjetivoEdicion,
             cerrarSelectorPerfiles, abrirEditorPerfil, cerrarEditorPerfil, guardarEdicionPerfil, toggleModoLote, toggleHoverPopupCalendario,
             eliminarPerfilDesdeEditor, crearPerfilDesdeSelector, renderizarListaPerfiles, ejecutarAccionRegistro,
-            iniciarCambioHoras, detenerCambio, mostrarconfig, alternarFechaActual, verificarBloqueoCredito, gistSubir, gistBajar,
+            iniciarCambioHoras, detenerCambio, mostrarconfig, mostrarConfigOnboarding, alternarFechaActual, verificarBloqueoCredito, gistSubir, gistBajar,
             toggleCredito, setBloqueoEdicionGrupo, toggleBloqueoEdicionGrupo, cerrarEdicionGrupo, poblarSelectoresTipos,
             mostrarExportar, cerrarExportar, ejecutarExportacion, toggleCamposRangoExport, aplicarFeedbackCampos,
             iniciarTimerAutoCierreBotones, cancelarTimerAutoCierreBotones, toggleIgnorarTiempoFuera, actualizarEstadoBotonIgnorarTF,
@@ -7166,9 +7744,14 @@ Generado por Sistema Lushibosca
             toggleGistBackup, toggleGistMerge, cambiarLimiteSync, iniciarCambioLimite, detenerCambioLimite,
             _popupCalendario, _popupCalendarioHover, _onclickCalendarioDia, _cerrarPopupCalendarioHover,
             _popupCalendarioDiaSinRegistro, _popupStat, _onclickStatItem, _bindStatItemPopups,
+            _esFechaHabil, _cubiertoPorSaldo, agruparRegistrosConsecutivos, _irAFicharConFecha,
+            _activarVistaCalendarioHistorico, _agruparMesesPorAnio, _nombreMesCapitalizado, _renderSelectorStats,
+            setModoEstadisticas, setTiempoExpansionBotones, getFondoCard,
+            actualizarListaRegistros, getVistaHistoricoCalendario, _cerrarSelectorMeses, _renderizarCalendario,
+            _getLabelFondo, _iniciarCicloStats,
         };
 
-    })(SecurityAndUtils, DataManagement, GistSync);
+    })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje);
 
     // ====================================================================
     // BIENVENIDA MODULE — primera vez / después de un restablecimiento
@@ -7186,19 +7769,7 @@ Generado por Sistema Lushibosca
             }
 
             await new Promise(r => setTimeout(r, 1000));
-
-            const importar = await ModalManager.confirmar(
-                'No se encontraron registros, si tenes un respaldo local de los datos podes restaurarlos desde aca.',
-                'Restaurar',
-                '#icon-upload',
-                { titulo: '¡Bienvenido a Horarios!', labelCancel: 'Continuar', iconoCancel: '#icon-arrow-right' }
-            );
-
-            StorageHelper.setItem(STORAGE_KEYS.BIENVENIDA_VISTA, true, true);
-
-            if (importar) {
-                window.UILogic?.mostrarImportar(true);
-            }
+            await window.UILogic?.mostrarConfigOnboarding();
         }
 
         return { chequearYMostrar };
@@ -7210,16 +7781,14 @@ Generado por Sistema Lushibosca
     const FeriadosAR = (function () {
         'use strict';
 
-        const SK_PROCESADOS = 'feriadosAR_procesados';
+        const SK_PROCESADOS = STORAGE_KEYS.FERIADOS_PROCESADOS;
         const FERIADOS = window.FERIADOS_AR || {};
 
         function _cargarProcesados() {
-            const raw = StorageHelper.getItem(SK_PROCESADOS, null);
+            const raw = StorageHelper.getItem(SK_PROCESADOS, null, true);
             try {
                 if (!raw) return new Set();
-                const parsed = JSON.parse(raw, (k, v) =>
-                    ['__proto__', 'constructor', 'prototype'].includes(k) ? undefined : v
-                );
+                const parsed = JSON.parse(raw, SecurityAndUtils.reviverJSONSeguro);
                 if (!Array.isArray(parsed)) return new Set();
                 return new Set(parsed.filter(f => typeof f === 'string' && TimeUtils.validarFecha(f)));
             } catch { return new Set(); }
@@ -7232,7 +7801,7 @@ Generado por Sistema Lushibosca
             limite.setDate(limite.getDate() - 60);
             const limiteStr = TimeUtils.formatearFechaLocal(limite);
             set.forEach(f => { if (f < limiteStr) set.delete(f); });
-            StorageHelper.setItem(SK_PROCESADOS, JSON.stringify([...set]));
+            StorageHelper.setItem(SK_PROCESADOS, JSON.stringify([...set]), true);
         }
 
         function _getFeriadosDelMes() {
@@ -7311,11 +7880,21 @@ document.addEventListener('DOMContentLoaded', function () {
     const $ = id => document.getElementById(id);
 
     const addHoldEvents = (btn, onStart, onStop) => {
-        btn.addEventListener('mousedown', onStart);
-        btn.addEventListener('mouseup', onStop);
-        btn.addEventListener('mouseleave', onStop);
-        btn.addEventListener('touchstart', (e) => { e.preventDefault(); onStart(); }, { passive: false });
-        btn.addEventListener('touchend', (e) => { e.preventDefault(); onStop(); }, { passive: false });
+        const start = (e) => {
+            if (btn.disabled) return;
+            if (e.type === 'touchstart') e.preventDefault();
+            onStart();
+        };
+        const stop = (e) => {
+            if (e && e.type === 'touchend') e.preventDefault();
+            onStop();
+        };
+        btn.addEventListener('mousedown', start);
+        btn.addEventListener('touchstart', start, { passive: false });
+        btn.addEventListener('mouseup', stop);
+        btn.addEventListener('mouseleave', stop);
+        btn.addEventListener('touchend', stop, { passive: false });
+        btn.addEventListener('touchcancel', stop);
     };
 
     $('btn-install')?.addEventListener('click', () => PWAInstaller.instalarApp());
@@ -7364,6 +7943,8 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-saldo-enero')?.addEventListener('click', () => UILogic.toggleSaldoDesdeEnero());
     $('btn-toggle-saldo-primero-mes')?.addEventListener('click', () => UILogic.toggleSaldoDesdePrimeroDiaMes());
     $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
+    $('btn-toggle-objetivo-registro')?.addEventListener('click', () => UILogic.toggleObjetivoPorRegistro());
+    $('btn-aplicar-horas-todos')?.addEventListener('click', () => UILogic.aplicarHorasConfiguradasATodos());
     $('btn-toggle-persistir-tarjetas')?.addEventListener('click', () => UILogic.togglePersistirTarjetas());
     $('btn-toggle-card-registrar')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('registrar'));
     $('btn-toggle-card-estadisticas')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('estadisticas'));
@@ -7380,6 +7961,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (btnsHoras?.[0]) addHoldEvents(btnsHoras[0], () => UILogic.iniciarCambioHoras(0.5), () => UILogic.detenerCambio());
         if (btnsHoras?.[1]) addHoldEvents(btnsHoras[1], () => UILogic.iniciarCambioHoras(-0.5), () => UILogic.detenerCambio());
     }
+
+    const btnObjetivoInc = $('btn-edit-objetivo-inc');
+    const btnObjetivoDec = $('btn-edit-objetivo-dec');
+    if (btnObjetivoInc) addHoldEvents(btnObjetivoInc, () => UILogic.iniciarCambioObjetivoEdicion(0.5), () => UILogic.detenerCambioObjetivoEdicion());
+    if (btnObjetivoDec) addHoldEvents(btnObjetivoDec, () => UILogic.iniciarCambioObjetivoEdicion(-0.5), () => UILogic.detenerCambioObjetivoEdicion());
 
     $('gist-token')?.addEventListener('input', () => UILogic.actualizarEstadoBotonesGist());
     $('gist-id')?.addEventListener('input', () => UILogic.actualizarEstadoBotonesGist());
@@ -7443,7 +8029,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260714';
+        const _v = '-v260731';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {
@@ -7462,17 +8048,25 @@ document.addEventListener('DOMContentLoaded', function () {
     })();
 });
 
-// MODULOS:
+// MODULOS (en orden de declaración/dependencia):
 
-// STORAGE KEYS — MODULE
 // PWA INSTALLER MODULE
 // TIME AND DATE UTILITIES MODULE (TimeUtils)
-// STORAGE HELPER MODULE
 // SECURITY AND UTILS MODULE
+// STORAGE HELPER MODULE
 // PERFIL MANAGER MODULE
 // MODAL MANAGER MODULE
 // HISTORY MANAGER MODULE
 // TIPOS DE REGISTRO MODULE
 // DATA MANAGEMENT MODULE
-// LISTENERS PARA TECLA ENTER MODULE
+// UI CORE MODULE (helpers genéricos de UI)
+// UI PERFILES MODULE
+// UI CALENDARIO MODULE
+// GIST SYNC MODULE
+// UI GIST Y RESPALDO MODULE
+// UI HISTORICO MODULE
+// UI ESTADISTICAS MODULE
+// UI TARJETA DE FICHAJE MODULE
+// UI LOGIC MODULE (orquestador: init, bootstrap, config general)
+// BIENVENIDA MODULE
 // FERIADOS MODULE
