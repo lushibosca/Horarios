@@ -117,7 +117,16 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    border-bottom: 3px solid transparent;
+    transition: border-bottom-color 0.25s ease;
 }
+
+.header.scrolled.progress-green { border-bottom-color: var(--c-green); }
+.header.scrolled.progress-red { border-bottom-color: var(--c-red); }
+.header.scrolled.progress-purple { border-bottom-color: var(--c-purple); }
+.header.scrolled.progress-orange { border-bottom-color: var(--c-orange); }
+.header.scrolled.progress-gold { border-bottom-color: var(--c-gold); }
+.header.scrolled.progress-blue { border-bottom-color: var(--c-blue); }
 
 .header h1 {
     font-size: var(--text-lg);

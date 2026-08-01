@@ -5650,11 +5650,20 @@ Generado por Sistema Lushibosca
         let modoLoteActivo = false;
         let _timerAutoVista = null;
 
-        function setProgressBarColor(progressEl, status) {
+        function setProgressBarColor(progressEl, status, headerColor) {
             if (!progressEl) return;
             progressEl.className = 'progress-fill';
             progressEl.classList.add(status);
             if (status === 'blue') progressEl.classList.add('shimmer');
+
+            const header = document.querySelector('.header');
+            if (header) {
+                header.classList.remove('progress-green', 'progress-red', 'progress-purple', 'progress-orange', 'progress-gold', 'progress-blue');
+                const colorHeader = headerColor || status;
+                if (colorHeader !== 'transparent') {
+                    header.classList.add('progress-' + colorHeader);
+                }
+            }
         }
 
         let _fondoCard = 'golden-gate';
@@ -6267,7 +6276,7 @@ Generado por Sistema Lushibosca
             const el = $('progress-bar');
             if (!el) return;
             el.style.width = `${vista.anchoBarra}%`;
-            setProgressBarColor(el, vista.colorBarra);
+            setProgressBarColor(el, vista.colorBarra, vista.colorBorde);
         }
 
         function _renderMensaje(vista) {
@@ -7915,6 +7924,33 @@ document.addEventListener('DOMContentLoaded', function () {
 
     $('btn-install')?.addEventListener('click', () => PWAInstaller.instalarApp());
     document.querySelector('.header-profile-btn')?.addEventListener('click', () => UILogic.abrirSelectorPerfiles());
+
+    (function () {
+        const header = document.querySelector('.header');
+        const statsCard = $('stats-card');
+        if (!header || !statsCard) return;
+
+        let observer = null;
+
+        const crearObserver = () => {
+            if (observer) observer.disconnect();
+            const headerH = header.offsetHeight;
+            observer = new IntersectionObserver(
+                ([entry]) => {
+                    header.classList.toggle('scrolled', !entry.isIntersecting);
+                },
+                { rootMargin: `-${headerH}px 0px 0px 0px`, threshold: 0 }
+            );
+            observer.observe(statsCard);
+        };
+
+        crearObserver();
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(crearObserver, 200);
+        });
+    })();
 
     $('stats-card')?.addEventListener('click', () => UILogic.alternarVista());
 
