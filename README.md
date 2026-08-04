@@ -1,102 +1,51 @@
-## (Changelog)
+# Horarios
 
-### BUGS ACTUALES:
---
+Registro de horarios laborales personal, 100% del lado del cliente: los datos se guardan en `localStorage` del navegador, con opción de respaldo/restauracion local (JSON) o sincronización automatizable contra un [Gist de GitHub](https://gist.github.com) personal. Pensada para instalarse como PWA y usarse offline.
 
-### VERSION:
+## Cómo funciona
 
-### 260713
-* **Fix:** Se corrige el salto de 1px en las tarjetas debajo del calendario al pasar de mes o seleccionar un mes
-* **Fix:** Se corrigen varios bug al cambiar la animaciones de las tarjetas de fichar y estadisticas
-* **Cambios:** Se simplifica la deteccion de feriados, ahora hace una deteccion mensual mostrando la lista de los mismos para el mes actual, asi se obtiene el panorama completo.
-* **Mejora:** Se agrega animacion al boton de tiempo fuera, al aparecer y desaparecer
+La app se organiza en 4 tarjetas principales que se pueden reordenar, ocultar y expandir/colapsar, Cada jornada se guarda como un registro con fecha, hora de entrada, hora de salida y, opcionalmente, tiempo fuera, notas y objetivo horario personalizado. 
+A partir de estos datos, configuracion de objetivos horarios y dias laborales, la app calcula las distintas metricas de estadisticas y objetivos seleccionados
 
-### 260710
-* **Mejora:** Se estandariza el font-size con variables
+### 🟢 Tarjeta de Estado (vista diaria)
+![tarjeta de estado](./presentation/stat_diario.png)
+### 🟢 Tarjeta de Estado (vista semanal)
+![tarjeta de estado](./presentation/stat_semanal.png)
+### ⏱️ Tarjeta de Fichaje (modo normal)
+![tarjeta de fichaje](./presentation/fichar_normal.png)
+### ⏱️ Tarjeta de Fichaje (modo lote)
+![tarjeta de fichaje](./presentation/fichar_lote.png)
+1) campo para seleccionar un registro especial
+2) campos para seleccionar un rango
+3) alternar entre modo lote y normal
+4) 6) pegar fecha actual o limpiar campo
 
-### 260709
-* **Nuevo:** Se agrega confirm de bienvenida para importacion de datos, en caso que la app se restablezca o no haya datos la primera vez que se abre
-* **Mejora:** la opcion "desactivar logica de cubierto" ahora aplica solo por perfil, antes aplicaba globalmente
-* **Cambios:** Se alinean los texto de los botones de ajustes a la izquierda
+### 📊 Tarjeta de Estadísticas
 
-### 260708
-* **Mejora:** Se agrega opcion para desactivar la logica de cubierto por saldo
-* **Cambios:** Cambios de etiqueta e iconos en varios toast y opciones
+Métricas calculadas sobre un período elegido (mensual, anual o semanal): tiempo total trabajado, promedio diario, horario de entrada/salida promedio, regularidad de entrada y de jornada, tiempo fuera acumulado, saldo (horas de más/menos contra el objetivo), cantidad de jornadas y salidas tempranas compensadas. Desde acá también se puede generar un **reporte** descargable del período.
 
-### 260708
-* **Mantenimiento:** Refactores varios
+### 📋 Tarjeta de Registros
 
-### 260707
-* **Mejora:** Se agrega el estado "cubierto" en base a la semantica agregado aen el cambio anterior, a la tarjeta de registros en ambas vistas con estado dinamico de saldo hasta el dia actual
+El historial completo, con:
+- **Vista de lista** o **vista de calendario** (navegable por mes).
+- **Filtros** por tipo de registro.
+- **Deshacer / Rehacer** (Ctrl+Z / Ctrl+Y) para revertir cambios recientes.
+- **Respaldar / Restaurar** en formato JSON, combinando con los datos existentes o reemplazándolos por completo.
+- Edición y eliminación de cualquier registro individual o de un grupo de días con el mismo tipo especial.
 
-### 260705
-* **Mejora:** Cambio de semantica en la tarjeta de estado, para representar el tiempo faltante en mas escenarios y contextos
-* **Cambios:** Cambios en la animacion de tarjetas
+## Características
 
-### 260704
-* **Cambios:** cambio de layout en la vista de lista de la tarjeta de registros en dispositivos pc
-* **Mejora:** Las horas diarias / semanales objetimo en el modal de ajustes, ahora se representa en "horario humano" antes usaba horario maquina para la presentacion visual
-* **Cambios:** Cambios en los campos de GistSync y horas diarias objetivo
-* **Cambios:** Se agrega spin y flash al icono de perfiles cuando gist sync esta cargando datos
+- **Objetivo diario configurable**: un valor global (horas diarias × días laborales de la semana) que además se puede pisar por registro individual, para casos puntuales como una jornada reducida.
+- **Tipos de registro especiales**: Feriado, Licencia, Vacaciones, Asueto, Enfermedad, Paro, Remoto, Capacitación y Compensatorio — cada uno con su propio color/ícono y su forma de contabilizarse en las estadísticas.
+- **Saldo de horas**: acumula la diferencia entre horas trabajadas y objetivo, con opciones para calcularlo desde el 1° de enero, desde el 1° del mes, o para que cubra o no los faltantes de días anteriores.
+- **Tiempo fuera**: se puede descontar de la jornada o ignorarlo por completo, según preferencia.
+- **Múltiples perfiles** (hasta 9): útil para llevar varios trabajos o contextos por separado, cada uno con su propia configuración, registros y sincronización.
+- **Sincronización con GitHub Gist**: subir/bajar el respaldo manualmente, o automatizarlo con frecuencia y franja horaria configurables, con modo "combinar" o "reemplazar" al detectar diferencias.
+- **Días feriados**: soporte para cargar feriados automáticamente.
+- **Modo oscuro** y fondos de interfaz personalizables.
+- **Instalable como PWA**, con uso offline una vez cargada.
+- **Seguridad de los datos**: Content Security Policy estricta, validación y sanitización de todo lo que se importa (tamaño de archivo, formato de fecha/hora, campos permitidos), y límite de 1000 registros por perfil para mantener todo liviano y consistente.
 
-### 260701
-* **Fix:** Se actualiza el estilo de animacion de colapso de meses / años en la vista de lista, para quitar el glitch al expandir meses con pocos registros
-* **Mejora:** varios refactores menores de funciones, eliminando logica duplicada y creando helpers reutilizables
+Creado con ia
 
-### 260701
-* **Mejora:** Se centraliza como helper en modal manager el arreglo del modal confirmar de feriadosAR, ahora es una funcion helper de modal manager que puede utilizarse con distintos atributos
-
-### 260630
-* **Mantenimiento:** Fin refactor se pasa de ~8000 lineas a ~7500 en js
-
-### 260627
-Refactores varios
-
-### 260626
-Refactor de async function init, se parte en varios helper y la funcion init como orquestador
-
-### 260625
-* **Fix:** ir para atras al quitar filtro, gist merge desde registros, gist merge desde modal gist 
-* **Mantenimiento:** se mueve ConfirmarModal a modal manager module, quedando como funcion interna de este modulo y renombrada a Confirmar
-
-### 260623
-* **Mejora:** refactor y creacion de helper _crearOpcion, para los pobladores (semana, mes y anios)
-* **Mejora:** Se quitan las funciones de gist del scope async function init, quedando en el modudo de uilogic
-* **Mejora:** Se elimina return duplicado de window.uilogic con funciones duplicadas, quedado el return de uilogic como unico return.
-
-### 260622
-* **Fix:** Se corrige bug al pasar por encima de un dia con registro con popup hover calendario activo, y un popup sin registro abierto.
-* **Nuevo:** Se agrega flash en los campos de fecha de la tarjeta fichar, cuando se selecciona una opcion de registro regular o especial
-* **Mejora:** Cambios menores en popup-stat para mejor legibilidad
-* **Mejora:** Se agrega horas diarias objetivo al popup-stat promedio diario
-* **Mejora:** Se agrega validacion de fecha futura en la importacion (local y nube) de registros
-* **Mejora:** Se unifica el tipo de cierre en popup con y sin registro al tocarlo nuevamente
-
-### 260621
-* **Fix:** bug al abrir popup calendario sin registro con un popup con registro todavia abierto, cerraba el popup sin registro
-* **Fix:** Corrección en el *toggle* al modo lote (evita la transición abrupta en el primer uso).
-* **Fix:** Se aplica de forma consistente la validacion de fecha futura para registro
-regular, se aplicaba en editar registro pero no en la tarjeta de fichar.
-* **Nuevo:** Se agrega un *popup* a los días sin registro en el calendario, con opciones para agregar registros regulares o especiales.
-* **Mantenimiento:** Se mueve el chanelog del index al readme.md
-* **Mejora:** Se agrega limpieza del estado error en campos de tarjeta fichar
-* **Mejora:** Se agrega validacion de fecha futura en el popup sin registro, para ocultar
-el boton de agregar registro regular.
-
-### 260618
-* **Mejora:** Cambios menores en los colores de los botones de edición y configuración.
-* **Nuevo:** Se agrega un *popup* a cada `stat-item` con su descripción, y un *flag* opcional en "saldo" y "tiempo fuera" por mes y año.
-* **Mejora:** Se incrementa la cantidad máxima de perfiles de 7 a 9, implementando una variable previamente definida pero sin uso.
-* **Fix:** Corrección en el botón de crear perfil, vinculado a la implementación de la nueva variable.
-
-### 260617
-* **Mejora:** Se modifica la animación del calendario al cambiar de mes.
-* **Nuevo:** Se agrega la opción para elegir cómo calcular el saldo anual de estadísticas (desde el primer registro del año o desde el primer día del año).
-* **Fix:** Corrección en el cambio de mes con *swipe* en dispositivos móviles para garantizar una transición fluida sin bloqueos por animación.
-
-### 260616
-* **Nuevo:** Se agrega el módulo **FERIADOS AR MODULE** para la detección de días festivos y consulta para agregarlos al registro (funcionamiento *hardcodeado*).
-* **Fix:** Corrección al restablecer el perfil; no se guardaba correctamente el estado en el `history manager`.
-
-### 260611
-* **Mejora:** La función de restablecer ahora persiste el *gist ID* y resetea la configuración de automatización.
+[chanelog](./CHANELOG.md)
