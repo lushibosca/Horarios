@@ -1,6 +1,6 @@
 # Horarios
 
-Registro de horarios laborales personal, 100% del lado del cliente: los datos se guardan en `localStorage` del navegador, con opción de respaldo/restauracion local (JSON) o sincronización automatizable contra un [Gist de GitHub](https://gist.github.com) personal. Pensada para instalarse como PWA y usarse offline.
+Registro de horarios laborales personal
 
 ## Cómo funciona
 
