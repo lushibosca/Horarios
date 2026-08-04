@@ -8,13 +8,13 @@ La app se organiza en 4 tarjetas principales que se pueden reordenar, ocultar y 
 A partir de estos datos, configuracion de objetivos horarios y dias laborales, la app calcula las distintas metricas de estadisticas y objetivos seleccionados
 
 ### 🟢 Tarjeta de Estado (vista diaria)
-![tarjeta de estado](./presentation/stat_diario.png)
+![tarjeta de estado](./img/stat_diario.png)
 ### 🟢 Tarjeta de Estado (vista semanal)
-![tarjeta de estado](./presentation/stat_semanal.png)
+![tarjeta de estado](./img/stat_semanal.png)
 ### ⏱️ Tarjeta de Fichaje (modo normal)
-![tarjeta de fichaje](./presentation/fichar_normal.png)
+![tarjeta de fichaje](./img/fichar_normal.png)
 ### ⏱️ Tarjeta de Fichaje (modo lote)
-![tarjeta de fichaje](./presentation/fichar_lote.png)
+![tarjeta de fichaje](./img/fichar_lote.png)
 1) campo para seleccionar un registro especial
 2) campos para seleccionar un rango
 3) alternar entre modo lote y normal
