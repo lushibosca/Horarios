@@ -309,7 +309,7 @@
             <div class="card stats-card animated-card" id="stats-card">
                 <div class="stats-card-bg" id="stats-card-bg" aria-hidden="true"></div>
                 <div class="stats-card-content" id="stats-card-content">
-                    <h2 id="stats-titulo">Hoy</h2>
+                    <h2 id="stats-titulo" class="card-anim">Hoy</h2>
                     <div class="stats-number" id="stats-semana">
                         <div>0 horas 0 minutos</div>
                     </div>
@@ -752,24 +752,6 @@
                                     <use href="#icon-dot" />
                                 </svg>
                             </button>
-                            <button id="btn-toggle-saldo-enero">
-                                <svg class="icon">
-                                    <use href="#icon-calendar-simple" />
-                                </svg>
-                                <span>Saldo desde 1° día del año</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
-                            <button id="btn-toggle-saldo-primero-mes">
-                                <svg class="icon">
-                                    <use href="#icon-calendar-simple" />
-                                </svg>
-                                <span>Saldo desde 1° día del mes</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
                         </div>
                         <div class="config-actions">
                             <label>Datos</label>
@@ -1162,40 +1144,6 @@
                         <use href="#icon-back" />
                     </svg>
                     Volver
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="modal" id="modal-filtros">
-        <div class="modal-content">
-            <h3>
-                <span class="modal-title-block">
-                    <svg class="icon">
-                        <use href="#icon-filter" />
-                    </svg>
-                    Filtrar Registros
-                </span>
-            </h3>
-            <div class="form-group">
-                <label>Desde</label>
-                <input type="date" id="filtro-fecha-desde" />
-            </div>
-            <div class="form-group">
-                <label>Hasta</label>
-                <input type="date" id="filtro-fecha-hasta" />
-            </div>
-            <div class="form-group">
-                <label>Tipo de registro</label>
-                <select id="filtro-tipo">
-                    <option value="">Todos</option>
-                    <option value="normal">🕒 Jornadas</option>
-                </select>
-            </div>
-            <div class="btn-group">
-                <button class="btn-cancel">
-                    <svg class="icon">
-                        <use href="#icon-cancelar" />
-                    </svg> Cerrar
                 </button>
             </div>
         </div>

@@ -15,8 +15,6 @@
         DIAS_HABILES: 'diasHabiles',
         HORAS_DIARIAS: 'horasDiarias',
         VISTA_HISTORICO_CAL: 'vistaHistoricoCalendario',
-        SALDO_DESDE_ENERO: 'saldoAnualDesdeEnero',
-        SALDO_DESDE_PRIMERO_MES: 'saldoMensualDesdePrimero',
         IGNORAR_TF: 'ignorarTiempoFuera',
         IGNORAR_LOGICA_CUBIERTO: 'ignorarLogicaCubierto',
         IGNORAR_OBJETIVO_POR_REGISTRO: 'ignorarObjetivoPorRegistro',
@@ -144,7 +142,7 @@
 
         function minutosAHora(totalMinutos) {
             const h = Math.floor(Math.abs(totalMinutos) / 60);
-            const m = Math.abs(totalMinutos) % 60;
+            const m = Math.floor(Math.abs(totalMinutos) % 60);
             return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
         }
 
@@ -413,11 +411,7 @@
         function configurarNotificaciones(handlers) { notify = { ...notify, ...handlers }; }
 
         function _getKey(key, useProfile) {
-            if (useProfile && window.PerfilManager) {
-                return window.PerfilManager.perfilKey(key);
-            }
-            if (useProfile) return key + '_default';
-            return key;
+            return useProfile ? PerfilManager.perfilKey(key) : key;
         }
 
         function setItem(key, value, useProfile = false) {
@@ -491,11 +485,13 @@
         const MAX_PERFILES = 9;
         let perfilActual = 'default';
         let perfiles = {};
+        let _inicializado = false;
 
         function inicializar() {
             cargarPerfiles();
             actualizarSelector();
             actualizarNombrePerfil();
+            _inicializado = true;
         }
 
         function cargarPerfiles() {
@@ -529,13 +525,12 @@
         }
 
         function guardarDatosPerfilActual() {
-            if (!window.DataManagement) return false;
             const actual = perfiles[perfilActual];
             perfiles[perfilActual] = {
                 nombre: actual.nombre,
-                registros: [...window.DataManagement.registros()],
-                diasHabiles: window.DataManagement.diasHabiles(),
-                horasDiarias: window.DataManagement.horasDiarias(),
+                registros: [...DataManagement.registros()],
+                diasHabiles: DataManagement.diasHabiles(),
+                horasDiarias: DataManagement.horasDiarias(),
                 ...(actual.gistId && { gistId: actual.gistId }),
                 ...(actual.gistLastSync && { gistLastSync: actual.gistLastSync }),
                 ...(actual.gistAutoSync != null && { gistAutoSync: actual.gistAutoSync }),
@@ -580,6 +575,8 @@
         }
 
         function obtenerPerfilActual() { return perfilActual; }
+        function esPerfilDefault() { return perfilActual === 'default'; }
+        function estaInicializado() { return _inicializado; }
         function obtenerDatosPerfil() { return perfiles[perfilActual]; }
         function obtenerTodosPerfiles() { return perfiles; }
 
@@ -588,8 +585,8 @@
         }
 
         return {
-            inicializar, cambiarPerfil, guardarDatosPerfilActual,
-            obtenerPerfilActual, obtenerDatosPerfil, obtenerListaPerfiles, obtenerTodosPerfiles,
+            inicializar, estaInicializado, cambiarPerfil, guardarDatosPerfilActual,
+            obtenerPerfilActual, esPerfilDefault, obtenerDatosPerfil, obtenerListaPerfiles, obtenerTodosPerfiles,
             guardarPerfiles, perfilKey, MAX_PERFILES
         };
 
@@ -1061,6 +1058,8 @@
             cerrarFiltros: () => { },
             cerrarImportar: () => { },
             descargarJSON: () => { },
+            flashCampo: () => { },
+            flashCampoTipo: () => { },
             iniciarTimerAutoCierreBotones: () => { },
             limpiarError: () => { },
             mostrarError: () => { },
@@ -1167,7 +1166,7 @@
         async function eliminarGrupoActual() {
             if (!grupoEnEdicion) return;
             if (grupoEnEdicion.registros.length > 60) {
-                notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: 60 registros por operación.`, 'error');
+                notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: 60 registros por operación.`, 'error', 4000);
                 return;
             }
             const idsAEliminar = grupoEnEdicion.registros.map(r => r.id);
@@ -1184,13 +1183,13 @@
             if (registroExistente) { notify.mostrarToast('Ya existe un registro para hoy', 'warning'); throw new Error('Registro ya existe'); }
 
             const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
-            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); throw new Error('Tipo inválido'); }
+            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Tipo inválido'); }
 
             const entrada = tipoConfig.codigo;
             const salida = tipoConfig.codigo;
             const tipoTexto = `${tipoConfig.emoji} ${tipoConfig.label}`;
 
-            if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast('Límite de registros alcanzado', 'error'); throw new Error('Límite alcanzado'); }
+            if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast('Límite de registros alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite alcanzado'); }
 
             const nuevoId = S.generarIDSeguro();
             const t = calcularHoras(entrada, salida, null);
@@ -1200,9 +1199,13 @@
             });
 
             ordenarRegistros();
+            const esHoy = fecha === TimeUtils.obtenerFechaHoy();
             HistoryManager.saveState(registros, `agregar ${tipoConfig.label} (${TimeUtils.fechaCorta(fecha)})`);
-            const saved = await guardarYActualizar(nuevoId);
-            if (saved) { notify.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success'); }
+            const saved = await _guardarConCicloSiHoy(nuevoId, esHoy);
+            if (saved) { 
+                notify.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success'); 
+                notify.flashCampoTipo('success', 'btn-agregar');
+            }
             else { throw new Error('Error al guardar'); }
         }
 
@@ -1218,6 +1221,18 @@
             if (saveSuccessful) { notify.actualizarUI(idNuevo, false, animarCard); }
             else { notify.mostrarToast('Error al guardar. Almacenamiento lleno o bloqueado.', 'error'); }
             return saveSuccessful;
+        }
+
+        async function _guardarConCicloSiHoy(idOrIds, esHoy, fase = null) {
+            const ejecutar = async () => {
+                if (esHoy && fase) UILogic._prepararMostrarFaseAlRenderizar(fase);
+                const ok = await guardarYActualizar(idOrIds);
+                if (!ok && esHoy && fase) UILogic._prepararMostrarFaseAlRenderizar(null);
+                return ok;
+            };
+            return esHoy && vistaActual === 'semana'
+                ? UILogic._forzarVista('diaria', ejecutar)
+                : ejecutar();
         }
 
         function cargarConfiguracion() {
@@ -1297,8 +1312,9 @@
             reg.salida = s;
             const t = calcularHoras(reg.entrada, s, reg.tiempoFuera || null);
             reg.horas = t?.horas || 0; reg.minutos = t?.minutos || 0; reg.total = t?.total || 0;
+            const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
             HistoryManager.saveState(registros, `salida ${s} (${TimeUtils.fechaCorta(reg.fecha)})`);
-            const saved = await guardarYActualizar(reg.id);
+            const saved = await _guardarConCicloSiHoy(reg.id, esHoy, 'salida');
             if (!saved) return;
             if (!usaHoraActual) {
                 notify.aplicarFeedbackCampos([
@@ -1307,6 +1323,7 @@
                 ]);
             }
             notify.mostrarToast(_mensajeExitoSalida(reg, usaHoraActual, timerDetenido, s), 'success');
+            notify.flashCampoTipo('success', 'btn-agregar');
             notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('salida').value = '';
@@ -1314,7 +1331,7 @@
 
         async function _crearNuevoRegistro(f, e, s, usaHoraActual, btn) {
             if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) {
-                notify.resetearBoton(btn); notify.mostrarToast('Límite alcanzado', 'error'); return;
+                notify.resetearBoton(btn); notify.mostrarToast('Límite alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return;
             }
             const nuevoId = S.generarIDSeguro();
             const t = calcularHoras(e || null, s || null, null);
@@ -1323,9 +1340,10 @@
                 horas: t?.horas || 0, minutos: t?.minutos || 0, total: t?.total || 0, objetivoHoras: horasDiarias
             });
             ordenarRegistros();
+            const esHoy = e && f === TimeUtils.obtenerFechaHoy();
             const detalleAccion = e && s ? `entrada ${e} y salida ${s}` : e ? `entrada ${e}` : `salida ${s}`;
             HistoryManager.saveState(registros, `${detalleAccion} (${TimeUtils.fechaCorta(f)})`);
-            const saved = await guardarYActualizar(nuevoId);
+            const saved = await _guardarConCicloSiHoy(nuevoId, esHoy, 'entrada');
             if (!saved) return;
             const entradaManual = e && !usaHoraActual, salidaManual = s && !usaHoraActual;
             if (entradaManual || salidaManual) {
@@ -1335,13 +1353,14 @@
                 ]);
             }
             notify.mostrarToast(usaHoraActual ? 'Registro agregado con hora actual' : 'Registro agregado', 'success');
+            notify.flashCampoTipo('success', 'btn-agregar');
             notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('entrada').value = ''; $('salida').value = '';
         }
 
         async function agregarRegistro() {
-            if (!validarFormulario()) { notify.mostrarToast('Verificá los campos', 'error'); return; }
+            if (!validarFormulario()) { notify.mostrarToast('Verificá los campos', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return; }
 
             const btn = $('btn-agregar');
             btn.disabled = true;
@@ -1352,7 +1371,7 @@
 
             if (f > TimeUtils.obtenerFechaHoy() && !TiposRegistro.esRegistroEspecial(e, s)) {
                 notify.resetearBoton(btn); notify.mostrarError('fecha', null);
-                notify.mostrarToast('Fecha futura no permitida en registro regular', 'warning'); return;
+                notify.mostrarToast('Fecha futura no permitida en registro regular', 'warning'); notify.flashCampoTipo('warning', 'btn-agregar'); return;
             }
 
             if (!e) {
@@ -1373,8 +1392,8 @@
             }
 
             if (!e && s) {
-                if (registroExistente?.salida) { notify.resetearBoton(btn); notify.mostrarToast('Ya existe un registro completo para esta fecha', 'error'); return; }
-                if (!registroExistente?.entrada) { notify.resetearBoton(btn); notify.mostrarToast('Debés fichar una entrada primero', 'error'); return; }
+                if (registroExistente?.salida) { notify.resetearBoton(btn); notify.mostrarToast('Ya existe un registro completo para esta fecha', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return; }
+                if (!registroExistente?.entrada) { notify.resetearBoton(btn); notify.mostrarToast('Debés fichar una entrada primero', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return; }
             }
 
             if (registroExistente?.entrada && !registroExistente.salida && !e && s) {
@@ -1384,7 +1403,7 @@
             if (registroExistente) {
                 notify.resetearBoton(btn);
                 if (usaHoraActual) $('entrada').value = '';
-                notify.mostrarToast('Ya existe un registro para esta fecha', 'error'); return;
+                notify.mostrarToast('Ya existe un registro para esta fecha', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return;
             }
 
             await _crearNuevoRegistro(f, e, s, usaHoraActual, btn);
@@ -1418,7 +1437,6 @@
                     notify.mostrarToast('Registro eliminado', 'success');
                     notify.cerrarEdicion();
                     notify.actualizarEstadoBotonTimerMain();
-                    notify.actualizarBotonLote();
                 }
             }
         }
@@ -1679,7 +1697,7 @@
             const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', 'rangoExportado'];
             if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) { notify.mostrarToast('Archivo con estructura sospechosa', 'error'); return false; }
             if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
-                notify.mostrarToast(`Archivo de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
+                notify.mostrarToast(`Archivo de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning', 4000);
             }
             if (data.rangoExportado !== undefined) {
                 const rangoSafe = S.sanitizeString(String(data.rangoExportado), 100);
@@ -1772,7 +1790,7 @@
             migrarObjetivoHorasFaltante();
             HistoryManager.saveState(registros, descripcion || mensajeExito);
             if (await guardarYActualizar()) {
-                const esPerfilDefault = window.PerfilManager && PerfilManager.obtenerPerfilActual() === 'default';
+                const esPerfilDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
                 if (esPerfilDefault) {
                     StorageHelper.setItem(STORAGE_KEYS.DIAS_HABILES, diasHabiles);
                     StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, horasDiarias);
@@ -1818,11 +1836,16 @@
             return { ayerStr, regAyer, ayerAbierto };
         }
 
-        function calcularBufferPeriodo(desde, hasta) {
+        function calcularBufferPeriodo(desde, hasta, incluirActivoEnVivo = true, minutosBreakActivo = 0) {
             const hoy = TimeUtils.obtenerFechaHoy();
             const registrosRango = registros.filter(r => r.fecha >= desde && r.fecha <= hasta);
             const regsPorFecha = new Map(registrosRango.map(r => [r.fecha, r]));
             const { ayerStr, ayerAbierto } = detectarAyerAbierto(hoy, regsPorFecha);
+
+            const regHoy = regsPorFecha.get(hoy) ?? null;
+            const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
+            const regActivo = (ayerAbierto && !regHoy?.entrada) ? (regsPorFecha.get(ayerStr) ?? null)
+                : (!tipoEspecialHoy && regHoy?.entrada && !regHoy.salida) ? regHoy : null;
 
             let objetivo = 0, hechas = 0;
             for (const iso of TimeUtils.generarRangoFechas(desde, hasta)) {
@@ -1837,13 +1860,24 @@
                 if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += objetivoDia;
                 if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
                 if (esRemoto) hechas += objetivoDia;
+
+                if (incluirActivoEnVivo && !diaTerminado && esDiaHabil && !esEspecial && r && r === regActivo) {
+                    const t = calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
+                    const transcurrido = Math.max(0, (t ? t.total : 0) - (minutosBreakActivo / 60));
+                    if (transcurrido > objetivoDia) {
+                        objetivo += objetivoDia;
+                        hechas += transcurrido;
+                    }
+                }
             }
             return Math.round((hechas - objetivo) * 1e6) / 1e6;
         }
 
         function limpiarFiltros() {
             filtroActivo = false; filtroDesde = null; filtroHasta = null; filtroTipo = null;
-            $('filtro-fecha-desde').value = ''; $('filtro-fecha-hasta').value = ''; $('filtro-tipo').value = '';
+            if ($('filtro-fecha-desde')) $('filtro-fecha-desde').value = '';
+            if ($('filtro-fecha-hasta')) $('filtro-fecha-hasta').value = '';
+            if ($('filtro-tipo')) $('filtro-tipo').value = '';
             guardarYActualizar();
             notify.cerrarFiltros();
             notify.mostrarToast('Filtro eliminado', 'info');
@@ -1877,16 +1911,16 @@
 
         async function registrarVacacionesDirecto(desde, hasta, tipo) {
             const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
-            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); throw new Error('Tipo inválido'); }
+            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Tipo inválido'); }
             const entrada = tipoConfig.codigo;
             const salida = tipoConfig.codigo;
 
             const fechasARegistrar = TimeUtils.generarRangoFechas(desde, hasta);
 
-            if (fechasARegistrar.length > 60) { notify.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: 60 días por operación.`, 'error'); throw new Error('Límite de días excedido'); }
+            if (fechasARegistrar.length > 60) { notify.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: 60 días por operación.`, 'error', 4000); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite de días excedido'); }
 
             const nuevosRegistros = fechasARegistrar.filter(f => !registros.some(r => r.fecha === f));
-            if (nuevosRegistros.length === 0) { notify.mostrarToast('Todas las fechas ya están registradas', 'warning'); throw new Error('Sin fechas nuevas'); }
+            if (nuevosRegistros.length === 0) { notify.mostrarToast('Todas las fechas ya están registradas', 'warning'); notify.flashCampoTipo('warning', 'btn-agregar'); throw new Error('Sin fechas nuevas'); }
 
             const idsNuevosParaAnimar = [];
             nuevosRegistros.forEach(fecha => {
@@ -1900,11 +1934,12 @@
             });
 
             ordenarRegistros();
+            const incluyeHoy = nuevosRegistros.includes(TimeUtils.obtenerFechaHoy());
             HistoryManager.saveState(registros, `agregar ${tipoConfig.label} (${nuevosRegistros.length} día${nuevosRegistros.length !== 1 ? 's' : ''})`);
-            const saved = await guardarYActualizar(idsNuevosParaAnimar);
+            const saved = await _guardarConCicloSiHoy(idsNuevosParaAnimar, incluyeHoy);
             if (saved) {
                 notify.mostrarToast(nuevosRegistros.length === 1 ? '1 día registrado' : `${nuevosRegistros.length} días registrados`, 'success');
-                notify.actualizarBotonLote();
+                notify.flashCampoTipo('success', 'btn-agregar');
             } else { throw new Error('Error al guardar'); }
         }
 
@@ -1919,8 +1954,6 @@
             });
             guardarYActualizar(null, true);
             notify.mostrarToast(mensaje, 'info', undefined, resultado.descripcion);
-            const modoLote = document.getElementById('modo-lote');
-            if (modoLote && getComputedStyle(modoLote).display !== 'none') notify.actualizarBotonLote();
             notify.iniciarTimerAutoCierreBotones();
         }
 
@@ -1929,15 +1962,15 @@
                 if (r.fecha < desde || r.fecha > hasta) return false;
                 return !TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
             });
-            if (registrosAEliminar.length > 60) { notify.mostrarToast(`Máximo 60 registros. Encontrados: ${registrosAEliminar.length}`, 'error'); throw new Error('Límite excedido'); }
-            if (registrosAEliminar.length === 0) { notify.mostrarToast('No hay registros de jornadas en ese período', 'info'); throw new Error('Sin registros'); }
+            if (registrosAEliminar.length > 60) { notify.mostrarToast(`Máximo 60 registros por operación. Encontrados: ${registrosAEliminar.length}`, 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite excedido'); }
+            if (registrosAEliminar.length === 0) { notify.mostrarToast('No hay registros de jornadas en ese período', 'info'); notify.flashCampoTipo('info', 'btn-agregar'); throw new Error('Sin registros'); }
 
             registros = registros.filter(r => !registrosAEliminar.includes(r));
             HistoryManager.saveState(registros, `eliminar período (${registrosAEliminar.length} registro${registrosAEliminar.length !== 1 ? 's' : ''})`);
             const saved = await guardarYActualizar();
             if (saved) {
                 notify.mostrarToast(registrosAEliminar.length === 1 ? '1 registro eliminado' : `${registrosAEliminar.length} registros eliminados`, 'success');
-                notify.actualizarBotonLote();
+                notify.flashCampoTipo('success', 'btn-agregar');
             } else { throw new Error('Error al guardar'); }
         }
 
@@ -2161,6 +2194,7 @@
             toast.classList.remove('show');
             toast.textContent = actual.mensaje;
             toast.className = `toast ${actual.tipo}`;
+            toast.style.borderColor = _COLOR_TOAST_POR_TIPO[actual.tipo] || '';
             let duracionFinal = actual.duracionBase || 3000;
             if (_toastQueue.length >= 2) {
                 duracionFinal = Math.floor(duracionFinal / 2);
@@ -2198,9 +2232,15 @@
         const DUR_CALENDARIO = () => _getCSSdur('--dur-calendario');
 
         function _animarFadeSwap(el, fn) {
-            if (!el) { fn(); return; }
+            if (!el) { return Promise.resolve(fn()); }
             el.classList.add('fade-out');
-            setTimeout(() => { fn(); el.classList.remove('fade-out'); }, DUR_ANIM());
+            return new Promise((resolve) => {
+                setTimeout(async () => {
+                    const resultado = await fn();
+                    el.classList.remove('fade-out');
+                    resolve(resultado);
+                }, DUR_ANIM());
+            });
         }
 
         /**
@@ -2315,22 +2355,33 @@
             return cerrar;
         }
 
-        function _flashCampo(...ids) {
+        function _flashCampoConClase(clase, ids, colorVar = null) {
             ids.forEach(id => {
                 const el = document.getElementById(id);
                 if (!el) return;
                 clearTimeout(el._flashTimeout);
-                el.classList.remove('campo-flash');
+                el.classList.remove(clase);
+                if (colorVar) el.style.setProperty('--flash-color', colorVar);
                 void el.offsetWidth;
-                el.classList.add('campo-flash');
+                el.classList.add(clase);
 
                 const cs = getComputedStyle(el);
                 const duracionMs = (parseFloat(cs.animationDuration) || 0.5) * 1000;
                 const iteraciones = parseFloat(cs.animationIterationCount) || 1;
                 const totalMs = duracionMs * iteraciones;
 
-                el._flashTimeout = setTimeout(() => el.classList.remove('campo-flash'), totalMs);
+                el._flashTimeout = setTimeout(() => el.classList.remove(clase), totalMs);
             });
+        }
+
+        function _flashCampo(...ids) { _flashCampoConClase('campo-flash', ids); }
+
+        const _COLOR_TOAST_POR_TIPO = {
+            success: 'var(--c-green)', error: 'var(--c-red)', warning: 'var(--c-red)', info: 'var(--c-blue)'
+        };
+
+        function _flashCampoTipo(tipo, ...ids) {
+            _flashCampoConClase('campo-flash-color', ids, _COLOR_TOAST_POR_TIPO[tipo] || 'var(--text-main)');
         }
 
         const _slideAnimEstado = new WeakMap();
@@ -2432,7 +2483,7 @@
             _posicionarPopup,
             _registrarCierrePopup,
             _flashCampo,
-            _limpiarClonVisual,
+            _flashCampoTipo,
             _finalizarSlidePendiente,
             _animarSlideElemento,
             toggleSeccionGen,
@@ -2835,7 +2886,8 @@
                 const clase = claseDelDia(fecha);
                 const esHoy = anio === hoy.getFullYear() && mes === hoy.getMonth() && dia === hoy.getDate();
                 const reg = regsPorFecha[fecha];
-                const esNuevo = idResaltar && reg && reg.id === idResaltar;
+                const idsNuevos = idResaltar ? (Array.isArray(idResaltar) ? idResaltar : [idResaltar]) : [];
+                const esNuevo = reg && idsNuevos.includes(reg.id);
 
                 const cell = document.createElement('div');
                 let clases = `calendario-dia ${clase}`;
@@ -2885,12 +2937,8 @@
                     entrante.classList.remove('fade-out');
                 }
 
-                if (_vistaHistoricoCalendario) {
-                    if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
-                    _renderizarCalendario();
-                } else {
-                    if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
-                }
+                if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
+                if (_vistaHistoricoCalendario) _renderizarCalendario();
             });
 
             const selector = document.getElementById('calendario-selector-meses');
@@ -2920,13 +2968,10 @@
                     <div class="cal-popup-3l">Entrada: ${S.escapeHtml(reg.entrada)}</div>`;
             }
             const totalHoras = reg.total || 0;
-            const h = Math.floor(totalHoras);
-            const m = Math.round((totalHoras - h) * 60);
-            const totalStr = `${h}h${m > 0 ? ' ' + m + 'm' : ''}`;
+            const totalStr = TimeUtils.horasATexto(totalHoras, 'short');
             let tfStr = '';
             if (reg.tiempoFuera && reg.tiempoFuera !== '00:00') {
-                const [tfH, tfM] = reg.tiempoFuera.split(':').map(Number);
-                tfStr = tfH > 0 ? `${tfH}h${tfM > 0 ? ' ' + tfM + 'm' : ''} fuera` : `${tfM}m fuera`;
+                tfStr = `${TimeUtils.horasATexto(TimeUtils.horaAMinutos(reg.tiempoFuera) / 60, 'short')} fuera`;
             }
             let totalConDiff = totalStr, diffColor = '', cubiertoLineaHtml = '';
             const objetivoReg = D.objetivoDeRegistro(reg);
@@ -2950,10 +2995,20 @@
                 ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
         }
 
+        function _cerrarPopupCalendario() {
+            if (!_popupCalendarioEl) return;
+            _popupCalendarioEl.remove();
+            _popupCalendarioEl = null;
+        }
+
+        function _formatearFechaLabelPopup(fecha) {
+            return S.escapeHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+        }
+
         function _popupCalendario(event, registroId) {
             event.stopPropagation();
 
-            if (_popupCalendarioEl) { _popupCalendarioEl.remove(); _popupCalendarioEl = null; }
+            _cerrarPopupCalendario();
 
             const reg = D.registros().find(r => r.id === registroId);
             if (!reg) return;
@@ -2963,7 +3018,7 @@
             const grupos = UILogic.agruparRegistrosConsecutivos(registrosDelMes);
             const grupoDelRegistro = grupos.find(g => g.tipo === 'grupo' && g.registros.some(r => r.id === registroId));
 
-            const fechaLabel = S.escapeHtml(new Date(reg.fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+            const fechaLabel = _formatearFechaLabelPopup(reg.fecha);
             const infoHtml = _buildInfoHtmlRegistro(reg);
             const btnGrupoHtml = grupoDelRegistro ? `
                 <button class="cal-popup-btn-edit" id="_cal-popup-btn-grupo">
@@ -3004,7 +3059,7 @@
             popup.addEventListener('mouseleave', () => {
                 if (_popupCalendarioEsHover) {
                     _popupCalendarioHoverTimer = setTimeout(() => {
-                        if (_popupCalendarioEl) { _popupCalendarioEl.remove(); _popupCalendarioEl = null; }
+                        _cerrarPopupCalendario();
                         _popupCalendarioEsHover = false;
                     }, 500);
                 }
@@ -3022,15 +3077,12 @@
             clearTimeout(_popupCalendarioHoverTimer);
             _popupCalendarioEsHover = false;
 
-            if (_popupCalendarioEl) {
-                const mismaFecha = _popupCalendarioEl.dataset.fecha === fecha;
-                _popupCalendarioEl.remove();
-                _popupCalendarioEl = null;
-                if (mismaFecha) return;
-            }
+            const mismaFecha = _popupCalendarioEl?.dataset.fecha === fecha;
+            _cerrarPopupCalendario();
+            if (mismaFecha) return;
 
             const esFechaFutura = fecha > TimeUtils.obtenerFechaHoy();
-            const fechaLabel = S.escapeHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+            const fechaLabel = _formatearFechaLabelPopup(fecha);
 
             const popup = document.createElement('div');
             popup.className = 'cal-popup';
@@ -3079,16 +3131,12 @@
             const hoverActivo = esDesktop && stored === 'true';
 
             if (hoverActivo) {
-                if (_popupCalendarioEl) {
-                    _popupCalendarioEl.remove();
-                    _popupCalendarioEl = null;
-                }
+                _cerrarPopupCalendario();
                 clearTimeout(_popupCalendarioHoverTimer);
                 DataManagement.editarRegistro(registroId);
             } else {
-                if (_popupCalendarioEl && _popupCalendarioEl.dataset.registroId === registroId) {
-                    _popupCalendarioEl.remove();
-                    _popupCalendarioEl = null;
+                if (_popupCalendarioEl?.dataset.registroId === registroId) {
+                    _cerrarPopupCalendario();
                     return;
                 }
                 _popupCalendario(event, registroId);
@@ -3101,10 +3149,7 @@
             if (related && _popupCalendarioEl && _popupCalendarioEl.contains(related)) return;
             clearTimeout(_popupCalendarioHoverTimer);
             _popupCalendarioHoverTimer = setTimeout(() => {
-                if (_popupCalendarioEl) {
-                    _popupCalendarioEl.remove();
-                    _popupCalendarioEl = null;
-                }
+                _cerrarPopupCalendario();
                 _popupCalendarioEsHover = false;
             }, 500);
         }
@@ -3114,10 +3159,7 @@
         }
 
         function navegarCalendario(delta) {
-            if (_popupCalendarioEl) {
-                _popupCalendarioEl.remove();
-                _popupCalendarioEl = null;
-            }
+            _cerrarPopupCalendario();
 
             const hoy = new Date();
             const base = _calendarioMes || { anio: hoy.getFullYear(), mes: hoy.getMonth() };
@@ -4069,7 +4111,7 @@
     const UIHistorico = (function (S, D, UICore) {
         const {
             formatoDiferencia, mostrarToast, _setBtnActivo, debounce,
-            _actualizarOffsetsStickyMes
+            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup
         } = UICore;
 
         let edicionBloqueada = true;
@@ -4167,7 +4209,8 @@
             const item = document.createElement('div');
 
             let className = r.fecha === hoy ? 'registro-item hoy' : 'registro-item';
-            if (idResaltar && r.id === idResaltar) className += ' nuevo-registro-animacion';
+            const idsResaltar = idResaltar ? (Array.isArray(idResaltar) ? idResaltar : [idResaltar]) : [];
+            if (idsResaltar.includes(r.id)) className += ' nuevo-registro-animacion';
             item.className = className;
             item.dataset.registroId = r.id;
             item.dataset.accion = 'editar-registro';
@@ -4184,8 +4227,7 @@
 
             const tfText = (() => {
                 if (!r.tiempoFuera || r.tiempoFuera === '' || r.tiempoFuera === '00:00') return '';
-                const [tfH, tfM] = r.tiempoFuera.split(':').map(Number);
-                const tfStr = tfH > 0 ? `${tfH}h${tfM > 0 ? ' ' + tfM + 'm' : ''}` : `${tfM}m`;
+                const tfStr = TimeUtils.horasATexto(TimeUtils.horaAMinutos(r.tiempoFuera) / 60, 'short');
                 return ` (${tfStr} Fuera)`;
             })();
             const crText = r.credito && r.credito !== '00:00' ? ' (Salida Temprano)' : '';
@@ -4205,7 +4247,7 @@
                 totalText = 'Justificado';
                 totalEl.classList.add(`${tipoEspecial.color}-text`);
             } else if (r.entrada && r.salida) {
-                totalText = `${r.horas}h ${r.minutos}m`;
+                totalText = TimeUtils.horasATexto(r.total, 'short');
                 const objetivoReg = D.objetivoDeRegistro(r);
                 if (objetivoReg > 0 && UILogic._esFechaHabil(r.fecha, D.diasHabiles())) {
                     const diffText = formatoDiferencia(r.total, objetivoReg);
@@ -4666,13 +4708,49 @@
             if (el) el.addEventListener('change', actualizarHintGrupo);
         });
 
-        function mostrarFiltros() {
+        let _popupFiltrosEl = null;
+
+        function mostrarFiltros(event) {
             if (D.obtenerRegistrosFiltrados().length !== D.registros().length) {
                 D.limpiarFiltros();
                 return;
             }
 
-            ModalManager.abrir('modal-filtros');
+            const btnFiltro = document.getElementById('btn-filtro');
+            if (!btnFiltro) return;
+
+            if (_popupFiltrosEl) { _popupFiltrosEl.remove(); _popupFiltrosEl = null; return; }
+
+            const tipos = TiposRegistro.obtenerTodosLosTipos();
+            const opcionesTipo = tipos.map(t => `<option value="${t.id}">${t.emoji} ${t.labelPlural}</option>`).join('');
+
+            const popup = document.createElement('div');
+            popup.className = 'filtro-popup';
+            popup.id = '_filtro-popup';
+            popup.innerHTML = `
+                <div class="filtro-popup-titulo">
+                    <svg class="icon"><use href="#icon-filter" /></svg>
+                    Filtrar Registros
+                </div>
+                <div class="form-group form-group-mb-half">
+                    <label>Desde</label>
+                    <input type="date" id="filtro-fecha-desde" />
+                </div>
+                <div class="form-group form-group-mb-half">
+                    <label>Hasta</label>
+                    <input type="date" id="filtro-fecha-hasta" />
+                </div>
+                <div class="form-group">
+                    <label>Tipo de registro</label>
+                    <select id="filtro-tipo">
+                        <option value="">Todos</option>
+                        <option value="normal">🕒 Jornadas</option>
+                        ${opcionesTipo}
+                    </select>
+                </div>`;
+            popup.style.visibility = 'hidden';
+            document.body.appendChild(popup);
+            _popupFiltrosEl = popup;
 
             const aplicarInmediato = () => {
                 const desde = $('filtro-fecha-desde').value;
@@ -4682,16 +4760,16 @@
             };
 
             ['filtro-fecha-desde', 'filtro-fecha-hasta', 'filtro-tipo'].forEach(id => {
-                const el = $(id);
-                if (el) {
-                    el.removeEventListener('change', aplicarInmediato);
-                    el.addEventListener('change', aplicarInmediato);
-                }
+                const el = popup.querySelector(`#${id}`);
+                if (el) el.addEventListener('change', aplicarInmediato);
             });
+
+            _registrarCierrePopup(popup, '#btn-filtro', () => true, () => { _popupFiltrosEl = null; });
+            _posicionarPopup(popup, event && event.currentTarget ? event : { currentTarget: btnFiltro });
         }
 
         function cerrarFiltros() {
-            ModalManager.cerrar('modal-filtros');
+            if (_popupFiltrosEl) { _popupFiltrosEl.remove(); _popupFiltrosEl = null; }
         }
 
         function _setIconHistorico(icon, estado) {
@@ -4929,12 +5007,9 @@
             let tiempoFueraTotalMinutos = 0;
             registrosRango.forEach(r => {
                 if (r.tiempoFuera && r.tiempoFuera !== '00:00') {
-                    const [h, m] = r.tiempoFuera.split(':').map(Number);
-                    if (!isNaN(h) && !isNaN(m)) tiempoFueraTotalMinutos += (h * 60) + m;
+                    tiempoFueraTotalMinutos += TimeUtils.horaAMinutos(r.tiempoFuera);
                 }
             });
-            const hTiempoFuera = Math.floor(tiempoFueraTotalMinutos / 60);
-            const mTiempoFuera = tiempoFueraTotalMinutos % 60;
 
             const registrosValidos = registrosRango.filter(r =>
                 r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
@@ -4960,10 +5035,6 @@
             const totalHorasTrabajadas = registrosValidos.reduce((s, r) => s + r.total, 0);
             const totalHoras = totalHorasTrabajadas + totalRemotos;
             const promDiario = totalHorasTrabajadas / registrosValidos.length;
-            let hPromedio = Math.floor(promDiario), mPromedio = Math.round((promDiario - hPromedio) * 60);
-            if (mPromedio === 60) { hPromedio++; mPromedio = 0; }
-            let hTotal = Math.floor(totalHoras), mTotal = Math.round((totalHoras - hTotal) * 60);
-            if (mTotal === 60) { hTotal++; mTotal = 0; }
 
             const { regEntrada, regJornada } = _calcularRegularidadRango(registrosValidos, regularidadPorMes);
 
@@ -4976,9 +5047,9 @@
                 entradaPromedio: TimeUtils.minutosAHora(promedioEntrada),
                 salidaPromedio: TimeUtils.minutosAHora(promedioSalida),
                 diasTrabajados: registrosValidos.length,
-                promedioDiario: `${hPromedio}h ${mPromedio}m`,
-                tiempoFueraTotal: hTiempoFuera > 0 ? `${hTiempoFuera}h ${mTiempoFuera}m` : `${mTiempoFuera}m`,
-                tiempoTotal: `${hTotal}h ${mTotal}m`,
+                promedioDiario: TimeUtils.horasATexto(promDiario, 'short'),
+                tiempoFueraTotal: TimeUtils.horasATexto(tiempoFueraTotalMinutos / 60, 'short'),
+                tiempoTotal: TimeUtils.horasATexto(totalHoras, 'short'),
                 ...conteosPorTipo, compensaciones,
                 regularidadEntrada: regEntrada,
                 regularidadJornada: regJornada,
@@ -5048,11 +5119,9 @@
                 const [a, m] = r.fecha.split('-').map(Number);
                 return a === añoActual && m === mesActual + 1;
             });
-            const primerDiaMes = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual, 1));
             const ultimoDia = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual + 1, 0));
-            let fechaDesde = primerDiaMes;
-            const desdePrimeroDia = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false);
-            if (!desdePrimeroDia && registros.length > 0) {
+            let fechaDesde = TimeUtils.formatearFechaLocal(new Date(añoActual, mesActual, 1));
+            if (registros.length > 0) {
                 const primerRegistro = registros.reduce((min, r) => r.fecha < min ? r.fecha : min, registros[0].fecha);
                 if (primerRegistro > fechaDesde) fechaDesde = primerRegistro;
             }
@@ -5106,8 +5175,7 @@
             const registros = D.registros().filter(r => parseInt(r.fecha.substring(0, 4)) === anioNum);
             let fechaDesde = `${anioNum}-01-01`;
 
-            const desdeEnero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false);
-            if (!desdeEnero && registros.length > 0) {
+            if (registros.length > 0) {
                 const primerRegistro = registros.reduce((min, r) => r.fecha < min ? r.fecha : min, registros[0].fecha);
                 if (primerRegistro > fechaDesde) {
                     fechaDesde = primerRegistro;
@@ -5518,17 +5586,12 @@ Generado por Sistema Lushibosca
 
             let info = DESCRIPCIONES_STATS[statId];
             if (statId === 'stat-saldo' && info) {
-                if (modoEstadisticas === 'anual') {
-                    const desdeEnero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false);
-                    const modoTexto = desdeEnero
-                        ? 'Actualmente el saldo se calcula a partir del PRIMER DÍA del año.'
-                        : 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del año.';
-                    info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
-                } else if (modoEstadisticas === 'mensual') {
-                    const desdePrimero = StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false);
-                    const modoTexto = desdePrimero
-                        ? 'Actualmente el saldo se calcula a partir del PRIMER DÍA del mes.'
-                        : 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del mes.';
+                const modoTexto = modoEstadisticas === 'anual'
+                    ? 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del año.'
+                    : modoEstadisticas === 'mensual'
+                        ? 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del mes.'
+                        : null;
+                if (modoTexto) {
                     info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
                 }
             }
@@ -5643,12 +5706,13 @@ Generado por Sistema Lushibosca
     const UITarjetaFichaje = (function (S, D, UICore) {
         const {
             formatoDiferencia, mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
-            _setBtnActivo, _setBtnDisabled, _flashCampo, registrarSwipe, _animarFadeSwap,
+            _setBtnActivo, _setBtnDisabled, _flashCampo, _flashCampoTipo, registrarSwipe, _animarFadeSwap,
             _animarSlideElemento, toggleSeccionGen, DUR_ANIM, _crearOpcion, setIconoBtn
         } = UICore;
 
         let modoLoteActivo = false;
         let _timerAutoVista = null;
+        let _suprimirAnimacionInterna = false;
 
         function setProgressBarColor(progressEl, status, headerColor) {
             if (!progressEl) return;
@@ -5895,11 +5959,26 @@ Generado por Sistema Lushibosca
             const { esDiaHabil, quedanDiasFuturos } = _estadoDiasHabiles(diasHabiles);
             const regHoy = registros.find(r => r.fecha === hoy) ?? null;
             const semanaAbierta = quedanDiasFuturos || (esDiaHabil && !(regHoy && regHoy.salida));
-            const bufferSemanal = D.calcularBufferPeriodo(ini, hoy);
+            const minutosBreakActivo = _minutosBreakActivo();
+            const bufferSemanalBase = D.calcularBufferPeriodo(ini, hoy, false);
+            const bufferSemanal = D.calcularBufferPeriodo(ini, hoy, true, minutosBreakActivo);
+
+            const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
+
+            let tiempoHoy = 0;
+            const regActivo = (ayerAbierto && !regHoy?.entrada) ? regAyer
+                : (!tipoEspecialHoy && regHoy?.entrada && !regHoy.salida) ? regHoy : null;
+            if (regActivo) {
+                const t = D.calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
+                tiempoHoy = Math.max(0, (t ? t.total : 0) - (minutosBreakActivo / 60));
+            } else if (!tipoEspecialHoy && regHoy?.salida) {
+                tiempoHoy = regHoy.total;
+            }
 
             const fechaLimite = hoy < fn ? hoy : fn;
             const registrosSemana = registros.filter(r => r.fecha >= ini && r.fecha <= fechaLimite);
             const totalSemana = registrosSemana.reduce((sum, r) => {
+                if (regActivo && r.fecha === regActivo.fecha) return sum + tiempoHoy;
                 const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
                 return sum + (tipo?.id === 'remoto' ? D.objetivoDeRegistro(r) : tipo ? 0 : r.total);
             }, 0);
@@ -5918,24 +5997,12 @@ Generado por Sistema Lushibosca
             }
             const todosEspeciales = _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias);
 
-            const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
-
-            let tiempoHoy = 0;
-            const regActivo = (ayerAbierto && !regHoy?.entrada) ? regAyer
-                : (!tipoEspecialHoy && regHoy?.entrada && !regHoy.salida) ? regHoy : null;
-            if (regActivo) {
-                const t = D.calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
-                tiempoHoy = t ? t.total : 0;
-            } else if (!tipoEspecialHoy && regHoy?.salida) {
-                tiempoHoy = regHoy.total;
-            }
-
             return {
                 hoy, ini, fn,
                 registros, regHoy,
                 horasDiarias, horasSemanales,
                 diasHabiles, esDiaHabil,
-                semanaAbierta, bufferSemanal,
+                semanaAbierta, bufferSemanal, bufferSemanalBase,
                 totalSemana, objetivoSemana,
                 tipoEspecialHoy, tiempoHoy,
                 todosEspeciales,
@@ -5949,6 +6016,68 @@ Generado por Sistema Lushibosca
 
         function _estaCumplido(valor, objetivo) {
             return objetivo === 0 || horasGte(valor, objetivo);
+        }
+
+        function _cantidadHoras(horasDecimales) {
+            const texto = TimeUtils.horasATexto(horasDecimales);
+            return { texto, singular: TimeUtils._esCantidadSingular(texto) };
+        }
+
+        function _fraseCantidad(horasDecimales, singular, plural) {
+            const { texto, singular: esSingular } = _cantidadHoras(horasDecimales);
+            return `${esSingular ? singular : plural} ${texto}`;
+        }
+
+        function _fraseCantidadSufijo(horasDecimales, singular, plural) {
+            const { texto, singular: esSingular } = _cantidadHoras(horasDecimales);
+            return `${texto} ${esSingular ? singular : plural}`;
+        }
+
+        function _breakStorageKey() {
+            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+            return STORAGE_KEYS.BREAK_TIME(perfilId);
+        }
+
+        function _minutosBreakActivo() {
+            if (D.getIgnorarTiempoFuera()) return 0;
+            const inicioBreak = StorageHelper.getItem(_breakStorageKey());
+            if (!inicioBreak) return 0;
+            const mins = Math.floor((Date.now() - parseInt(inicioBreak)) / 60000);
+            return mins > 0 ? mins : 0;
+        }
+
+        function _minutosAHoraWrap(totalMinutos) {
+            const normalizado = ((totalMinutos % 1440) + 1440) % 1440;
+            return TimeUtils.minutosAHora(normalizado);
+        }
+
+        function _formatearMinutosCorto(totalMinutos) {
+            return TimeUtils.horasATexto(totalMinutos / 60, 'short');
+        }
+
+        const TF_LABEL_ID = 'tiempo-fuera-label';
+
+        function _obtenerOCrearLabelTF(contenedor) {
+            let label = $(TF_LABEL_ID);
+            if (!label) {
+                label = Object.assign(document.createElement('span'), {
+                    id: TF_LABEL_ID, className: 'break-counter-label',
+                });
+                contenedor.appendChild(label);
+            }
+            return label;
+        }
+
+        function _quitarLabelTF() {
+            const label = $(TF_LABEL_ID);
+            if (label) label.remove();
+        }
+
+        function _hintSalidaODefault(reg, objetivoAplica, bufferSemanal, diasHabiles, hintDefault, permiteEstimado) {
+            if (permiteEstimado && reg && reg.entrada && objetivoAplica > 0 && !TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida)) {
+                return _calcularHintSalidaEstimada(reg, objetivoAplica, bufferSemanal, diasHabiles);
+            }
+            return { hint: hintDefault, hintEsHTML: false };
         }
 
         function _tituloDia(nombreDia) {
@@ -5976,27 +6105,29 @@ Generado por Sistema Lushibosca
                 estadoFondo = 'esperando';
                 mensaje = 'Semana sin días laborables';
                 mostrarMensaje = true;
+            } else if (semanaAbierta) {
+                estadoFondo = 'en_curso';
+                if (horasGte(tot, objetivoSemana)) {
+                    colorBarra = 'green'; colorBorde = 'green';
+                    const dif = tot - objetivoSemana;
+                    mensaje = horasEq(dif, 0) ? 'Vas justo' : `Vas ${TimeUtils.horasATexto(dif)} de más`;
+                } else {
+                    colorBarra = 'blue'; colorBorde = 'blue';
+                    mensaje = objetivoSemana === 0
+                        ? `${TimeUtils.horasATexto(tot)} (Sin objetivo)`
+                        : _fraseCantidad(objetivoSemana - tot, 'Falta', 'Faltan');
+                }
+                mostrarMensaje = true;
             } else if (horasGte(tot, objetivoSemana)) {
                 colorBarra = 'green'; colorBorde = 'green';
                 estadoFondo = 'finalizado_ok';
                 const dif = tot - objetivoSemana;
                 mensaje = horasEq(dif, 0) ? 'Perfecto' : `Hiciste ${TimeUtils.horasATexto(dif)} de más`;
                 mostrarMensaje = true;
-            } else if (semanaAbierta) {
-                colorBarra = 'blue'; colorBorde = 'blue';
-                estadoFondo = 'en_curso';
-                const diffText = TimeUtils.horasATexto(objetivoSemana - tot);
-                const prefijoFalta = TimeUtils._esCantidadSingular(diffText) ? 'Falta' : 'Faltan';
-                mensaje = objetivoSemana === 0
-                    ? `${TimeUtils.horasATexto(tot)} (Sin objetivo)`
-                    : `${prefijoFalta} ${diffText}`;
-                mostrarMensaje = true;
             } else {
                 colorBarra = 'red'; colorBorde = 'red';
                 estadoFondo = 'finalizado_fail';
-                const diffText = TimeUtils.horasATexto(objetivoSemana - tot);
-                const prefijoFalto = TimeUtils._esCantidadSingular(diffText) ? 'Faltó' : 'Faltaron';
-                mensaje = `${prefijoFalto} ${diffText}`;
+                mensaje = _fraseCantidad(objetivoSemana - tot, 'Faltó', 'Faltaron');
                 mostrarMensaje = true;
             }
 
@@ -6012,33 +6143,22 @@ Generado por Sistema Lushibosca
         }
 
         function _calcularHintSalidaEstimada(reg, objetivoDiario, bufferSemanal, diasHabiles) {
-            const [hE, mE] = reg.entrada.split(':').map(Number);
-            let minutosTotal = (hE * 60) + mE + (objetivoDiario * 60);
+            let minutosTotal = TimeUtils.horaAMinutos(reg.entrada) + (objetivoDiario * 60);
 
             if (reg.tiempoFuera && !D.getIgnorarTiempoFuera()) {
-                const [hF, mF] = reg.tiempoFuera.split(':').map(Number);
-                minutosTotal += (hF * 60) + mF;
+                minutosTotal += TimeUtils.horaAMinutos(reg.tiempoFuera);
             }
 
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
-            const inicioBreak = StorageHelper.getItem(STORAGE_KEYS.BREAK_TIME(perfilId));
-            if (inicioBreak && !D.getIgnorarTiempoFuera()) {
-                const mins = Math.floor((Date.now() - parseInt(inicioBreak)) / 60000);
-                if (mins > 0) minutosTotal += mins;
-            }
+            minutosTotal += _minutosBreakActivo();
 
-            let hS = Math.floor(minutosTotal / 60) % 24;
-            const mS = Math.floor(minutosTotal % 60);
-            const horaSalida = `${String(hS).padStart(2, '0')}:${String(mS).padStart(2, '0')}`;
+            const horaSalida = _minutosAHoraWrap(minutosTotal);
 
             const esLaborable = _esFechaHabil(reg.fecha, diasHabiles);
             const mostrarBuffer = Math.abs(bufferSemanal) > 0.01 && esLaborable;
 
             if (mostrarBuffer) {
                 const minutosConBuffer = minutosTotal - (bufferSemanal * 60);
-                let hSB = Math.floor(minutosConBuffer / 60) % 24;
-                const mSB = Math.floor(minutosConBuffer % 60);
-                const horaBuf = `${String(hSB).padStart(2, '0')}:${String(mSB).padStart(2, '0')}`;
+                const horaBuf = _minutosAHoraWrap(minutosConBuffer);
                 const colorBuffer = bufferSemanal > 0 ? 'var(--c-green)' : bufferSemanal < 0 ? 'var(--c-red)' : 'var(--text-main)';
                 return {
                     hint: `Salida estimada: <strong>${horaSalida}</strong> <span class="hint-buffer-color" data-color="${colorBuffer}">(<strong>${horaBuf}</strong>)</span>`,
@@ -6060,15 +6180,13 @@ Generado por Sistema Lushibosca
                 return extra > 0 ? `Te podés ir (+${TimeUtils.horasATexto(extra)})` : 'Te podés ir';
             }
             const faltante = objetivoDiario - tiempoHoy;
-            const textoHoras = TimeUtils.horasATexto(faltante);
-            const prefijo = TimeUtils._esCantidadSingular(textoHoras) ? 'Falta' : 'Faltan';
-            const faltanteTexto = `${prefijo} ${textoHoras}`;
+            const faltanteTexto = _fraseCantidad(faltante, 'Falta', 'Faltan');
 
             return bufferSemanal >= faltante ? `${faltanteTexto}, pero te podés ir` : faltanteTexto;
         }
 
         function derivarVistaHoy(est) {
-            const { regHoy, tiempoHoy, horasDiarias, esDiaHabil, tipoEspecialHoy, bufferSemanal, diasHabiles } = est;
+            const { regHoy, tiempoHoy, horasDiarias, esDiaHabil, tipoEspecialHoy, bufferSemanalBase, diasHabiles } = est;
             const objetivoDiario = regHoy ? D.objetivoDeRegistro(regHoy) : horasDiarias;
 
             if (!regHoy || !regHoy.entrada) {
@@ -6080,15 +6198,10 @@ Generado por Sistema Lushibosca
                     const prog = _calcularProgreso(tiempoHoy, objetivoDiarioAyerAplica);
                     const cumplido = _estaCumplido(tiempoHoy, objetivoDiarioAyerAplica);
                     const colorBarra = objetivoDiarioAyerAplica === 0 ? 'blue' : (cumplido ? 'green' : 'blue');
-                    const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAyerAplica, bufferSemanal, 'En curso (cruce de medianoche)');
+                    const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAyerAplica, bufferSemanalBase, 'En curso (cruce de medianoche)');
 
                     const nombreDiaAyer = TimeUtils.obtenerNombreDia(est.ayerStr);
-                    let hint = 'Tocá Fichar para registrar salida';
-                    let hintEsHTML = false;
-                    const regAyer = est.regAyer;
-                    if (regAyer && regAyer.entrada && objetivoDiarioAyerAplica > 0 && !TiposRegistro.esRegistroEspecial(regAyer.entrada, regAyer.salida)) {
-                        ({ hint, hintEsHTML } = _calcularHintSalidaEstimada(regAyer, objetivoDiarioAyerAplica, bufferSemanal, diasHabiles));
-                    }
+                    const { hint, hintEsHTML } = _hintSalidaODefault(est.regAyer, objetivoDiarioAyerAplica, bufferSemanalBase, diasHabiles, 'Tocá Fichar para registrar salida', true);
 
                     return {
                         titulo: `${_tituloDia(nombreDiaAyer)} (ayer)`,
@@ -6147,21 +6260,19 @@ Generado por Sistema Lushibosca
                 if (horasGte(dif, 0)) {
                     colorBarra = 'green'; colorBorde = 'green';
                     estadoFondo = 'finalizado_ok';
-                    const difExtraText = TimeUtils.horasATexto(dif);
-                    mensaje = horasEq(dif, 0) ? 'Perfecto' : `${difExtraText} ${TimeUtils._esCantidadSingular(difExtraText) ? 'extra' : 'extras'}`;
+                    mensaje = horasEq(dif, 0) ? 'Perfecto' : _fraseCantidadSufijo(dif, 'extra', 'extras');
                 } else {
-                    const difText = TimeUtils.horasATexto(Math.abs(dif));
-                    const prefijoFalto = TimeUtils._esCantidadSingular(difText) ? 'Faltó' : 'Faltaron';
+                    const faltoTexto = _fraseCantidad(Math.abs(dif), 'Faltó', 'Faltaron');
 
-                    if (_logicaCubiertoActiva() && horasGte(bufferSemanal, 0)) {
+                    if (_logicaCubiertoActiva() && horasGte(bufferSemanalBase, 0)) {
                         colorBarra = 'gold'; colorBorde = 'gold';
                         estadoFondo = 'especial';
                         estadoFondoColor = 'gold';
-                        mensaje = `${prefijoFalto} ${difText} (Cubierto)`;
+                        mensaje = `${faltoTexto} (Cubierto)`;
                     } else {
                         colorBarra = 'red'; colorBorde = 'red';
                         estadoFondo = 'finalizado_fail';
-                        mensaje = `${prefijoFalto} ${difText}`;
+                        mensaje = faltoTexto;
                     }
                 }
                 mostrarMensaje = true;
@@ -6170,14 +6281,10 @@ Generado por Sistema Lushibosca
                 colorBorde = cumplido ? 'green' : 'blue';
                 estadoFondo = 'en_curso';
                 mostrarMensaje = true;
-                mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAplica, bufferSemanal);
+                mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAplica, bufferSemanalBase);
             }
 
-            let hint = 'Tocá para ver la Semana';
-            let hintEsHTML = false;
-            if (regHoy.entrada && !dayClosed && objetivoDiarioAplica > 0 && !TiposRegistro.esRegistroEspecial(regHoy.entrada, regHoy.salida)) {
-                ({ hint, hintEsHTML } = _calcularHintSalidaEstimada(regHoy, objetivoDiarioAplica, bufferSemanal, diasHabiles));
-            }
+            const { hint, hintEsHTML } = _hintSalidaODefault(regHoy, objetivoDiarioAplica, bufferSemanalBase, diasHabiles, 'Tocá para ver la Semana', !dayClosed);
 
             return _conAvisoAyer({
                 titulo: _tituloDia(TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy())),
@@ -6191,17 +6298,74 @@ Generado por Sistema Lushibosca
 
         const _COLORES_BORDE = ['blue', 'green', 'red', 'purple', 'orange', 'gold', 'transparent'];
 
-        function _renderTitulo(vista) {
+        /**
+         * @param {HTMLElement|HTMLElement[]} elementos
+         * @param {function(): void} aplicarCambio - se ejecuta con los elementos ocultos
+         * @param {number} [duracion] - ms de espera antes de aplicar el cambio (default DUR_ANIM())
+         */
+        function _fadeSwapCiclo(elementos, aplicarCambio, duracion = null) {
+            const els = (Array.isArray(elementos) ? elementos : [elementos]).filter(Boolean);
+            if (els.length === 0) { aplicarCambio(); return; }
+
+            els.forEach(el => el.classList.add('ciclo-fade-out'));
+
+            setTimeout(() => {
+                aplicarCambio();
+                els.forEach(el => {
+                    el.classList.remove('ciclo-fade-out');
+                    el.classList.add('ciclo-fade-in');
+                    void el.offsetWidth;
+                    el.classList.remove('ciclo-fade-in');
+                });
+            }, duracion ?? DUR_ANIM());
+        }
+
+        function _renderTituloAnimado(el, nuevoHTML, aplicarExtra) {
+            if (!el) { if (aplicarExtra) aplicarExtra(); return; }
+            const aplicarCambio = () => {
+                el.innerHTML = nuevoHTML;
+                el.dataset.firma = nuevoHTML;
+                if (aplicarExtra) aplicarExtra();
+            };
+            if (el.dataset.firma === nuevoHTML) { if (aplicarExtra) aplicarExtra(); return; }
+            if (_suprimirAnimacionInterna) { aplicarCambio(); return; }
+            _fadeSwapCiclo(el, aplicarCambio);
+        }
+
+        function _renderTitulo(vista, sinAnimar = false, est = null) {
             const el = $('stats-titulo');
-            if (el) el.innerHTML = vista.titulo;
+            const aplicarExtra = () => _actualizarTiempoFueraConsolidado(el, est);
+            if (sinAnimar && el) { el.innerHTML = vista.titulo; el.dataset.firma = vista.titulo; aplicarExtra(); return; }
+            _renderTituloAnimado(el, vista.titulo, aplicarExtra);
+        }
+
+        function _actualizarTiempoFueraConsolidado(el, est) {
+            if (!el) return;
+
+            const regHoy = est?.regHoy;
+            const mostrar = !!regHoy && D.vistaActual() !== 'semana'
+                && StorageHelper.getItem(_breakStorageKey()) === null
+                && regHoy.tiempoFuera && regHoy.tiempoFuera !== '00:00';
+
+            if (!mostrar) { _quitarLabelTF(); return; }
+
+            const minutos = TimeUtils.horaAMinutos(regHoy.tiempoFuera);
+            if (!minutos) { _quitarLabelTF(); return; }
+
+            const label = _obtenerOCrearLabelTF(el);
+            label.textContent = _formatearMinutosCorto(minutos);
+            label.title = 'Tiempo fuera registrado hoy';
         }
 
         let _cicloStatsInterval = null;
         let _cicloStatsValorHoras = '';
         let _cicloStatsEntrada = '';
         let _cicloStatsSalida = '';
+        let _cicloStatsTiempoFuera = '';
+        let _cicloStatsFaseAlRenderizar = null;
 
-        const _CICLO_DURACION_MS = 2500;
+        const _CICLO_DURACION_MS = 2000;
+        const _CICLO_PREFIJOS = { entrada: 'Entrada', salida: 'Salida', tiempoFuera: 'Tiempo fuera' };
 
         function _detenerCicloStats() {
             clearTimeout(_cicloStatsInterval);
@@ -6210,47 +6374,69 @@ Generado por Sistema Lushibosca
             if (el) el.classList.remove('ciclo-fade-out', 'ciclo-fade-in');
         }
 
-        function _iniciarCicloStats() {
-            _detenerCicloStats();
-            if (!_cicloStatsEntrada) return;
+        function _prepararMostrarFaseAlRenderizar(tipo) {
+            _cicloStatsFaseAlRenderizar = tipo;
+        }
 
-            const fases = [
+        function _fasesCiclo() {
+            return [
                 _cicloStatsValorHoras,
                 `Entrada ${_cicloStatsEntrada}`,
+                _cicloStatsTiempoFuera ? `Tiempo fuera ${_formatearMinutosCorto(TimeUtils.horaAMinutos(_cicloStatsTiempoFuera))}` : null,
                 _cicloStatsSalida ? `Salida ${_cicloStatsSalida}` : null,
             ].filter(Boolean);
+        }
 
-            let idx = 0;
-
+        function _crearCicloTick(fases, estado) {
             const _cicloTick = () => {
                 const el = $('stats-semana');
                 if (!el) { _detenerCicloStats(); return; }
 
-                el.classList.add('ciclo-fade-out');
-
-                setTimeout(() => {
-                    idx++;
-                    if (idx >= fases.length) {
-                        el.classList.remove('ciclo-fade-out');
-                        el.classList.add('ciclo-fade-in');
-                        el.textContent = _cicloStatsValorHoras;
-                        void el.offsetWidth;
-                        el.classList.remove('ciclo-fade-in');
-                        _detenerCicloStats();
-                        return;
-                    }
-
-                    el.classList.remove('ciclo-fade-out');
-                    el.classList.add('ciclo-fade-in');
-                    el.textContent = fases[idx];
-                    void el.offsetWidth;
-                    el.classList.remove('ciclo-fade-in');
-
+                _fadeSwapCiclo(el, () => {
+                    estado.idx++;
+                    const terminado = estado.idx >= fases.length;
+                    el.textContent = terminado ? _cicloStatsValorHoras : fases[estado.idx];
+                    if (terminado) { _detenerCicloStats(); return; }
                     _cicloStatsInterval = setTimeout(_cicloTick, _CICLO_DURACION_MS);
-                }, 350);
+                });
             };
+            return _cicloTick;
+        }
 
-            _cicloStatsInterval = setTimeout(_cicloTick, _CICLO_DURACION_MS);
+        function _cicloStatsActivo() {
+            return !!_cicloStatsInterval;
+        }
+
+        function _iniciarCicloStats(inmediato = false) {
+            if (_cicloStatsInterval) return true;
+            _detenerCicloStats();
+            if (!_cicloStatsEntrada) return false;
+
+            const fases = _fasesCiclo();
+            const estado = { idx: 0 };
+            const tick = _crearCicloTick(fases, estado);
+
+            _cicloStatsInterval = setTimeout(tick, inmediato ? 0 : _CICLO_DURACION_MS);
+            return true;
+        }
+
+        function _iniciarCicloEnFase(tipo) {
+            if (!_cicloStatsEntrada) return false;
+            clearTimeout(_cicloStatsInterval);
+
+            const fases = _fasesCiclo();
+            const prefijo = _CICLO_PREFIJOS[tipo];
+            const idx = prefijo ? fases.findIndex(f => f.startsWith(prefijo)) : -1;
+            if (idx === -1) return false;
+
+            const estado = { idx };
+            const tick = _crearCicloTick(fases, estado);
+
+            const el = $('stats-semana');
+            if (el) el.textContent = fases[idx];
+
+            _cicloStatsInterval = setTimeout(tick, _CICLO_DURACION_MS);
+            return true;
         }
 
         function _renderStats(vista, est) {
@@ -6262,10 +6448,18 @@ Generado por Sistema Lushibosca
             const esEspecial = !!est.tipoEspecialHoy;
             const entradaHoy = (esDiaria && regHoy && regHoy.entrada && !esEspecial) ? regHoy.entrada : '';
             const salidaHoy = (esDiaria && regHoy && regHoy.salida && !esEspecial) ? regHoy.salida : '';
+            const tiempoFueraHoy = (esDiaria && regHoy && regHoy.tiempoFuera && regHoy.tiempoFuera !== '00:00' && !esEspecial) ? regHoy.tiempoFuera : '';
 
             _cicloStatsValorHoras = vista.stats;
             _cicloStatsEntrada = entradaHoy;
             _cicloStatsSalida = salidaHoy;
+            _cicloStatsTiempoFuera = tiempoFueraHoy;
+
+            if (_cicloStatsFaseAlRenderizar) {
+                const tipo = _cicloStatsFaseAlRenderizar;
+                _cicloStatsFaseAlRenderizar = null;
+                if (_iniciarCicloEnFase(tipo)) return;
+            }
 
             if (!_cicloStatsInterval) {
                 el.textContent = vista.stats;
@@ -6315,8 +6509,7 @@ Generado por Sistema Lushibosca
                 const span = document.createElement('span');
                 span.style.color = color;
                 span.style.fontWeight = '500';
-                const textoBuffer = TimeUtils.horasATexto(Math.abs(bufferSemanal));
-                const singular = TimeUtils._esCantidadSingular(textoBuffer);
+                const { texto: textoBuffer, singular } = _cantidadHoras(Math.abs(bufferSemanal));
                 const adjetivo = esPositivo ? (singular ? 'extra' : 'extras') : (singular ? 'faltante' : 'faltantes');
                 span.textContent = `${textoBuffer} ${adjetivo} esta semana`;
                 span.insertBefore(punto, span.firstChild);
@@ -6330,24 +6523,13 @@ Generado por Sistema Lushibosca
                 $('stats-mensaje'),
                 $('stats-buffer'),
                 $('toggle-hint'),
-            ].filter(Boolean);
+            ];
 
             _detenerCicloStats();
-
-            els.forEach(el => el.classList.add('ciclo-fade-out'));
-
-            setTimeout(() => {
-                renderFn();
-                els.forEach(el => {
-                    el.classList.remove('ciclo-fade-out');
-                    el.classList.add('ciclo-fade-in');
-                    void el.offsetWidth;
-                    el.classList.remove('ciclo-fade-in');
-                });
-            }, DUR_ANIM());
+            _fadeSwapCiclo(els, renderFn);
         }
 
-        function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false) {
+        function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false, sinAnimarTitulo = false) {
             if (!soloReloj) {
                 UILogic.actualizarListaRegistros(D.registros(), idNuevo);
             }
@@ -6357,13 +6539,15 @@ Generado por Sistema Lushibosca
                 ? derivarVistaSemana(est)
                 : derivarVistaHoy(est);
 
-            _renderTitulo(vista);
+            const timerFueraCorriendo = StorageHelper.getItem(_breakStorageKey()) !== null;
+            if (!timerFueraCorriendo) { _renderTitulo(vista, sinAnimarTitulo, est); }
             _renderCard(vista);
             _renderBarra(vista);
             UILogic._renderSelectorStats();
-            actualizarEstadoBotonTimerMain();
+            actualizarEstadoBotonTimerMain(sinAnimarTitulo);
+            if (modoLoteActivo) actualizarBotonLote();
             if (UILogic.getVistaHistoricoCalendario()) {
-                const selector = document.getElementById('calendario-selector-meses');
+                const selector = $('calendario-selector-meses');
                 if (selector && selector.style.display !== 'none') {
                     UILogic._cerrarSelectorMeses(idNuevo);
                 } else {
@@ -6371,7 +6555,7 @@ Generado por Sistema Lushibosca
                 }
             }
 
-            const debeAnimar = animarCard || (idNuevo !== null && !soloReloj);
+            const debeAnimar = !_suprimirAnimacionInterna && (animarCard || (idNuevo !== null && !soloReloj));
             const renderResto = () => {
                 _renderStats(vista, est);
                 _renderMensaje(vista);
@@ -6385,23 +6569,35 @@ Generado por Sistema Lushibosca
             }
         }
 
-        function alternarVista() {
+        function _forzarVista(nuevaVista, renderFn) {
+            if (D.vistaActual() === nuevaVista) { return Promise.resolve(renderFn()); }
             if (_timerAutoVista) { clearTimeout(_timerAutoVista); _timerAutoVista = null; }
-            const card = document.getElementById('stats-card');
-            const content = document.getElementById('stats-card-content');
+            const card = $('stats-card');
+            const content = $('stats-card-content');
             if (card) card.classList.add('cambiando-vista');
-            _animarFadeSwap(content, () => {
-                const vistaActual = D.vistaActual() === 'semana' ? 'diaria' : 'semana';
-                D.setVistaActual(vistaActual);
-                StorageHelper.setItem(STORAGE_KEYS.VISTA_ACTUAL, vistaActual);
+            return _animarFadeSwap(content, async () => {
+                D.setVistaActual(nuevaVista);
+                StorageHelper.setItem(STORAGE_KEYS.VISTA_ACTUAL, nuevaVista);
                 _detenerCicloStats();
-                actualizarUI();
+                _suprimirAnimacionInterna = true;
+                let resultado;
+                try {
+                    resultado = await renderFn();
+                } finally {
+                    _suprimirAnimacionInterna = false;
+                }
                 if (card) card.classList.remove('cambiando-vista');
+                return resultado;
             });
         }
 
+        function alternarVista() {
+            const nuevaVista = D.vistaActual() === 'semana' ? 'diaria' : 'semana';
+            _forzarVista(nuevaVista, () => actualizarUI());
+        }
+
         function pegarHoraActual(id) {
-            const input = document.getElementById(id);
+            const input = $(id);
             if (!input) return;
             if (input.value.trim() !== '') {
                 input.value = '';
@@ -6412,7 +6608,7 @@ Generado por Sistema Lushibosca
         }
 
         function limpiarCampo(id) {
-            const input = document.getElementById(id);
+            const input = $(id);
             if (input) {
                 input.value = '';
                 input.dispatchEvent(new Event('input'));
@@ -6421,7 +6617,7 @@ Generado por Sistema Lushibosca
 
         const sumarMinutosAHora = TimeUtils.sumarMinutosAHora;
 
-        function _actualizarCardTimerRunning(card, storageKey) {
+        function _actualizarCardTimerRunning(card, storageKey, sinAnimar = false) {
             if (!card) return;
             card.classList.add('timer-running');
             const titulo = card.querySelector('h2');
@@ -6431,25 +6627,30 @@ Generado por Sistema Lushibosca
                 ? '<svg class="icon"><use href="#icon-calendar-simple"/></svg>'
                 : '<svg class="icon"><use href="#icon-clock"/></svg>';
             const contexto = vistaActual === 'semana' ? 'Esta Semana' : TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy());
-            titulo.innerHTML = `${icono} ${contexto} - <svg class="icon"><use href="#icon-exit"/></svg> Tiempo fuera `;
-            const breakCounter = Object.assign(document.createElement('span'), {
-                id: 'break-counter', className: 'break-counter-label'
-            });
-            titulo.appendChild(breakCounter);
-            _iniciarContadorBreak(storageKey);
+            const nuevoHTML = `${icono} ${contexto} - <svg class="icon"><use href="#icon-exit"/></svg> Tiempo fuera `;
+            const agregarContador = () => {
+                _obtenerOCrearLabelTF(titulo);
+                _iniciarContadorBreak(storageKey);
+            };
+            if (sinAnimar) {
+                titulo.innerHTML = nuevoHTML;
+                titulo.dataset.firma = nuevoHTML;
+                agregarContador();
+            } else {
+                _renderTituloAnimado(titulo, nuevoHTML, agregarContador);
+            }
         }
 
-        function actualizarEstadoBotonTimerMain() {
-            const btn = document.getElementById('btn-timer-main');
-            const card = document.getElementById('stats-card');
+        function actualizarEstadoBotonTimerMain(sinAnimarTitulo = false) {
+            const btn = $('btn-timer-main');
+            const card = $('stats-card');
             if (!btn) return;
 
             if (modoLoteActivo) { btn.disabled = true; return; }
 
             const hoy = TimeUtils.obtenerFechaHoy();
             const registroHoy = D.registros().find(r => r.fecha === hoy);
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
-            const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
+            const storageKey = _breakStorageKey();
             const isRunning = StorageHelper.getItem(storageKey) !== null;
             const icon = btn.querySelector('use');
             const diaCerrado = registroHoy?.salida?.trim() !== '' && !!registroHoy?.salida;
@@ -6463,11 +6664,9 @@ Generado por Sistema Lushibosca
             icon.setAttribute('href', '#icon-exit');
             if (isRunning) {
                 btn.classList.add('running');
-                Object.assign(btn.style, { color: 'var(--c-red)', borderColor: 'var(--c-red)' });
-                _actualizarCardTimerRunning(card, storageKey);
+                _actualizarCardTimerRunning(card, storageKey, sinAnimarTitulo);
             } else {
                 btn.classList.remove('running');
-                Object.assign(btn.style, { color: 'var(--text-main)', borderColor: 'var(--border)' });
                 if (card) card.classList.remove('timer-running');
                 _detenerContadorBreak();
             }
@@ -6478,19 +6677,12 @@ Generado por Sistema Lushibosca
         function _iniciarContadorBreak(storageKey) {
             _detenerContadorBreak();
             function _actualizarContador() {
-                const el = document.getElementById('break-counter');
+                const el = $(TF_LABEL_ID);
                 if (!el) { _detenerContadorBreak(); return; }
                 const start = parseInt(StorageHelper.getItem(storageKey));
                 if (isNaN(start)) { el.textContent = ''; _detenerContadorBreak(); return; }
-                const totalSeg = Math.floor((Date.now() - start) / 1000);
-                const mins = Math.floor(totalSeg / 60);
-                const horas = Math.floor(mins / 60);
-                const minsResto = mins % 60;
-                if (horas > 0) {
-                    el.textContent = `${horas}h ${minsResto}m`;
-                } else {
-                    el.textContent = `${mins}m`;
-                }
+                const mins = Math.floor((Date.now() - start) / 60000);
+                el.textContent = _formatearMinutosCorto(mins);
             }
             _actualizarContador();
             _breakCounterInterval = setInterval(_actualizarContador, 1000);
@@ -6534,8 +6726,7 @@ Generado por Sistema Lushibosca
         }
 
         async function toggleTimerBreakMain() {
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
-            const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
+            const storageKey = _breakStorageKey();
             const storedStart = StorageHelper.getItem(storageKey);
             const registroHoy = D.registros().find(r => r.fecha === TimeUtils.obtenerFechaHoy());
 
@@ -6551,12 +6742,12 @@ Generado por Sistema Lushibosca
         }
 
         function toggleModoLote(deltaSwipe, conAnimacion = true) {
-            const modoContenedor = document.getElementById('modo-contenedor');
-            const modoNormal = document.getElementById('modo-normal');
-            const modoLote = document.getElementById('modo-lote');
-            const btnTexto = document.getElementById('btn-registrar-texto');
-            const btnTimer = document.getElementById('btn-timer-main');
-            const btn = document.getElementById('btn-agregar');
+            const modoContenedor = $('modo-contenedor');
+            const modoNormal = $('modo-normal');
+            const modoLote = $('modo-lote');
+            const btnTexto = $('btn-registrar-texto');
+            const btnTimer = $('btn-timer-main');
+            const btn = $('btn-agregar');
 
             modoLoteActivo = !modoLoteActivo;
             const delta = deltaSwipe !== undefined ? deltaSwipe : (modoLoteActivo ? 1 : -1);
@@ -6566,11 +6757,10 @@ Generado por Sistema Lushibosca
                 modoLote.classList.remove('fade-out');
                 modoLote.style.display = 'block';
 
-                document.getElementById('lote-tipo').value = 'feriado';
-                document.getElementById('lote-fecha-desde').value = '';
-                document.getElementById('lote-fecha-hasta').value = '';
+                $('lote-tipo').value = 'feriado';
+                $('lote-fecha-desde').value = '';
+                $('lote-fecha-hasta').value = '';
 
-                btnTexto.textContent = 'Fichar Lote';
                 btn.style.background = '';
                 btn.style.color = '';
 
@@ -6601,31 +6791,28 @@ Generado por Sistema Lushibosca
             } else {
                 await DataManagement.agregarRegistro();
             }
-
-            if (modoLoteActivo) {
-                setTimeout(() => actualizarBotonLote(), 100);
-            }
         }
 
         function _limpiarCamposLote() {
-            document.getElementById('lote-fecha-desde').value = '';
-            document.getElementById('lote-fecha-hasta').value = '';
+            $('lote-fecha-desde').value = '';
+            $('lote-fecha-hasta').value = '';
         }
 
         async function _registrarEspecialHoy(tipo) {
             const fechaHoy = UILogic.obtenerFechaHoy();
             if (DataManagement.registros().find(r => r.fecha === fechaHoy)) {
-                mostrarToast('Ya existe un registro para hoy', 'warning'); return;
+                mostrarToast('Ya existe un registro para hoy', 'warning'); _flashCampoTipo('warning', 'btn-agregar'); return;
             }
             try {
                 await DataManagement.registrarDiaEspecial(fechaHoy, tipo);
                 _limpiarCamposLote();
+                actualizarBotonLote();
             } catch (e) { console.error('Error al registrar:', e); }
         }
 
         async function _registrarEspecialFecha(desde, tipo) {
             if (DataManagement.registros().find(r => r.fecha === desde)) {
-                mostrarToast('Ya existe un registro para esa fecha', 'warning'); return;
+                mostrarToast('Ya existe un registro para esa fecha', 'warning'); _flashCampoTipo('warning', 'btn-agregar'); return;
             }
             try {
                 await DataManagement.registrarDiaEspecial(desde, tipo);
@@ -6634,17 +6821,18 @@ Generado por Sistema Lushibosca
                     { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: false }
                 ]);
                 _limpiarCamposLote();
+                actualizarBotonLote();
             } catch (e) { console.error('Error al registrar:', e); }
         }
 
         async function registrarLoteDesdeCard() {
-            const inputDesde = document.getElementById('lote-fecha-desde');
-            const inputHasta = document.getElementById('lote-fecha-hasta');
-            const tipo = document.getElementById('lote-tipo').value;
+            const inputDesde = $('lote-fecha-desde');
+            const inputHasta = $('lote-fecha-hasta');
+            const tipo = $('lote-tipo').value;
 
             if ((inputDesde.value === '' && inputDesde.validity && !inputDesde.validity.valid) ||
                 (inputHasta.value === '' && inputHasta.validity && !inputHasta.validity.valid)) {
-                mostrarToast('Fecha inválida', 'error'); return;
+                mostrarToast('Fecha inválida', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
             }
 
             const desde = inputDesde.value;
@@ -6652,32 +6840,37 @@ Generado por Sistema Lushibosca
 
             if (!desde && !hasta) {
                 if (!inputDesde.checkValidity() || !inputHasta.checkValidity()) {
-                    mostrarToast('Revisá las fechas ingresadas', 'error'); return;
+                    mostrarToast('Revisá las fechas ingresadas', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
                 }
-                if (tipo === 'normal') { mostrarToast('Completá los campos Desde y Hasta.', 'info'); return; }
+                if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
                 await _registrarEspecialHoy(tipo); return;
             }
 
             if (desde && !hasta) {
-                if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); return; }
+                if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
                 await _registrarEspecialFecha(desde, tipo); return;
             }
 
-            if (!desde && hasta) { mostrarToast('Completá ambos campos', 'info'); return; }
-            if (desde > hasta) { mostrarToast('La fecha inicial debe ser inferior a la final', 'error'); return; }
+            if (!desde && hasta) { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
+            if (desde > hasta) { mostrarToast('La fecha inicial debe ser inferior a la final', 'error'); _flashCampoTipo('error', 'btn-agregar'); return; }
 
             if (tipo !== 'normal' && !TiposRegistro.obtenerCodigosPorTipo(tipo)) {
-                mostrarToast('Tipo de registro inválido', 'error'); return;
+                mostrarToast('Tipo de registro inválido', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
             }
 
             try {
                 if (tipo === 'normal') await DataManagement.borrarPeriodoDirecto(desde, hasta);
                 else await DataManagement.registrarVacacionesDirecto(desde, hasta, tipo);
-                UILogic.aplicarFeedbackCampos([
-                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
-                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: true }
-                ]);
+                UILogic.aplicarFeedbackCampos(
+                    [
+                        { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
+                        { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: true }
+                    ],
+                    tipo === 'normal' ? '✓ Borrado' : '✓ Agregado',
+                    tipo === 'normal' ? 'var(--c-red)' : 'var(--c-green)'
+                );
                 _limpiarCamposLote();
+                actualizarBotonLote();
             } catch (e) { console.error('Error en operación de lote:', e); }
         }
 
@@ -6700,32 +6893,29 @@ Generado por Sistema Lushibosca
             });
         }
 
+        function _pintarBotonLote(btn, btnTexto, texto, color = '', icono = '#icon-save') {
+            btnTexto.textContent = texto;
+            btn.style.color = color;
+            setIconoBtn(btn, icono);
+        }
+
         function _setBtnError(btn, btnTexto, mensaje) {
-            btnTexto.textContent = mensaje;
-            btn.style.color = 'var(--c-red)';
-            setIconoBtn(btn, '#icon-save');
+            _pintarBotonLote(btn, btnTexto, mensaje, 'var(--text-muted)');
         }
 
         function _actualizarBtnNormal(btn, btnTexto, desde, hasta) {
             const n = DataManagement.registros().filter(r =>
                 r.fecha >= desde && r.fecha <= hasta && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
             ).length;
-            if (n > 0) {
-                btnTexto.textContent = `Borrar (${n})`;
-                btn.style.color = 'var(--c-red)';
-                setIconoBtn(btn, '#icon-trash');
-            } else {
-                btnTexto.textContent = 'Sin Registros';
-                btn.style.color = 'var(--text-muted)';
-                setIconoBtn(btn, '#icon-save');
-            }
+            n > 0
+                ? _pintarBotonLote(btn, btnTexto, `Borrar (${n})`, 'var(--c-red)', '#icon-trash')
+                : _pintarBotonLote(btn, btnTexto, 'Sin Registros', 'var(--text-muted)');
         }
 
         function _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales) {
             const codigosTipo = TiposRegistro.obtenerCodigosPorTipo(tipo);
-            if (!codigosTipo) {
-                btnTexto.textContent = 'Fichar'; setIconoBtn(btn, '#icon-save'); return;
-            }
+            if (!codigosTipo) return _pintarBotonLote(btn, btnTexto, 'Fichar');
+
             const yaRegistrados = DataManagement.registros().filter(r =>
                 r.fecha >= desde && r.fecha <= hasta &&
                 r.entrada === codigosTipo.entrada && r.salida === codigosTipo.salida
@@ -6734,48 +6924,48 @@ Generado por Sistema Lushibosca
             const disponibles = diasTotales - diasOcupados;
             const sobreescribirOtros = diasOcupados - yaRegistrados;
 
-            if (disponibles === 0 && yaRegistrados === diasTotales) {
-                btnTexto.textContent = `Fichado (${diasTotales})`;
-                btn.style.color = 'var(--text-muted)';
-            } else if (disponibles === diasTotales) {
-                btnTexto.textContent = `Fichar (${diasTotales})`;
-            } else if (sobreescribirOtros > 0) {
-                btnTexto.textContent = `Fichar (${disponibles} - ${sobreescribirOtros})`;
-            } else {
-                btnTexto.textContent = `Fichar (${disponibles})`;
-            }
-            setIconoBtn(btn, '#icon-save');
+            if (disponibles === 0 && yaRegistrados === diasTotales) return _pintarBotonLote(btn, btnTexto, `Fichado (${diasTotales})`, 'var(--text-muted)');
+            if (disponibles === diasTotales) return _pintarBotonLote(btn, btnTexto, `Fichar (${diasTotales})`);
+            if (sobreescribirOtros > 0) return _pintarBotonLote(btn, btnTexto, `Fichar (${disponibles} - ${sobreescribirOtros})`);
+            return _pintarBotonLote(btn, btnTexto, `Fichar (${disponibles})`);
         }
 
         function actualizarBotonLote() {
-            const tipo = document.getElementById('lote-tipo').value;
-            const desde = document.getElementById('lote-fecha-desde').value;
-            const hasta = document.getElementById('lote-fecha-hasta').value;
-            const btn = document.getElementById('btn-agregar');
-            const btnTexto = document.getElementById('btn-registrar-texto');
+            const tipo = $('lote-tipo').value;
+            const desde = $('lote-fecha-desde').value;
+            const hasta = $('lote-fecha-hasta').value;
+            const btn = $('btn-agregar');
+            const btnTexto = $('btn-registrar-texto');
             btn.style.background = '';
-            btn.style.color = '';
 
-            if (!desde && !hasta) { btnTexto.textContent = 'Fichar'; setIconoBtn(btn, '#icon-save'); return; }
-            if (!desde && hasta) { _setBtnError(btn, btnTexto, 'Requiere Rango'); return; }
-
-            if (desde && !hasta) {
-                if (tipo === 'normal') { _setBtnError(btn, btnTexto, 'Requiere Rango'); return; }
-                const existe = DataManagement.registros().find(r => r.fecha === desde);
-                btnTexto.textContent = existe ? 'Fichado' : 'Fichar';
-                if (existe) btn.style.color = 'var(--text-muted)';
-                setIconoBtn(btn, '#icon-save');
-                return;
+            if (!desde && !hasta) {
+                if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Rango incompleto');
+                
+                const hoy = TimeUtils.obtenerFechaHoy();
+                const existeHoy = DataManagement.registros().find(r => r.fecha === hoy);
+                return existeHoy
+                    ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'var(--text-muted)')
+                    : _pintarBotonLote(btn, btnTexto, 'Fichar');
             }
 
-            if (!TimeUtils.validarFecha(desde)) { _setBtnError(btn, btnTexto, 'Fecha Inicial Inválida'); return; }
-            if (!TimeUtils.validarFecha(hasta)) { _setBtnError(btn, btnTexto, 'Fecha Final Inválida'); return; }
-            if (desde > hasta) { _setBtnError(btn, btnTexto, 'Rango Inválido'); return; }
+            if (!desde && hasta) return _setBtnError(btn, btnTexto, 'Rango incompleto');
+            if (!TimeUtils.validarFecha(desde)) return _setBtnError(btn, btnTexto, 'Fecha Inicial Inválida');
+            if (desde && !hasta) {
+                if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Rango incompleto');
+                const existe = DataManagement.registros().find(r => r.fecha === desde);
+                return existe
+                    ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'var(--text-muted)')
+                    : _pintarBotonLote(btn, btnTexto, 'Fichar');
+            }
+
+            if (!TimeUtils.validarFecha(hasta)) return _setBtnError(btn, btnTexto, 'Fecha Final Inválida');
+            if (desde > hasta) return _setBtnError(btn, btnTexto, 'Rango Inválido');
 
             const diasTotales = Math.ceil(Math.abs(TimeUtils.parsearFechaLocal(hasta) - TimeUtils.parsearFechaLocal(desde)) / 864e5) + 1;
 
-            if (tipo === 'normal') _actualizarBtnNormal(btn, btnTexto, desde, hasta);
-            else _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales);
+            return tipo === 'normal'
+                ? _actualizarBtnNormal(btn, btnTexto, desde, hasta)
+                : _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales);
         }
 
         function toggleFormulario() {
@@ -6812,8 +7002,8 @@ Generado por Sistema Lushibosca
         const _FLASH_SCROLL_DELAY = 500;
 
         function _irAFicharConFecha(fecha, esEspecial) {
-            const tarjeta = document.getElementById('card-registrar');
-            const formulario = document.getElementById('form-registro');
+            const tarjeta = $('card-registrar');
+            const formulario = $('form-registro');
             const estaExpandido = formulario && formulario.classList.contains('expanded');
 
             if (!estaExpandido) toggleFormulario();
@@ -6824,13 +7014,14 @@ Generado por Sistema Lushibosca
 
             const aplicarFecha = () => {
                 if (esEspecial) {
-                    const desde = document.getElementById('lote-fecha-desde');
-                    const hasta = document.getElementById('lote-fecha-hasta');
+                    const desde = $('lote-fecha-desde');
+                    const hasta = $('lote-fecha-hasta');
                     if (desde) desde.value = fecha;
                     if (hasta) hasta.value = fecha;
+                    actualizarBotonLote();
                     setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta', 'lote-tipo'), _FLASH_SCROLL_DELAY);
                 } else {
-                    const input = document.getElementById('fecha');
+                    const input = $('fecha');
                     if (input) input.value = fecha;
                     setTimeout(() => _flashCampo('fecha', 'entrada', 'salida'), _FLASH_SCROLL_DELAY);
                 }
@@ -6858,7 +7049,7 @@ Generado por Sistema Lushibosca
         }
 
         function alternarFechaActual(id) {
-            const c = document.getElementById(id);
+            const c = $(id);
             if (!c) return;
             if (c.value.trim() !== '') {
                 c.value = '';
@@ -6882,6 +7073,7 @@ Generado por Sistema Lushibosca
             derivarVistaHoy,
             actualizarUI,
             alternarVista,
+            _forzarVista,
             actualizarEstadoBotonTimerMain,
             toggleTimerBreakMain,
             toggleModoLote,
@@ -6899,7 +7091,10 @@ Generado por Sistema Lushibosca
             setTimerAutoVista: (v) => { _timerAutoVista = v; },
             sumarMinutosAHora,
             _getLabelFondo,
-            _iniciarCicloStats
+            _iniciarCicloStats,
+            _cicloStatsActivo,
+            _prepararMostrarFaseAlRenderizar,
+            _fadeSwapCiclo
         };
     })(SecurityAndUtils, DataManagement, UICore);
 
@@ -6912,7 +7107,7 @@ Generado por Sistema Lushibosca
             mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
             _getCSSdur, DUR_ANIM, DUR_CALENDARIO, _crearToggleConfig, _setBtnActivo,
             _crearOpcion, _poblarSelect, setIconoBtn, _setBtnDisabled,
-            _posicionarPopup, _registrarCierrePopup, _flashCampo,
+            _posicionarPopup, _registrarCierrePopup, _flashCampo, _flashCampoTipo,
             _limpiarClonVisual, _finalizarSlidePendiente, _animarSlideElemento, toggleSeccionGen,
             _animarFadeSwap
         } = UICore;
@@ -6962,12 +7157,13 @@ Generado por Sistema Lushibosca
 
         const {
             setFondoCard, toggleFondoCard, _esFechaHabil, _cubiertoPorSaldo, calcularEstadoCard,
-            derivarVistaSemana, derivarVistaHoy, actualizarUI, alternarVista,
+            derivarVistaSemana, derivarVistaHoy, actualizarUI, alternarVista, _forzarVista,
             actualizarEstadoBotonTimerMain, toggleTimerBreakMain, toggleModoLote,
             ejecutarAccionRegistro, registrarLoteDesdeCard, poblarSelectoresTipos,
             actualizarBotonLote, toggleFormulario, _irAFicharConFecha, _scrollACardFichar,
             alternarFechaActual, pegarHoraActual, limpiarCampo, getFondoCard, setTimerAutoVista,
-            sumarMinutosAHora, _getLabelFondo, _iniciarCicloStats
+            sumarMinutosAHora, _getLabelFondo, _iniciarCicloStats, _cicloStatsActivo, _prepararMostrarFaseAlRenderizar,
+            _fadeSwapCiclo
         } = UITarjetaFichaje;
 
         function alternarTema() {
@@ -6997,26 +7193,6 @@ Generado por Sistema Lushibosca
                 btnId: 'btn-toggle-hover-popup',
                 mensajeOn: 'Se muestra popup automático en calendario',
                 mensajeOff: 'No se muestra popup automático en calendario',
-            });
-
-        const { toggle: toggleSaldoDesdeEnero, actualizarEstado: actualizarEstadoBotonSaldoDesdeEnero } =
-            _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_ENERO, false),
-                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.SALDO_DESDE_ENERO, v),
-                btnId: 'btn-toggle-saldo-enero',
-                mensajeOn: 'Cálculo de saldo anual desde el primer día del año',
-                mensajeOff: 'Cálculo de saldo anual desde el primer registro del año',
-                onAfterToggle: () => { actualizarUI(); }
-            });
-
-        const { toggle: toggleSaldoDesdePrimeroDiaMes, actualizarEstado: actualizarEstadoBotonSaldoDesdePrimeroDiaMes } =
-            _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, false),
-                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.SALDO_DESDE_PRIMERO_MES, v),
-                btnId: 'btn-toggle-saldo-primero-mes',
-                mensajeOn: 'Cálculo de saldo mensual desde el 1° del mes',
-                mensajeOff: 'Cálculo de saldo mensual desde el primer registro del mes',
-                onAfterToggle: () => { actualizarUI(); }
             });
 
         const { toggle: toggleLogicaCubierto, actualizarEstado: actualizarEstadoBotonLogicaCubierto } =
@@ -7329,7 +7505,7 @@ Generado por Sistema Lushibosca
             D.configurarNotificaciones({
                 actualizarBotonLote, actualizarEstadoBotonTimerMain, actualizarHintGrupo, actualizarUI,
                 aplicarFeedbackCampos, cerrarEdicion, cerrarEdicionGrupo, cerrarFiltros, cerrarImportar,
-                descargarJSON, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
+                descargarJSON, flashCampo: _flashCampo, flashCampoTipo: _flashCampoTipo, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
                 obtenerNombrePerfilSafe, resetearBoton, restaurarBotonGuardarEdicion, setBloqueoEdicion,
                 setBloqueoEdicionGrupo, verificarBloqueoCredito
             });
@@ -7342,7 +7518,6 @@ Generado por Sistema Lushibosca
             ModalManager.registrarAccionVolver('modal-editar', cerrarEdicion);
             ModalManager.registrarAccionVolver('modal-importar', cerrarImportar);
             ModalManager.registrarAccionVolver('modal-exportar', cerrarExportar);
-            ModalManager.registrarAccionVolver('modal-filtros', cerrarFiltros);
             ModalManager.registrarAccionVolver('modal-editar-perfil', cerrarEditorPerfil);
             ModalManager.registrarAccionVolver('modal-editar-grupo', cerrarEdicionGrupo);
         }
@@ -7438,8 +7613,6 @@ Generado por Sistema Lushibosca
             UILogic.actualizarEstadoBotonIgnorarTF();
             UILogic.poblarSelectoresTipos();
             UILogic.actualizarEstadoBotonHoverPopup();
-            UILogic.actualizarEstadoBotonSaldoDesdeEnero();
-            UILogic.actualizarEstadoBotonSaldoDesdePrimeroDiaMes();
             UILogic.actualizarEstadoBotonLogicaCubierto();
             UILogic.actualizarEstadoBotonObjetivoPorRegistro();
             UILogic.actualizarEstadoBotonAplicarHoras();
@@ -7609,7 +7782,7 @@ Generado por Sistema Lushibosca
             _restaurarEstadoVisual();
 
             PWAInstaller.init();
-            actualizarUI();
+            actualizarUI(null, false, false, true);
             _iniciarCicloStats();
             actualizarBotonesHistorico();
 
@@ -7638,38 +7811,35 @@ Generado por Sistema Lushibosca
             window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
         }
 
-        function aplicarFeedbackCampos(campos) {
-            const cambiarTextoSuave = (label, nuevoTexto, color) => {
-                if (!label) return;
-                label.style.opacity = '0';
-                label.style.transform = 'translateY(-3px)';
-                setTimeout(() => {
-                    label.textContent = nuevoTexto;
-                    label.style.color = color;
-                    label.style.opacity = '1';
-                    label.style.transform = 'translateY(0)';
-                }, 150);
-            };
-
+        function aplicarFeedbackCampos(campos, texto = '✓ Agregado', color = 'var(--c-green)') {
             const activos = campos
                 .filter(c => c.mostrar)
                 .map(c => {
                     const input = document.getElementById(c.id);
                     const label = input?.closest('.form-group')?.querySelector('label');
                     const textoOriginal = label ? label.textContent : c.fallback;
-                    if (input && label) {
-                        input.classList.add('input-agregado-animacion');
-                        cambiarTextoSuave(label, '✓ Agregado', 'var(--c-green)');
-                    }
+                    if (input && label) input.classList.add('input-agregado-animacion');
                     return { input, label, textoOriginal };
                 });
 
+            const labels = activos.filter(a => a.input && a.label).map(a => a.label);
+
+            _fadeSwapCiclo(labels, () => {
+                activos.forEach(({ input, label }) => {
+                    if (!input || !label) return;
+                    label.textContent = texto;
+                    label.style.color = color;
+                });
+            });
+
             setTimeout(() => {
-                activos.forEach(({ input, label, textoOriginal }) => {
-                    if (input && label) {
-                        input.classList.remove('input-agregado-animacion');
-                        cambiarTextoSuave(label, textoOriginal, '');
-                    }
+                activos.forEach(({ input }) => { if (input) input.classList.remove('input-agregado-animacion'); });
+                _fadeSwapCiclo(labels, () => {
+                    activos.forEach(({ input, label, textoOriginal }) => {
+                        if (!input || !label) return;
+                        label.textContent = textoOriginal;
+                        label.style.color = '';
+                    });
                 });
             }, 2000);
         }
@@ -7689,7 +7859,7 @@ Generado por Sistema Lushibosca
             if (seleccionados > 0) {
                 const nuevosDias = Array.from(checkboxes).map(cb => parseInt(cb.value)).sort((a, b) => a - b);
                 D.setDiasHabiles(nuevosDias);
-                const esDefault = window.PerfilManager && PerfilManager.obtenerPerfilActual() === 'default';
+                const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
                 if (esDefault) StorageHelper.setItem(STORAGE_KEYS.DIAS_HABILES, nuevosDias);
                 D.guardarYActualizar();
             }
@@ -7698,23 +7868,28 @@ Generado por Sistema Lushibosca
             }
         }
 
+        function _ajustarStepperHoras(el, incremento) {
+            let valorActual = parseFloat(el.dataset.valor);
+            if (isNaN(valorActual)) valorActual = D.horasDiarias();
+            const nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
+            if (isNaN(nuevoValor)) return nuevoValor;
+            el.dataset.valor = nuevoValor;
+            el.textContent = TimeUtils.horasATexto(nuevoValor, 'short');
+            return nuevoValor;
+        }
+
         const _pressHoldHoras = _crearPressHold(incremento => cambiarHorasDiarias(incremento));
         function iniciarCambioHoras(incremento) { _pressHoldHoras.iniciar(incremento); }
         function detenerCambio() { _pressHoldHoras.detener(); }
 
         function cambiarHorasDiarias(incremento) {
-            let valorActual = parseFloat($('config-horas-diarias').dataset.valor);
-            if (isNaN(valorActual)) valorActual = D.horasDiarias();
-            let nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
+            const nuevoValor = _ajustarStepperHoras($('config-horas-diarias'), incremento);
             if (isNaN(nuevoValor)) return;
 
-            const elHoras = $('config-horas-diarias');
-            elHoras.dataset.valor = nuevoValor;
-            elHoras.textContent = TimeUtils.horasATexto(nuevoValor, 'short');
             actualizarFeedbackConfig();
             D.setHorasDiarias(nuevoValor);
 
-            const esDefault = window.PerfilManager && PerfilManager.obtenerPerfilActual() === 'default';
+            const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
             if (esDefault) StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, nuevoValor);
             D.guardarYActualizar();
         }
@@ -7726,11 +7901,7 @@ Generado por Sistema Lushibosca
         function cambiarObjetivoEdicion(incremento) {
             const el = $('edit-objetivo');
             if (!el) return;
-            let valorActual = parseFloat(el.dataset.valor);
-            if (isNaN(valorActual)) valorActual = D.horasDiarias();
-            const nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
-            el.dataset.valor = nuevoValor;
-            el.textContent = TimeUtils.horasATexto(nuevoValor, 'short');
+            _ajustarStepperHoras(el, incremento);
             verificarBloqueoCredito();
         }
 
@@ -7746,12 +7917,12 @@ Generado por Sistema Lushibosca
 
         return {
             init, obtenerFechaHoy: TimeUtils.obtenerFechaHoy, pegarHoraActual, alternarTema, alternarVista, cerrarConfig, abrirSelectorMesesCalendario,
-            cerrarEdicion, mostrarImportar, cerrarImportar, actualizarUI, mostrarToast, mostrarError, actualizarEstadoBotonSaldoDesdeEnero,
+            cerrarEdicion, mostrarImportar, cerrarImportar, actualizarUI, mostrarToast, mostrarError,
             limpiarError, resetearBoton, restaurarBotonGuardarEdicion, toggleFormulario, aplicarOrdenCards, iniciarDragOrdenCards,
             limpiarCampo, mostrarFiltros, cerrarFiltros, registrarLoteDesdeCard, irHoyCalendario, obtenerOrdenCards,
             cambiarMesStats, generarReporte, toggleHistorico, toggleStats, sumarMinutosAHora, actualizarEstadoBotonHoverPopup,
-            toggleTimerBreakMain, actualizarEstadoBotonTimerMain, toggleBloqueoEdicion, setBloqueoEdicion, actualizarEstadoBotonSaldoDesdePrimeroDiaMes,
-            actualizarFeedbackConfig, poblarSelectorMeses, abrirSelectorPerfiles, actualizarBotonLote, toggleSaldoDesdeEnero, toggleSaldoDesdePrimeroDiaMes,
+            toggleTimerBreakMain, actualizarEstadoBotonTimerMain, toggleBloqueoEdicion, setBloqueoEdicion,
+            actualizarFeedbackConfig, poblarSelectorMeses, abrirSelectorPerfiles, actualizarBotonLote,
             toggleLogicaCubierto, actualizarEstadoBotonLogicaCubierto,
             toggleObjetivoPorRegistro, actualizarEstadoBotonObjetivoPorRegistro,
             aplicarHorasConfiguradasATodos, actualizarEstadoBotonAplicarHoras,
@@ -7773,7 +7944,7 @@ Generado por Sistema Lushibosca
             _activarVistaCalendarioHistorico, _agruparMesesPorAnio, _nombreMesCapitalizado, _renderSelectorStats,
             setModoEstadisticas, setTiempoExpansionBotones, getFondoCard,
             actualizarListaRegistros, getVistaHistoricoCalendario, _cerrarSelectorMeses, _renderizarCalendario,
-            _getLabelFondo, _iniciarCicloStats,
+            _getLabelFondo, _iniciarCicloStats, _cicloStatsActivo, _prepararMostrarFaseAlRenderizar, _forzarVista, vistaActual: D.vistaActual,
         };
 
     })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje);
@@ -7854,7 +8025,7 @@ Generado por Sistema Lushibosca
             if (!pendientes.length) return;
 
             const nombreMes = TimeUtils.formatoTituloMes(prefijoMes).split(' ')[0];
-            const lineas = pendientes.map(f => `🎉 ${f.nombre} — ${TimeUtils.obtenerNombreDia(f.fecha)} ${parseInt(f.fecha.slice(8), 10)}`);
+            const lineas = pendientes.map(f => `🎉 ${TimeUtils.obtenerNombreDia(f.fecha)} ${parseInt(f.fecha.slice(8), 10)} — ${f.nombre}`);
             const pregunta = pendientes.length > 1 ? `¿Querés agregar estos ${pendientes.length} días como Feriado?` : '¿Querés agregar este día como Feriado?';
             const texto = `${lineas.join('\n')}\n\n${pregunta}`;
 
@@ -7952,7 +8123,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
-    $('stats-card')?.addEventListener('click', () => UILogic.alternarVista());
+    $('stats-card')?.addEventListener('click', (e) => {
+        const enStatsNumber = e.target.closest('#stats-semana');
+        if (enStatsNumber && UILogic.vistaActual() !== 'semana' && !UILogic._cicloStatsActivo()) {
+            const ciclado = UILogic._iniciarCicloStats(true);
+            if (ciclado) {
+                e.stopPropagation();
+                return;
+            }
+        }
+        UILogic.alternarVista();
+    });
 
     $('btn-timer-main')?.addEventListener('click', () => UILogic.toggleTimerBreakMain());
     $('btn-agregar')?.addEventListener('click', () => UILogic.ejecutarAccionRegistro());
@@ -7976,7 +8157,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelector('#card-historico .card-header-clickable')?.addEventListener('click', () => UILogic.toggleHistorico());
     $('btn-vista-calendario')?.addEventListener('click', () => UILogic.toggleVistaHistorico());
-    $('btn-filtro')?.addEventListener('click', () => UILogic.mostrarFiltros());
+    $('btn-filtro')?.addEventListener('click', (e) => UILogic.mostrarFiltros(e));
     $('btn-undo')?.addEventListener('click', () => HistoryManager.undo());
     $('btn-redo')?.addEventListener('click', () => HistoryManager.redo());
 
@@ -7992,8 +8173,6 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-fondo')?.addEventListener('click', () => UILogic.toggleFondoCard());
     $('btn-toggle-ignorar-tf')?.addEventListener('click', () => UILogic.toggleIgnorarTiempoFuera());
     $('btn-toggle-hover-popup')?.addEventListener('click', () => UILogic.toggleHoverPopupCalendario());
-    $('btn-toggle-saldo-enero')?.addEventListener('click', () => UILogic.toggleSaldoDesdeEnero());
-    $('btn-toggle-saldo-primero-mes')?.addEventListener('click', () => UILogic.toggleSaldoDesdePrimeroDiaMes());
     $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
     $('btn-toggle-objetivo-registro')?.addEventListener('click', () => UILogic.toggleObjetivoPorRegistro());
     $('btn-aplicar-horas-todos')?.addEventListener('click', () => UILogic.aplicarHorasConfiguradasATodos());
@@ -8062,7 +8241,6 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelector('#modal-exportar .btn-export')?.addEventListener('click', () => UILogic.ejecutarExportacion());
     $('btn-volver-exportar')?.addEventListener('click', () => UILogic.cerrarExportar());
 
-    document.querySelector('#modal-filtros .btn-cancel')?.addEventListener('click', () => UILogic.cerrarFiltros());
 
     document.querySelector('#modal-selector-perfiles .btn-settings')?.addEventListener('click', () => UILogic.mostrarconfig());
     $('theme-toggle-modal')?.addEventListener('click', () => UILogic.alternarTema());
@@ -8082,7 +8260,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260801';
+        const _v = '-v260815';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

@@ -661,7 +661,8 @@ button:disabled {
 .progress-fill {
     height: 100%;
     background: var(--bg-card);
-    transition: width 0.5s;
+    border-radius: var(--radius);
+    transition: width 0.5s, background-color 0.5s ease;
     position: relative;
     overflow: hidden;
 }
@@ -791,15 +792,12 @@ button:disabled {
 
 .registro-total.green-text,
 .calendario-dia.dia-normal,
-.toast.success,
 .cal-popup-badge--green,
 .progress-fill.green {
     background: var(--c-green);
 }
 
 .registro-total.red-text,
-.toast.error,
-.toast.warning,
 .calendario-dia.dia-incompleto,
 .calendario-dia.dia-especial-red,
 .progress-fill.red,
@@ -833,7 +831,6 @@ button:disabled {
 .calendario-dia.dia-especial-blue,
 .registro-total.blue-text,
 .calendario-dia.dia-en-curso,
-.toast.info,
 .cal-popup-badge--blue,
 .progress-fill.blue {
     background: var(--c-blue);
@@ -942,11 +939,12 @@ button:disabled {
     justify-content: center;
     transform: translateX(-50%) translateY(80px);
     transition: var(--transition-anim);
-    background: var(--bg-toast);
-    color: white;
+    background: var(--bg-card);
+    color: var(--text-main);
+    border: 2px solid transparent;
     padding: var(--space-lg) var(--space-xl);
     border-radius: var(--radius);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow);
     opacity: 0;
     z-index: 1000;
     display: flex;
@@ -954,7 +952,6 @@ button:disabled {
     gap: var(--space-md);
     white-space: pre-line;
     pointer-events: none;
-    backdrop-filter: blur(3px);
     width: calc(100% - 4rem);
     max-width: 400px;
     text-align: center;
@@ -1106,7 +1103,8 @@ button:disabled {
 /* ─── CAL POPUP ──────────────────────────────────────────────────────────────── */
 
 .cal-popup,
-.stat-popup {
+.stat-popup,
+.filtro-popup {
     position: fixed;
     z-index: 90;
     background: var(--bg-card);
@@ -1130,7 +1128,8 @@ button:disabled {
 }
 
 .cal-popup.listo,
-.stat-popup.listo {
+.stat-popup.listo,
+.filtro-popup.listo {
     pointer-events: all;
 }
 
@@ -1227,6 +1226,27 @@ button:disabled {
     border: none;
     border-top: 1px solid var(--border);
     margin: 10px 0;
+}
+
+/* ─── FILTRO POPUP ───────────────────────────────────────────────────────────── */
+
+.filtro-popup {
+    width: 250px;
+    max-width: calc(100vw - 16px);
+    gap: 0;
+}
+
+.filtro-popup-titulo {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+    margin-bottom: var(--space-md);
+}
+
+.filtro-popup .form-group:last-child {
+    margin-bottom: 0;
 }
 
 /* ─── COLLAPSIBLE SECTIONS ───────────────────────────────────────────────────── */
@@ -1771,16 +1791,16 @@ body.config-onboarding .label-footer-empezar {
 }
 
 @keyframes campo-flash {
-
     0%,
+    60%,
     100% {
-        border-color: var(--text-main);
+        border-color: transparent;
         box-shadow: none;
     }
 
-    30%,
-    70% {
-        border-color: var(--input-focus);
+    20%,
+    40% {
+        border-color: var(--text-main);
         box-shadow: var(--shadow);
     }
 }
@@ -1789,6 +1809,25 @@ input.campo-flash,
 select.campo-flash,
 button.campo-flash {
     animation: campo-flash 500ms ease-in-out 2;
+}
+
+@keyframes campo-flash-color {
+    0%,
+    60%,
+    100% {
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    20%,
+    40% {
+        border-color: var(--flash-color);
+        box-shadow: var(--shadow);
+    }
+}
+
+button.campo-flash-color {
+    animation: campo-flash-color 500ms ease-in-out 2;
 }
 
 @keyframes icono-spin {
@@ -1811,9 +1850,9 @@ button.campo-flash {
 
     :is([id^="btn-toggle-"],
         #btn-reporte,
-        .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist,
-        .btn-delete, .btn-cancel, .btn-export, .btn-merge, .btn-backup, .btn-edit,
-        .calendario-nav button):hover:not(:disabled) {
+        .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist, .card-section-title, 
+        .btn-delete, .btn-cancel, .stats-number, .btn-export, .btn-merge, .btn-backup, .btn-edit,
+        .calendario-nav button, .btn-settings, .btn-register):hover:not(:disabled) {
         filter: var(--hover);
     }
 
