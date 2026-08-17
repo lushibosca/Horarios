@@ -46,12 +46,6 @@
     const horasGte = (valor, objetivo) => (valor - objetivo) > -EPS_HORAS;
     const horasEq = (valor, objetivo) => Math.abs(valor - objetivo) < EPS_HORAS;
 
-    function _applyDataColors(root) {
-        root.querySelectorAll('[data-color]').forEach(el => {
-            el.style.color = el.dataset.color;
-        });
-    }
-
     // ====================================================================
     // PWA INSTALLER MODULE
     // ====================================================================
@@ -125,6 +119,22 @@
 
         function validarHora(h) {
             return !!(h && REGEX_PATTERNS.HORA.test(h));
+        }
+
+        /**
+         * Si el valor es un número suelto entre 1 y 60 (sin ":"), lo interpreta
+         * como minutos y lo normaliza a formato hh:mm (ej: "20" -> "00:20", "60" -> "01:00").
+         * Si no aplica (ya es hh:mm, vacío, fuera de rango, etc.) devuelve el valor sin tocar.
+         * @param {string} valor
+         * @returns {string}
+         */
+        function normalizarMinutosSueltos(valor) {
+            if (!valor) return valor;
+            if (!/^\d{1,2}$/.test(valor)) return valor;
+            const n = parseInt(valor, 10);
+            if (n < 1 || n > 60) return valor;
+            if (n === 60) return '01:00';
+            return `00:${String(n).padStart(2, '0')}`;
         }
 
         function parsearFechaLocal(fechaStr) {
@@ -272,7 +282,7 @@
         }
 
         return {
-            validarFecha, validarHora, parsearFechaLocal, formatearFechaLocal,
+            validarFecha, validarHora, normalizarMinutosSueltos, parsearFechaLocal, formatearFechaLocal,
             obtenerFechaHoy, obtenerHoraActual, minutosAHora, fechaLocalISOFull,
             horaAMinutos, sumarMinutosAHora, descomponerHorasDecimales,
             obtenerNombreDia, obtenerLunes, obtenerLunesSemanaISO, obtenerSemanaRangoActual,
@@ -1102,8 +1112,8 @@
             $('edit-grupo-desde').value = grupoEnEdicion.fechaDesde;
             $('edit-grupo-hasta').value = grupoEnEdicion.fechaHasta;
             notify.actualizarHintGrupo();
-            ModalManager.abrir('modal-editar-grupo');
             notify.setBloqueoEdicionGrupo(true);
+            ModalManager.abrir('modal-editar-grupo');
         }
 
         function _validarRangoGrupo(nuevoTipo, nuevaDesde, nuevaHasta) {
@@ -1202,8 +1212,8 @@
             const esHoy = fecha === TimeUtils.obtenerFechaHoy();
             HistoryManager.saveState(registros, `agregar ${tipoConfig.label} (${TimeUtils.fechaCorta(fecha)})`);
             const saved = await _guardarConCicloSiHoy(nuevoId, esHoy);
-            if (saved) { 
-                notify.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success'); 
+            if (saved) {
+                notify.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success');
                 notify.flashCampoTipo('success', 'btn-agregar');
             }
             else { throw new Error('Error al guardar'); }
@@ -1461,9 +1471,6 @@
             }
 
             const btnCredito = document.getElementById('btn-toggle-credito');
-            btnCredito.style.background = '';
-            btnCredito.style.color = '';
-            btnCredito.style.border = '';
 
             if (r.credito && r.credito !== '00:00') {
                 btnCredito.dataset.activo = "true";
@@ -1473,8 +1480,8 @@
                 btnCredito.classList.remove('btn-activo');
             }
 
-            ModalManager.abrir('modal-editar');
             notify.setBloqueoEdicion(true);
+            ModalManager.abrir('modal-editar');
 
             requestAnimationFrame(() => {
                 notify.verificarBloqueoCredito();
@@ -1563,6 +1570,7 @@
             const e = S.sanitizeString($('edit-entrada').value.trim(), 5);
             const s = S.sanitizeString($('edit-salida').value.trim(), 5);
             let tf = S.sanitizeString($('edit-tiempo-fuera').value.trim(), 5) || null;
+            tf = tf ? TimeUtils.normalizarMinutosSueltos(tf) : tf;
             let notas = S.sanitizeString($('edit-notas').value.trim(), S.SECURITY_LIMITS.MAX_NOTAS_LENGTH);
             if (notas) notas = S.sanitizeNotas(notas, true) || null;
             if (notas === '') notas = null;
@@ -2194,9 +2202,8 @@
             toast.classList.remove('show');
             toast.textContent = actual.mensaje;
             toast.className = `toast ${actual.tipo}`;
-            toast.style.borderColor = _COLOR_TOAST_POR_TIPO[actual.tipo] || '';
             let duracionFinal = actual.duracionBase || 3000;
-            if (_toastQueue.length >= 2) {
+            if (_toastQueue.length >= 1) {
                 duracionFinal = Math.floor(duracionFinal / 2);
             }
 
@@ -2212,9 +2219,7 @@
 
         function resetearBoton(btn) {
             btn.disabled = false;
-            btn.style.background = '';
-            btn.style.color = '';
-            btn.style.borderColor = '';
+            btn.classList.remove('btn-color-muted', 'btn-color-red');
             btn.innerHTML = '<svg class="icon"><use href="#icon-save"/></svg> <span id="btn-registrar-texto">Fichar</span>';
         }
 
@@ -2508,7 +2513,6 @@
                 const container = Object.assign(document.createElement('div'), {
                     className: `btn-perfil-select ${p.esActual ? 'activo' : ''}`
                 });
-                if (p.esActual) container.style.cursor = 'default';
 
                 const countText = `${p.totalRegistros} registro${p.totalRegistros !== 1 ? 's' : ''}`;
                 const infoSection = Object.assign(document.createElement('div'), { className: 'btn-perfil-info' });
@@ -2517,7 +2521,6 @@
                     className: 'btn-perfil-badge',
                     textContent: p.esActual ? `${countText} · Activo` : countText
                 });
-                if (p.esActual) badge.style.color = 'var(--c-green)';
                 infoSection.appendChild(badge);
 
                 const editBtn = Object.assign(document.createElement('button'), {
@@ -2590,7 +2593,7 @@
             renderizarListaPerfiles();
             requestAnimationFrame(() => {
                 const ultimo = document.getElementById('lista-perfiles-botones')?.lastElementChild;
-                if (ultimo) { ultimo.style.animation = 'zoomIn 0.3s ease-out'; ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                if (ultimo) { ultimo.classList.add('zoom-in-anim'); ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
             });
         }
 
@@ -2625,6 +2628,8 @@
                 const inputNuevo = document.getElementById('nombre-nuevo-perfil-selector');
                 if (inputNuevo) inputNuevo.value = '';
                 renderizarListaPerfiles();
+                const btnEliminar = document.getElementById('btn-eliminar-perfil-editor');
+                if (btnEliminar) btnEliminar.disabled = true;
             });
         }
 
@@ -2820,7 +2825,7 @@
             const btnFiltro = document.getElementById('btn-filtro');
             if (lista) lista.classList.add('hidden');
             if (cal) cal.classList.remove('hidden');
-            if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
+            if (btnFiltro) btnFiltro.disabled = false;
             _renderizarCalendario();
         }
 
@@ -2937,7 +2942,7 @@
                     entrante.classList.remove('fade-out');
                 }
 
-                if (btnFiltro) { btnFiltro.disabled = false; btnFiltro.style.opacity = ''; }
+                if (btnFiltro) btnFiltro.disabled = false;
                 if (_vistaHistoricoCalendario) _renderizarCalendario();
             });
 
@@ -2973,23 +2978,23 @@
             if (reg.tiempoFuera && reg.tiempoFuera !== '00:00') {
                 tfStr = `${TimeUtils.horasATexto(TimeUtils.horaAMinutos(reg.tiempoFuera) / 60, 'short')} fuera`;
             }
-            let totalConDiff = totalStr, diffColor = '', cubiertoLineaHtml = '';
+            let totalConDiff = totalStr, diffClase = '', cubiertoLineaHtml = '';
             const objetivoReg = D.objetivoDeRegistro(reg);
             if (objetivoReg > 0 && UILogic._esFechaHabil(reg.fecha, D.diasHabiles())) {
                 const diffText = formatoDiferencia(totalHoras, objetivoReg);
                 if (horasGte(totalHoras, objetivoReg)) {
-                    diffColor = 'var(--c-green)';
+                    diffClase = 'cal-popup-info--green';
                     if (diffText) totalConDiff += ` (${diffText})`;
                 } else if (UILogic._cubiertoPorSaldo(reg.fecha)) {
-                    diffColor = 'var(--c-gold)';
+                    diffClase = 'cal-popup-info--gold';
                     if (diffText) totalConDiff += ` (${diffText})`;
                     cubiertoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--gold">Cubierto</span>`;
                 } else {
-                    diffColor = 'var(--c-red)';
+                    diffClase = 'cal-popup-info--red';
                     if (diffText) totalConDiff += ` (${diffText})`;
                 }
             }
-            return `<div class="cal-popup-info${diffColor ? ' cal-popup-info--dynamic' : ''}"${diffColor ? ` data-color="${diffColor}"` : ''}>${totalConDiff}</div>
+            return `<div class="cal-popup-info${diffClase ? ' ' + diffClase : ''}">${totalConDiff}</div>
                 ${cubiertoLineaHtml}
                 <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} – ${S.escapeHtml(reg.salida)}</div>
                 ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
@@ -3041,7 +3046,6 @@
                 </button>
                 ${btnGrupoHtml}`;
 
-            _applyDataColors(popup);
             popup.style.visibility = 'hidden';
             document.body.appendChild(popup);
             _popupCalendarioEl = popup;
@@ -3870,7 +3874,7 @@
             const c = configs[estado];
             _setBtnActivo(btn.id, c.activo);
             if (label) label.textContent = c.texto;
-            if (hint) { hint.textContent = c.hint; hint.style.color = c.color; }
+            if (hint) hint.textContent = c.hint;
 
             if (rangoEl) {
                 const activo = estado === 1 || estado === 2;
@@ -4322,7 +4326,7 @@
 
             if (debeEstarExpandido) {
                 detalleMesActual.classList.add('expanded');
-                chevron.style.transform = 'rotate(180deg)';
+                chevron.classList.add('rotated');
             }
 
             let semanaAnterior = null;
@@ -4383,7 +4387,7 @@
             detalle.appendChild(innerAnio);
             let expandido = false;
             try { expandido = StorageHelper.getItem(STORAGE_KEYS.ANIO_EXPANDIDO(anio)) === 'true'; } catch (e) { }
-            if (expandido) { detalle.classList.add('expanded'); chevron.style.transform = 'rotate(180deg)'; }
+            if (expandido) { detalle.classList.add('expanded'); chevron.classList.add('rotated'); }
 
             mesesDelAnio.forEach((registrosDelMes, claveMes) =>
                 innerAnio.appendChild(crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy))
@@ -4501,6 +4505,7 @@
             ModalManager.cerrar('modal-editar', () => {
                 D.setEditandoId(null);
                 document.dispatchEvent(new Event('scroll'));
+                setBloqueoEdicion(true);
             });
         }
 
@@ -4510,8 +4515,7 @@
                 const icon = btnLock.querySelector('use');
                 icon.setAttribute('href', bloqueado ? '#icon-lock' : '#icon-lock-open');
                 btnLock.title = bloqueado ? "Desbloquear edición" : "Bloquear edición";
-                btnLock.style.color = 'var(--text-main)';
-                btnLock.style.background = bloqueado ? 'var(--c-red)' : 'var(--c-green)';
+                btnLock.classList.toggle('bloqueado', bloqueado);
             }
 
             inputIds.forEach(id => {
@@ -4566,7 +4570,8 @@
             if (!hint) return;
             const e = document.getElementById('edit-entrada')?.value.trim();
             const s = document.getElementById('edit-salida')?.value.trim();
-            const tf = document.getElementById('edit-tiempo-fuera')?.value.trim();
+            let tf = document.getElementById('edit-tiempo-fuera')?.value.trim();
+            if (tf) tf = TimeUtils.normalizarMinutosSueltos(tf);
             if (!e && !s) { hint.textContent = ''; return; }
             const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(e, s);
             if (tipoEspecial) { hint.textContent = tipoEspecial.label; return; }
@@ -4606,7 +4611,7 @@
                 const chevronAnio = headerAnio.querySelector('.chevron-mes');
                 const anioId = headerAnio.dataset.anioId;
                 const abierto = detalleAnio.classList.toggle('expanded');
-                if (chevronAnio) chevronAnio.style.transform = abierto ? 'rotate(180deg)' : 'rotate(0deg)';
+                if (chevronAnio) chevronAnio.classList.toggle('rotated', abierto);
                 try { StorageHelper.setItem(STORAGE_KEYS.ANIO_EXPANDIDO(anioId), String(abierto)); } catch (e) { }
             });
         }
@@ -4637,7 +4642,7 @@
 
                 if (detalle.classList.contains('expanded')) {
                     detalle.classList.remove('expanded');
-                    chevronIcon.style.transform = 'rotate(0deg)';
+                    chevronIcon.classList.remove('rotated');
                     try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'false'); } catch (e) { }
                     return;
                 }
@@ -4654,7 +4659,7 @@
                     const oc = otro.closest('.registro-mes-container');
                     const och = oc?.querySelector('.chevron-mes');
                     const oHeader = oc?.querySelector('.registro-mes-header');
-                    if (och) och.style.transform = 'rotate(0deg)';
+                    if (och) och.classList.remove('rotated');
                     const id = oHeader?.dataset[datasetKey];
                     if (id) {
                         try { StorageHelper.setItem(storageKeyFn(id), 'false'); } catch (e) { }
@@ -4668,7 +4673,7 @@
 
                 const _abrirDetalle = () => {
                     detalle.classList.add('expanded');
-                    chevronIcon.style.transform = 'rotate(180deg)';
+                    chevronIcon.classList.add('rotated');
                     try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'true'); } catch (e) { }
                     _scrollAlExpandir(contenedor, detalle);
                 };
@@ -4775,7 +4780,7 @@
         function _setIconHistorico(icon, estado) {
             if (!icon) return;
             icon.classList.toggle('rotated', estado === 'meses');
-            icon.style.transform = estado === 'completo' ? 'rotate(-90deg)' : '';
+            icon.classList.toggle('icon-rotate-neg90', estado === 'completo');
         }
 
         function toggleHistorico() {
@@ -4833,10 +4838,7 @@
                 if (botones && botones.classList.contains('expanded')) {
                     botones.classList.remove('expanded');
 
-                    if (icon) {
-                        icon.style.transform = '';
-                        icon.classList.add('rotated');
-                    }
+                    if (icon) _setIconHistorico(icon, 'meses');
 
                     try {
                         StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
@@ -4864,11 +4866,9 @@
 
             const _bloquear = () => {
                 btnCredito.disabled = true;
-                btnCredito.style.cursor = 'not-allowed';
             };
             const _habilitar = () => {
                 btnCredito.disabled = false;
-                btnCredito.style.cursor = 'pointer';
             };
 
             if (document.getElementById('edit-fecha').disabled) return _bloquear();
@@ -4910,6 +4910,7 @@
             ModalManager.cerrar('modal-editar-grupo', () => {
                 D.setGrupoEnEdicion(null);
                 document.dispatchEvent(new Event('scroll'));
+                setBloqueoEdicionGrupo(true);
             });
         }
 
@@ -5101,7 +5102,8 @@
                     itemSaldo.style.display = '';
                     const b = stats.bufferPeriodo;
                     elSaldo.textContent = b === 0 ? '0h' : TimeUtils.horasATexto(b, 'short');
-                    elSaldo.style.color = b > 0 ? 'var(--c-green)' : b < 0 ? 'var(--c-red)' : 'var(--text-main)';
+                    elSaldo.classList.remove('saldo-positivo', 'saldo-negativo', 'saldo-neutro');
+                    elSaldo.classList.add(b > 0 ? 'saldo-positivo' : b < 0 ? 'saldo-negativo' : 'saldo-neutro');
                 }
             }
         }
@@ -5573,7 +5575,7 @@ Generado por Sistema Lushibosca
             'stat-regularidad-entrada': { titulo: 'Entrada Regular', desc: 'Qué tan constante es tu hora de entrada. Muestra la desviación promedio en minutos respecto al horario habitual: hasta 20m es Alta, hasta 40m Media, y más de 40m Baja.' },
             'stat-regularidad-jornada': { titulo: 'Jornada Regular', desc: 'Qué tan constante es la duración de tu jornada. Muestra la desviación promedio en minutos respecto a la duración habitual: hasta 20m es Alta, hasta 40m Media, y más de 40m Baja.' },
             'stat-tiempo-fuera-total': { titulo: 'Tiempo Fuera', desc: 'Suma de los tiempos fuera (salidas del establecimiento, almuerzo, etc.) registrados en las jornadas del período.' },
-            'stat-saldo': { titulo: 'Saldo', desc: 'Diferencia entre las horas trabajadas y las horas objetivo del período, según tus ajustes de horas diarias, días hábiles y cálculos de saldo.' },
+            'stat-saldo': { titulo: 'Saldo', desc: 'Diferencia entre las horas trabajadas y las horas objetivo del período, según tus ajustes de horas diarias, días hábiles.' },
             'stat-dias-trabajados': { titulo: 'Jornadas', desc: 'Cantidad de jornadas con entrada y salida completas registradas en el período.' },
             'stat-compensaciones': { titulo: 'Salidas Temprano', desc: 'Cantidad de jornadas en las que se registró un crédito por salida anticipada.' },
         };
@@ -5587,13 +5589,20 @@ Generado por Sistema Lushibosca
             let info = DESCRIPCIONES_STATS[statId];
             if (statId === 'stat-saldo' && info) {
                 const modoTexto = modoEstadisticas === 'anual'
-                    ? 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del año.'
+                    ? 'El saldo se calcula a partir del PRIMER REGISTRO del año.'
                     : modoEstadisticas === 'mensual'
-                        ? 'Actualmente el saldo se calcula a partir del PRIMER REGISTRO del mes.'
-                        : null;
+                        ? 'El saldo se calcula a partir del PRIMER REGISTRO del mes.'
+                        : modoEstadisticas === 'semanal'
+                            ? 'El saldo se calcula a partir del PRIMER DÍA LABORAL de la semana.'
+                            : null;
                 if (modoTexto) {
                     info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>${modoTexto}</strong>` };
                 }
+            }
+            if (statId === 'stat-dias-trabajados' && info) {
+                const nombresDias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+                const diasTexto = [...D.diasHabiles()].sort((a, b) => a - b).map(d => nombresDias[d]).join(', ');
+                info = { titulo: info.titulo, desc: `${info.desc}<hr class="stat-popup-sep"><strong>Días hábiles: ${diasTexto}.</strong>` };
             }
             if (statId === 'stat-tiempo-fuera-total' && info) {
                 const ignorarTF = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_TF, false, true);
@@ -5837,21 +5846,21 @@ Generado por Sistema Lushibosca
             const outgoing = _bgActiveLayer === 'a' ? layerA : layerB;
 
             incoming.style.zIndex = '2';
-            incoming.style.opacity = '0';
+            incoming.classList.remove('visible');
             incoming.innerHTML = nuevoSVG;
 
             outgoing.style.zIndex = '1';
-            outgoing.style.opacity = '0';
+            outgoing.classList.remove('visible');
 
             if (_bgFadeTimer) { clearTimeout(_bgFadeTimer); _bgFadeTimer = null; }
 
             incoming.offsetHeight;
-            incoming.style.opacity = '1';
+            incoming.classList.add('visible');
 
             _bgActiveLayer = _bgActiveLayer === 'a' ? 'b' : 'a';
             _bgFadeTimer = setTimeout(() => {
                 outgoing.innerHTML = '';
-                outgoing.style.opacity = '0';
+                outgoing.classList.remove('visible');
                 _bgFadeTimer = null;
             }, 650);
         }
@@ -6159,9 +6168,9 @@ Generado por Sistema Lushibosca
             if (mostrarBuffer) {
                 const minutosConBuffer = minutosTotal - (bufferSemanal * 60);
                 const horaBuf = _minutosAHoraWrap(minutosConBuffer);
-                const colorBuffer = bufferSemanal > 0 ? 'var(--c-green)' : bufferSemanal < 0 ? 'var(--c-red)' : 'var(--text-main)';
+                const claseBuffer = bufferSemanal > 0 ? ' hint-buffer-color--green' : bufferSemanal < 0 ? ' hint-buffer-color--red' : '';
                 return {
-                    hint: `Salida estimada: <strong>${horaSalida}</strong> <span class="hint-buffer-color" data-color="${colorBuffer}">(<strong>${horaBuf}</strong>)</span>`,
+                    hint: `Salida estimada: <strong>${horaSalida}</strong> <span class="hint-buffer-color${claseBuffer}">(<strong>${horaBuf}</strong>)</span>`,
                     hintEsHTML: true
                 };
             }
@@ -6491,7 +6500,7 @@ Generado por Sistema Lushibosca
         function _renderHint(vista) {
             const el = $('toggle-hint');
             if (!el) return;
-            if (vista.hintEsHTML) { el.innerHTML = vista.hint; _applyDataColors(el); }
+            if (vista.hintEsHTML) { el.innerHTML = vista.hint; }
             else el.textContent = vista.hint;
         }
 
@@ -6502,13 +6511,11 @@ Generado por Sistema Lushibosca
             const { bufferSemanal, horasDiarias, semanaAbierta } = est;
             if (horasDiarias > 0 && Math.abs(bufferSemanal) > 0.01 && semanaAbierta) {
                 const esPositivo = bufferSemanal > 0;
-                const color = esPositivo ? 'var(--c-green)' : 'var(--c-red)';
+                const claseColor = esPositivo ? 'positivo' : 'negativo';
                 const punto = document.createElement('span');
-                punto.className = 'buffer-semanal-punto';
-                punto.style.backgroundColor = color;
+                punto.className = `buffer-semanal-punto ${claseColor}`;
                 const span = document.createElement('span');
-                span.style.color = color;
-                span.style.fontWeight = '500';
+                span.className = `buffer-semanal-texto ${claseColor}`;
                 const { texto: textoBuffer, singular } = _cantidadHoras(Math.abs(bufferSemanal));
                 const adjetivo = esPositivo ? (singular ? 'extra' : 'extras') : (singular ? 'faltante' : 'faltantes');
                 span.textContent = `${textoBuffer} ${adjetivo} esta semana`;
@@ -6761,8 +6768,7 @@ Generado por Sistema Lushibosca
                 $('lote-fecha-desde').value = '';
                 $('lote-fecha-hasta').value = '';
 
-                btn.style.background = '';
-                btn.style.color = '';
+                btn.classList.remove('btn-color-muted', 'btn-color-red');
 
                 setIconoBtn(btn, '#icon-save');
 
@@ -6867,7 +6873,7 @@ Generado por Sistema Lushibosca
                         { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: true }
                     ],
                     tipo === 'normal' ? '✓ Borrado' : '✓ Agregado',
-                    tipo === 'normal' ? 'var(--c-red)' : 'var(--c-green)'
+                    tipo === 'normal' ? 'label-feedback--red' : 'label-feedback--green'
                 );
                 _limpiarCamposLote();
                 actualizarBotonLote();
@@ -6893,14 +6899,15 @@ Generado por Sistema Lushibosca
             });
         }
 
-        function _pintarBotonLote(btn, btnTexto, texto, color = '', icono = '#icon-save') {
+        function _pintarBotonLote(btn, btnTexto, texto, claseColor = '', icono = '#icon-save') {
             btnTexto.textContent = texto;
-            btn.style.color = color;
+            btn.classList.remove('btn-color-muted', 'btn-color-red');
+            if (claseColor) btn.classList.add(claseColor);
             setIconoBtn(btn, icono);
         }
 
         function _setBtnError(btn, btnTexto, mensaje) {
-            _pintarBotonLote(btn, btnTexto, mensaje, 'var(--text-muted)');
+            _pintarBotonLote(btn, btnTexto, mensaje, 'btn-color-muted');
         }
 
         function _actualizarBtnNormal(btn, btnTexto, desde, hasta) {
@@ -6908,8 +6915,8 @@ Generado por Sistema Lushibosca
                 r.fecha >= desde && r.fecha <= hasta && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
             ).length;
             n > 0
-                ? _pintarBotonLote(btn, btnTexto, `Borrar (${n})`, 'var(--c-red)', '#icon-trash')
-                : _pintarBotonLote(btn, btnTexto, 'Sin Registros', 'var(--text-muted)');
+                ? _pintarBotonLote(btn, btnTexto, `Borrar (${n})`, 'btn-color-red', '#icon-trash')
+                : _pintarBotonLote(btn, btnTexto, 'Sin Registros', 'btn-color-muted');
         }
 
         function _actualizarBtnEspecial(btn, btnTexto, desde, hasta, tipo, diasTotales) {
@@ -6924,7 +6931,7 @@ Generado por Sistema Lushibosca
             const disponibles = diasTotales - diasOcupados;
             const sobreescribirOtros = diasOcupados - yaRegistrados;
 
-            if (disponibles === 0 && yaRegistrados === diasTotales) return _pintarBotonLote(btn, btnTexto, `Fichado (${diasTotales})`, 'var(--text-muted)');
+            if (disponibles === 0 && yaRegistrados === diasTotales) return _pintarBotonLote(btn, btnTexto, `Fichado (${diasTotales})`, 'btn-color-muted');
             if (disponibles === diasTotales) return _pintarBotonLote(btn, btnTexto, `Fichar (${diasTotales})`);
             if (sobreescribirOtros > 0) return _pintarBotonLote(btn, btnTexto, `Fichar (${disponibles} - ${sobreescribirOtros})`);
             return _pintarBotonLote(btn, btnTexto, `Fichar (${disponibles})`);
@@ -6936,15 +6943,14 @@ Generado por Sistema Lushibosca
             const hasta = $('lote-fecha-hasta').value;
             const btn = $('btn-agregar');
             const btnTexto = $('btn-registrar-texto');
-            btn.style.background = '';
 
             if (!desde && !hasta) {
-                if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Rango incompleto');
-                
+                if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Completar rango');
+
                 const hoy = TimeUtils.obtenerFechaHoy();
                 const existeHoy = DataManagement.registros().find(r => r.fecha === hoy);
                 return existeHoy
-                    ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'var(--text-muted)')
+                    ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'btn-color-muted')
                     : _pintarBotonLote(btn, btnTexto, 'Fichar');
             }
 
@@ -6954,7 +6960,7 @@ Generado por Sistema Lushibosca
                 if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Rango incompleto');
                 const existe = DataManagement.registros().find(r => r.fecha === desde);
                 return existe
-                    ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'var(--text-muted)')
+                    ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'btn-color-muted')
                     : _pintarBotonLote(btn, btnTexto, 'Fichar');
             }
 
@@ -7341,13 +7347,13 @@ Generado por Sistema Lushibosca
                 const rect = item.getBoundingClientRect();
                 initialYOffset = clientY - rect.top;
                 dragClone = item.cloneNode(true);
+                dragClone.classList.add('drag-clone');
                 Object.assign(dragClone.style, {
-                    position: 'fixed', top: `${rect.top}px`, left: `${rect.left}px`,
-                    width: `${rect.width}px`, height: `${rect.height}px`, zIndex: '999999',
-                    pointerEvents: 'none', margin: '0', transform: 'scale(1.02)', opacity: '0.9'
+                    top: `${rect.top}px`, left: `${rect.left}px`,
+                    width: `${rect.width}px`, height: `${rect.height}px`
                 });
                 document.body.appendChild(dragClone);
-                draggingEl.style.opacity = '0';
+                draggingEl.classList.add('arrastrando');
                 if (navigator.vibrate) navigator.vibrate(30);
             }
 
@@ -7382,7 +7388,7 @@ Generado por Sistema Lushibosca
                     dragClone.remove();
                     dragClone = null;
                 }
-                draggingEl.style.opacity = '';
+                draggingEl.classList.remove('arrastrando');
 
                 const itemsDOM = Array.from(lista.querySelectorAll('.orden-card-item'));
                 const nuevoOrden = itemsDOM.map(i => getCardFromItem(i)).filter(Boolean);
@@ -7680,11 +7686,11 @@ Generado por Sistema Lushibosca
                     const icon = $('icon-indicator-historico');
                     if (contenido) contenido.classList.add('expanded');
                     if (estadoHistorico === 'meses') {
-                        if (icon) { icon.style.transform = ''; icon.classList.add('rotated'); }
+                        if (icon) { icon.classList.remove('icon-rotate-neg90'); icon.classList.add('rotated'); }
                     } else {
                         const botones = $('botones-historico');
                         if (botones) { botones.classList.add('expanded'); UILogic.setTiempoExpansionBotones(Date.now()); }
-                        if (icon) { icon.classList.remove('rotated'); icon.style.transform = 'rotate(-90deg)'; }
+                        if (icon) { icon.classList.remove('rotated'); icon.classList.add('icon-rotate-neg90'); }
                     }
                 }
 
@@ -7760,8 +7766,8 @@ Generado por Sistema Lushibosca
                     const hayArchivo = e.target.files.length > 0;
                     if (hayArchivo) {
                         if (nombreEl) { nombreEl.textContent = `✓ ${e.target.files[0].name}`; nombreEl.style.display = 'block'; }
-                        if (btnCombinar) { btnCombinar.disabled = false; btnCombinar.style.opacity = '1'; }
-                        if (btnReemplazar) { btnReemplazar.disabled = false; btnReemplazar.style.opacity = '1'; }
+                        if (btnCombinar) btnCombinar.disabled = false;
+                        if (btnReemplazar) btnReemplazar.disabled = false;
                     } else {
                         if (nombreEl) { nombreEl.style.display = 'none'; nombreEl.textContent = ''; }
                         if (btnCombinar) btnCombinar.disabled = true;
@@ -7780,6 +7786,10 @@ Generado por Sistema Lushibosca
             _initSwipesYStats();
             _initDatosYConfig();
             _restaurarEstadoVisual();
+            setBloqueoEdicion(true);
+            setBloqueoEdicionGrupo(true);
+            const btnEliminarPerfil = $('btn-eliminar-perfil-editor');
+            if (btnEliminarPerfil) btnEliminarPerfil.disabled = true;
 
             PWAInstaller.init();
             actualizarUI(null, false, false, true);
@@ -7811,34 +7821,32 @@ Generado por Sistema Lushibosca
             window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
         }
 
-        function aplicarFeedbackCampos(campos, texto = '✓ Agregado', color = 'var(--c-green)') {
+        function aplicarFeedbackCampos(campos, texto = '✓ Agregado', claseColor = 'label-feedback--green') {
             const activos = campos
                 .filter(c => c.mostrar)
                 .map(c => {
                     const input = document.getElementById(c.id);
                     const label = input?.closest('.form-group')?.querySelector('label');
                     const textoOriginal = label ? label.textContent : c.fallback;
-                    if (input && label) input.classList.add('input-agregado-animacion');
-                    return { input, label, textoOriginal };
+                    return { label, textoOriginal };
                 });
 
-            const labels = activos.filter(a => a.input && a.label).map(a => a.label);
+            const labels = activos.filter(a => a.label).map(a => a.label);
 
             _fadeSwapCiclo(labels, () => {
-                activos.forEach(({ input, label }) => {
-                    if (!input || !label) return;
+                activos.forEach(({ label }) => {
+                    if (!label) return;
                     label.textContent = texto;
-                    label.style.color = color;
+                    label.classList.add(claseColor);
                 });
             });
 
             setTimeout(() => {
-                activos.forEach(({ input }) => { if (input) input.classList.remove('input-agregado-animacion'); });
                 _fadeSwapCiclo(labels, () => {
-                    activos.forEach(({ input, label, textoOriginal }) => {
-                        if (!input || !label) return;
+                    activos.forEach(({ label, textoOriginal }) => {
+                        if (!label) return;
                         label.textContent = textoOriginal;
-                        label.style.color = '';
+                        label.classList.remove(claseColor);
                     });
                 });
             }, 2000);
@@ -7897,7 +7905,7 @@ Generado por Sistema Lushibosca
         const _pressHoldObjetivoEdicion = _crearPressHold(incremento => cambiarObjetivoEdicion(incremento));
         function iniciarCambioObjetivoEdicion(incremento) { _pressHoldObjetivoEdicion.iniciar(incremento); }
         function detenerCambioObjetivoEdicion() { _pressHoldObjetivoEdicion.detener(); }
-        
+
         function cambiarObjetivoEdicion(incremento) {
             const el = $('edit-objetivo');
             if (!el) return;
@@ -8260,7 +8268,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260815';
+        const _v = '-v260817';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

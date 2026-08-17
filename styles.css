@@ -274,6 +274,14 @@ label {
     line-height: 1.2;
 }
 
+label.label-feedback--green {
+    color: var(--c-green);
+}
+
+label.label-feedback--red {
+    color: var(--c-red);
+}
+
 input,
 select {
     width: 100%;
@@ -373,6 +381,14 @@ button:disabled {
     color: var(--text-main);
 }
 
+.btn-color-muted {
+    color: var(--text-muted);
+}
+
+.btn-color-red {
+    color: var(--c-red);
+}
+
 .btn-register .icon {
     animation: llamarAtencion 5s ease-in-out 1.2s 2;
     transform-origin: bottom;
@@ -415,6 +431,16 @@ button:disabled {
 .icon-btn,
 .filter-btn {
     background: transparent;
+}
+
+#btn-lock-toggle.bloqueado,
+#btn-lock-grupo-toggle.bloqueado {
+    background: var(--c-red);
+}
+
+#btn-lock-toggle:not(.bloqueado),
+#btn-lock-grupo-toggle:not(.bloqueado) {
+    background: var(--c-green);
 }
 
 .filter-btn.filtro-activo {
@@ -544,7 +570,7 @@ button:disabled {
 .stats-card {
     cursor: pointer;
     border: 1px solid transparent;
-    border-left: 4px solid transparent;
+    border-left: 3px solid transparent;
     transition: transform var(--dur-fast) ease-out, opacity var(--dur-fast) ease-out, box-shadow var(--transition-ui), border-color var(--transition-ui);
     height: 15rem;
     position: relative;
@@ -563,7 +589,12 @@ button:disabled {
 .stats-card-bg__layer {
     position: absolute;
     inset: 0;
+    opacity: 0;
     transition: opacity 0.6s ease;
+}
+
+.stats-card-bg__layer.visible {
+    opacity: 1;
 }
 
 .stats-card-bg svg {
@@ -635,6 +666,11 @@ button:disabled {
 
 .stats-inner .btn-group {
     margin-top: auto;
+}
+
+.stats-inner .btn-agregar {
+    width: 50%;
+    margin: 0 auto;
 }
 
 .ciclo-fade-out {
@@ -964,6 +1000,19 @@ button:disabled {
     will-change: transform, opacity;
 }
 
+.toast.success {
+    border-color: var(--c-green);
+}
+
+.toast.error,
+.toast.warning {
+    border-color: var(--c-red);
+}
+
+.toast.info {
+    border-color: var(--c-blue);
+}
+
 /* ─── CALENDARIO ─────────────────────────────────────────────────────────────── */
 
 #calendario-selector-meses {
@@ -1056,6 +1105,18 @@ button:disabled {
 .calendario-dia.dia-sin-registro,
 .stat-value {
     color: var(--text-muted);
+}
+
+.stat-value.saldo-positivo {
+    color: var(--c-green);
+}
+
+.stat-value.saldo-negativo {
+    color: var(--c-red);
+}
+
+.stat-value.saldo-neutro {
+    color: var(--text-main);
 }
 
 .calendario-titulo {
@@ -1168,6 +1229,18 @@ button:disabled {
 
 .cal-popup-info--blue {
     color: var(--c-blue);
+}
+
+.cal-popup-info--green {
+    color: var(--c-green);
+}
+
+.cal-popup-info--gold {
+    color: var(--c-gold);
+}
+
+.cal-popup-info--red {
+    color: var(--c-red);
 }
 
 .cal-popup-sin-reg {
@@ -1337,6 +1410,10 @@ button:disabled {
     order: 1;
 }
 
+.chevron-mes.rotated {
+    transform: rotate(180deg);
+}
+
 .timer-btn.running {
     color: var(--c-red);
     border-color: var(--c-red);
@@ -1503,6 +1580,11 @@ body.config-onboarding .label-footer-empezar {
     border-color: var(--c-green);
     background: var(--c-green-bg);
     font-weight: var(--fw-bold);
+    cursor: default;
+}
+
+.btn-perfil-select.activo .btn-perfil-badge {
+    color: var(--c-green);
 }
 
 .btn-perfil-info {
@@ -1669,6 +1751,19 @@ body.config-onboarding .label-footer-empezar {
     gap: 0.4rem;
 }
 
+.orden-card-item.arrastrando {
+    opacity: 0;
+}
+
+.drag-clone {
+    position: fixed;
+    z-index: 999999;
+    pointer-events: none;
+    margin: 0;
+    transform: scale(1.02);
+    opacity: 0.9;
+}
+
 #nombre-archivo-seleccionado {
     text-align: center;
     margin-top: var(--space-sm);
@@ -1689,6 +1784,38 @@ body.config-onboarding .label-footer-empezar {
     height: 10px;
     border-radius: 50%;
     margin-right: 6px;
+}
+
+.buffer-semanal-punto.positivo {
+    background-color: var(--c-green);
+}
+
+.buffer-semanal-punto.negativo {
+    background-color: var(--c-red);
+}
+
+.buffer-semanal-texto {
+    font-weight: var(--fw-medium);
+}
+
+.buffer-semanal-texto.positivo {
+    color: var(--c-green);
+}
+
+.buffer-semanal-texto.negativo {
+    color: var(--c-red);
+}
+
+.hint-buffer-color {
+    color: var(--text-main);
+}
+
+.hint-buffer-color--green {
+    color: var(--c-green);
+}
+
+.hint-buffer-color--red {
+    color: var(--c-red);
 }
 
 .break-counter-label {
@@ -1722,6 +1849,22 @@ body.config-onboarding .label-footer-empezar {
         opacity: 1;
         transform: translateY(0) scale(1);
     }
+}
+
+@keyframes zoomIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.zoom-in-anim {
+    animation: zoomIn 0.3s ease-out;
 }
 
 @keyframes llamarAtencion {
