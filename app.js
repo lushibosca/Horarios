@@ -6332,7 +6332,7 @@
         const TF_LABEL_ID = 'tiempo-fuera-label';
 
         function _obtenerOCrearLabelTF(contenedor) {
-            let label = $(TF_LABEL_ID);
+            let label = contenedor.querySelector('#' + TF_LABEL_ID);
             if (!label) {
                 label = Object.assign(document.createElement('span'), {
                     id: TF_LABEL_ID, className: 'break-counter-label',
@@ -6342,8 +6342,9 @@
             return label;
         }
 
-        function _quitarLabelTF() {
-            const label = $(TF_LABEL_ID);
+        function _quitarLabelTF(contenedor) {
+            if (!contenedor) return;
+            const label = contenedor.querySelector('#' + TF_LABEL_ID);
             if (label) label.remove();
         }
 
@@ -6599,10 +6600,10 @@
                 && StorageHelper.getItem(_breakStorageKey()) === null
                 && regHoy.tiempoFuera && regHoy.tiempoFuera !== '00:00';
 
-            if (!mostrar) { _quitarLabelTF(); return; }
+            if (!mostrar) { _quitarLabelTF(el); return; }
 
             const minutos = TimeUtils.horaAMinutos(regHoy.tiempoFuera);
-            if (!minutos) { _quitarLabelTF(); return; }
+            if (!minutos) { _quitarLabelTF(el); return; }
 
             const label = _obtenerOCrearLabelTF(el);
             label.textContent = _formatearMinutosCorto(minutos);
@@ -6927,7 +6928,9 @@
         function _iniciarContadorBreak(storageKey) {
             _detenerContadorBreak();
             function _actualizarContador() {
-                const el = $(TF_LABEL_ID);
+                const titulo = $('stats-titulo');
+                const el = titulo ? titulo.querySelector('#' + TF_LABEL_ID) : null;
+                
                 if (!el) { _detenerContadorBreak(); return; }
                 const start = parseInt(StorageHelper.getItem(storageKey));
                 if (isNaN(start)) { el.textContent = ''; _detenerContadorBreak(); return; }
@@ -7351,7 +7354,7 @@
             formatoDiferencia, registrarSwipe, debounce, _crearPressHold,
             _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
             mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON,
-            mostrarToast, resetearBoton, restaurarBotonGuardarEdicion, 
+            mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
             _getCSSdur, DUR_ANIM, DUR_CALENDARIO, _crearToggleConfig, _setBtnActivo,
             _crearOpcion, _poblarSelect, setIconoBtn, _setBtnDisabled,
             _posicionarPopup, _registrarCierrePopup, _flashCampo, _flashCampoTipo,
@@ -8062,7 +8065,9 @@
             _iniciarCicloStats();
             actualizarBotonesHistorico();
 
-            if (D.vistaActual() === 'semana') {
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const hoyEsLaborable = _esFechaHabil(hoy, D.diasHabiles());
+            if (D.vistaActual() === 'semana' && hoyEsLaborable) {
                 setTimerAutoVista(setTimeout(() => {
                     setTimerAutoVista(null);
                     alternarVista();
