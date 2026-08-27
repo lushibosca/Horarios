@@ -1109,6 +1109,34 @@
             });
         }
 
+        function _obtenerPerfilIdActual() {
+            return window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+        }
+
+        function _hayEspacioParaRegistros(cantidadAAgregar = 1) {
+            return (registros.length + cantidadAAgregar) <= S.SECURITY_LIMITS.MAX_REGISTROS;
+        }
+
+        function _fechaFuturaInvalida(fecha, entrada, salida) {
+            return fecha > TimeUtils.obtenerFechaHoy() && !TiposRegistro.esRegistroEspecial(entrada, salida);
+        }
+
+        function _esObjetivoValido(v) {
+            return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24;
+        }
+
+        function _aplicarCalculoHoras(r, e, s, tf = null, cr = null, calcularFn = calcularHoras) {
+            const t = calcularFn(e, s, tf, cr);
+            r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
+            return t;
+        }
+
+        function _recalcularHorasSiValido(r, e = r.entrada, s = r.salida, tf = r.tiempoFuera || null, cr = r.credito || null) {
+            const t = calcularHoras(e, s, tf, cr);
+            if (t) { r.horas = t.horas; r.minutos = t.minutos; r.total = t.total; }
+            return t;
+        }
+
         function editarGrupo(grupo) {
             if (grupoEnEdicion !== null) return;
             grupoEnEdicion = {
@@ -1203,7 +1231,7 @@
             const salida = tipoConfig.codigo;
             const tipoTexto = `${tipoConfig.emoji} ${tipoConfig.label}`;
 
-            if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast('Límite de registros alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite alcanzado'); }
+            if (!_hayEspacioParaRegistros(1)) { notify.mostrarToast('Límite de registros alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite alcanzado'); }
 
             const nuevo = _construirRegistro(fecha, entrada, salida);
             registros.push(nuevo);
@@ -1329,8 +1357,8 @@
         async function _completarSalidaRegistro(reg, s, usaHoraActual, btn) {
             const timerDetenido = detenerYRegistrarTimer(reg);
             reg.salida = s;
-            const t = calcularHoras(reg.entrada, s, reg.tiempoFuera || null);
-            reg.horas = t?.horas || 0; reg.minutos = t?.minutos || 0; reg.total = t?.total || 0;
+            _aplicarCalculoHoras(reg, reg.entrada, s, reg.tiempoFuera || null);
+
             const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
             HistoryManager.saveState(registros, `salida ${s} (${TimeUtils.fechaCorta(reg.fecha)})`);
             const saved = await _guardarConCicloSiHoy(reg.id, esHoy, 'salida');
@@ -1349,7 +1377,7 @@
         }
 
         async function _crearNuevoRegistro(f, e, s, usaHoraActual, btn) {
-            if (registros.length >= S.SECURITY_LIMITS.MAX_REGISTROS) {
+            if (!_hayEspacioParaRegistros(1)) {
                 notify.resetearBoton(btn); notify.mostrarToast('Límite alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return;
             }
             const nuevo = _construirRegistro(f, e, s);
@@ -1384,7 +1412,7 @@
             let e = S.sanitizeString($('entrada').value.trim(), 5);
             let s = S.sanitizeString($('salida').value.trim(), 5);
 
-            if (f > TimeUtils.obtenerFechaHoy() && !TiposRegistro.esRegistroEspecial(e, s)) {
+            if (_fechaFuturaInvalida(f, e, s)) {
                 notify.resetearBoton(btn); notify.mostrarError('fecha', null);
                 notify.mostrarToast('Fecha futura no permitida en registro regular', 'warning'); notify.flashCampoTipo('warning', 'btn-agregar'); return;
             }
@@ -1433,7 +1461,7 @@
                 const hoy = TimeUtils.obtenerFechaHoy();
 
                 if (registroABorrar && registroABorrar.fecha === hoy) {
-                    const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+                    const perfilId = _obtenerPerfilIdActual();
                     const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
                     if (StorageHelper.getItem(storageKey)) {
                         StorageHelper.removeItem(storageKey);
@@ -1496,9 +1524,7 @@
         }
 
         function _validarCamposEdicion(f, e, s, tf) {
-            const hoy = TimeUtils.obtenerFechaHoy();
-
-            if (f > hoy && !TiposRegistro.esRegistroEspecial(e, s))
+            if (_fechaFuturaInvalida(f, e, s))
                 return { msg: 'Fecha futura no permitida en registro regular', tipo: 'warning' };
 
             if (!TimeUtils.validarFecha(f))
@@ -1549,7 +1575,7 @@
         async function _eliminarRegistroVacioDesdeEdicion(btnGuardar) {
             const reg = registros.find(r => r.id === editandoId);
             if (reg?.fecha === TimeUtils.obtenerFechaHoy()) {
-                const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+                const perfilId = _obtenerPerfilIdActual();
                 StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
                 notify.actualizarEstadoBotonTimerMain();
             }
@@ -1576,7 +1602,7 @@
             if (notas === '') notas = null;
 
             let objetivoNuevo = parseFloat($('edit-objetivo')?.dataset.valor);
-            if (isNaN(objetivoNuevo) || objetivoNuevo < 0 || objetivoNuevo > 24) objetivoNuevo = horasDiarias;
+            if (!_esObjetivoValido(objetivoNuevo)) objetivoNuevo = horasDiarias;
             const objetivoPrevio = (typeof r.objetivoHoras === 'number' && Number.isFinite(r.objetivoHoras)) ? r.objetivoHoras : horasDiarias;
 
             let cr = _calcularCredito(e, s, tf, objetivoEdicionEnVivo());
@@ -1609,8 +1635,8 @@
             }
             r.salida = s || null; r.tiempoFuera = tf; r.credito = cr; r.notas = notas; r.objetivoHoras = objetivoNuevo;
 
-            const t = calcularHoras(r.entrada, r.salida, r.tiempoFuera, r.credito);
-            r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
+            _aplicarCalculoHoras(r, r.entrada, r.salida, r.tiempoFuera, r.credito);
+
 
             ordenarRegistros();
             HistoryManager.saveState(registros, `editar registro (${TimeUtils.fechaCorta(f)})`);
@@ -1632,7 +1658,7 @@
             registros.splice(0, registros.length);
             ignorarTiempoFuera = false;
 
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+            const perfilId = _obtenerPerfilIdActual();
             StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
             const keys = [STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS, STORAGE_KEYS.BIENVENIDA_VISTA, STORAGE_KEYS.FERIADOS_PROCESADOS];
             keys.forEach(k => StorageHelper.removeItem(k, true));
@@ -1678,8 +1704,7 @@
 
             normalizados.forEach(r => {
                 if (TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) return;
-                const t = calcularHorasFn(r.entrada, r.salida, r.tiempoFuera || null, r.credito || null);
-                r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
+                _aplicarCalculoHoras(r, r.entrada, r.salida, r.tiempoFuera || null, r.credito || null, calcularHorasFn);
             });
             return normalizados;
         }
@@ -1735,14 +1760,13 @@
                 return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
             });
             if (nuevos.length === 0 && complementarios.length === 0) { notify.mostrarToast('No hay días nuevos ni datos para completar', 'info'); return; }
-            if (registros.length + nuevos.length > S.SECURITY_LIMITS.MAX_REGISTROS) { notify.mostrarToast(`Límite alcanzado. Solo se pueden agregar ${S.SECURITY_LIMITS.MAX_REGISTROS - registros.length} registros más`, 'error'); return; }
+            if (!_hayEspacioParaRegistros(nuevos.length)) { notify.mostrarToast(`Límite alcanzado. Solo se pueden agregar ${S.SECURITY_LIMITS.MAX_REGISTROS - registros.length} registros más`, 'error'); return; }
             complementarios.forEach(imp => {
                 const local = registros.find(r => r.fecha === imp.fecha);
                 if (!local) return;
                 if (!local.salida && imp.salida) local.salida = imp.salida;
                 if (!local.tiempoFuera && imp.tiempoFuera) local.tiempoFuera = imp.tiempoFuera;
-                const t = calcularHoras(local.entrada, local.salida, local.tiempoFuera || null, local.credito || null);
-                if (t) { local.horas = t.horas; local.minutos = t.minutos; local.total = t.total; }
+                _recalcularHorasSiValido(local);
             });
             registros = registros.concat(nuevos);
             const partes = [];
@@ -1814,7 +1838,7 @@
         }
 
         function detenerYRegistrarTimer(registro) {
-            const perfilId = window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
+            const perfilId = _obtenerPerfilIdActual();
             const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
             const storedStart = StorageHelper.getItem(storageKey);
             if (!storedStart) return false;
@@ -1960,8 +1984,7 @@
             registros.splice(0, registros.length, ...resultado.estado);
             registros.forEach(r => {
                 if (r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
-                    const t = calcularHoras(r.entrada, r.salida, r.tiempoFuera || null, r.credito || null);
-                    if (t) { r.horas = t.horas; r.minutos = t.minutos; r.total = t.total; }
+                    _recalcularHorasSiValido(r);
                 }
             });
             guardarYActualizar(null, true);
@@ -1989,7 +2012,7 @@
         function objetivoDeRegistro(registro) {
             if (StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true)) return horasDiarias;
             const v = registro?.objetivoHoras;
-            return (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24) ? v : horasDiarias;
+            return _esObjetivoValido(v) ? v : horasDiarias;
         }
 
         function esTipoRemoto(registro) {
@@ -2016,7 +2039,7 @@
                 const limite = fechaLimiteDesde(fechaRef);
                 let idx = -1;
                 for (let i = 0; i < disponibles.length; i++) {
-                    if (disponibles[i].fecha < limite) continue; // fuera de la ventana de 2 semanas
+                    if (disponibles[i].fecha < limite) continue;
                     if (idx === -1 || disponibles[i].excedente > disponibles[idx].excedente) idx = i;
                 }
                 return idx === -1 ? null : disponibles.splice(idx, 1)[0];
@@ -2039,28 +2062,29 @@
             return asignaciones;
         }
 
-        function _montoCompensadoPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
+        function _buscarAsignacionCompensatorio(idBuscado, campoId, asignacionesPrecalculadas = null) {
             const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
-            const asignacion = asignaciones.find(a => a.compensatorioId === registroCompensatorio.id);
-            return asignacion ? asignacion.excedente : 0;
+            return asignaciones.find(a => a[campoId] === idBuscado) || null;
+        }
+
+        function _montoCompensadoPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
+            const a = _buscarAsignacionCompensatorio(registroCompensatorio.id, 'compensatorioId', asignacionesPrecalculadas);
+            return a ? a.excedente : 0;
         }
 
         function _fechaCompensadaPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
-            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
-            const asignacion = asignaciones.find(a => a.compensatorioId === registroCompensatorio.id);
-            return asignacion ? asignacion.referenciaFecha : null;
+            const a = _buscarAsignacionCompensatorio(registroCompensatorio.id, 'compensatorioId', asignacionesPrecalculadas);
+            return a ? a.referenciaFecha : null;
         }
 
         function _fechaCompensadoDeRegistro(registroReferencia, asignacionesPrecalculadas = null) {
-            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
-            const asignacion = asignaciones.find(a => a.referenciaId === registroReferencia.id);
-            return asignacion ? asignacion.compensatorioFecha : null;
+            const a = _buscarAsignacionCompensatorio(registroReferencia.id, 'referenciaId', asignacionesPrecalculadas);
+            return a ? a.compensatorioFecha : null;
         }
 
         function _montoCompensadoDeReferencia(registroReferencia, asignacionesPrecalculadas = null) {
-            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
-            const asignacion = asignaciones.find(a => a.referenciaId === registroReferencia.id);
-            return asignacion ? asignacion.excedente : 0;
+            const a = _buscarAsignacionCompensatorio(registroReferencia.id, 'referenciaId', asignacionesPrecalculadas);
+            return a ? a.excedente : 0;
         }
 
         function horasEfectivasDeRegistro(registro) {
@@ -2074,7 +2098,7 @@
         function objetivoEdicionEnVivo() {
             if (StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true)) return horasDiarias;
             const v = parseFloat($('edit-objetivo')?.dataset.valor);
-            return (Number.isFinite(v) && v >= 0 && v <= 24) ? v : horasDiarias;
+            return _esObjetivoValido(v) ? v : horasDiarias;
         }
 
         function migrarObjetivoHorasFaltante() {
@@ -2098,8 +2122,7 @@
                 nuevoCredito = TimeUtils.minutosAHora(h * 60 + m);
             }
             r.credito = nuevoCredito;
-            const t = calcularHoras(r.entrada, r.salida, r.tiempoFuera, r.credito);
-            r.horas = t?.horas || 0; r.minutos = t?.minutos || 0; r.total = t?.total || 0;
+            _aplicarCalculoHoras(r, r.entrada, r.salida, r.tiempoFuera, r.credito);
             return true;
         }
 
@@ -2131,8 +2154,7 @@
             recalcularTotalesEnMemoria: function () {
                 registros.forEach(r => {
                     if (r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
-                        const t = calcularHoras(r.entrada, r.salida, r.tiempoFuera || null, r.credito || null);
-                        if (t) { r.horas = t.horas; r.minutos = t.minutos; r.total = t.total; }
+                        _recalcularHorasSiValido(r);
                     }
                 });
             },
@@ -3195,7 +3217,7 @@
             }
             const fechaCompensado = D.fechaCompensadoDeRegistro(reg);
             if (fechaCompensado) {
-                compensadoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--purple">Compensado ${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensado))}</span>`;
+                compensadoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--purple">→ ${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensado))}</span>`;
             }
             return `<div class="cal-popup-info${diffClase ? ' ' + diffClase : ''}">${totalConDiff}</div>
                 ${cubiertoLineaHtml}
@@ -4500,7 +4522,7 @@
                 if (fechaCompensado) {
                     const compensadoEl = document.createElement('div');
                     compensadoEl.className = 'registro-total purple-text';
-                    compensadoEl.textContent = `Compensado ${TimeUtils.fechaCorta(fechaCompensado)}`;
+                    compensadoEl.textContent = `→ ${TimeUtils.fechaCorta(fechaCompensado)}`;
                     badgesEl.appendChild(compensadoEl);
                 }
             }
@@ -6339,7 +6361,7 @@
                 } else if (r && !esEspecial && r.salida) {
                     const objetivo = _esFechaHabil(isoDate, diasHabilesObj) ? D.objetivoDeRegistro(r) : 0;
                     delta = r.total - objetivo;
-                    if (delta > EPS && D.fechaCompensadoDeRegistro(r, asignacionesPrecalculadas)) delta = 0; // excedente ya usado por un compensatorio
+                    if (delta > EPS && D.fechaCompensadoDeRegistro(r, asignacionesPrecalculadas)) delta = 0;
                 }
 
                 if (delta > EPS) pool += delta;
