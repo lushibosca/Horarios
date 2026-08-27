@@ -1809,6 +1809,7 @@
                 notify.mostrarToast(mensajeExito, 'success');
                 notify.cerrarImportar();
                 $('file-import').value = '';
+                UILogic.refrescarConfigSiVisible?.();
             }
         }
 
@@ -1847,11 +1848,12 @@
             return { ayerStr, regAyer, ayerAbierto };
         }
 
-        function calcularBufferPeriodo(desde, hasta, incluirActivoEnVivo = true, minutosBreakActivo = 0) {
+        function calcularBufferPeriodo(desde, hasta, incluirActivoEnVivo = true, minutosBreakActivo = 0, asignacionesPrecalculadas = null) {
             const hoy = TimeUtils.obtenerFechaHoy();
             const registrosRango = registros.filter(r => r.fecha >= desde && r.fecha <= hasta);
             const regsPorFecha = new Map(registrosRango.map(r => [r.fecha, r]));
             const { ayerStr, ayerAbierto } = detectarAyerAbierto(hoy, regsPorFecha);
+            const asignacionesCompensatorio = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
 
             const regHoy = regsPorFecha.get(hoy) ?? null;
             const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
@@ -1865,12 +1867,14 @@
                 const r = regsPorFecha.get(iso);
                 const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
                 const esRemoto = esEspecial && esTipoRemoto(r);
+                const esCompensatorio = esEspecial && TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === 'compensatorio';
                 const diaTerminado = iso === hoy ? !!(r && r.salida) : !(ayerAbierto && iso === ayerStr);
                 const objetivoDia = r ? objetivoDeRegistro(r) : horasDiarias;
 
                 if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += objetivoDia;
                 if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
                 if (esRemoto) hechas += objetivoDia;
+                if (esCompensatorio && diaTerminado) hechas -= _montoCompensadoPorRegistro(r, asignacionesCompensatorio);
 
                 if (incluirActivoEnVivo && !diaTerminado && esDiaHabil && !esEspecial && r && r === regActivo) {
                     const t = calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
@@ -1991,9 +1995,71 @@
             return TiposRegistro.obtenerTipoPorCodigo(registro?.entrada, registro?.salida)?.id === 'remoto';
         }
 
+        function _excedenteDeRegistro(r) {
+            if (!r || !r.entrada || !r.salida || TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) return 0;
+            const excedente = r.total - objetivoDeRegistro(r);
+            return excedente > 0 ? excedente : 0;
+        }
+
+        const LIMITE_DIAS_COMPENSATORIO = 14;
+
+        function _calcularAsignacionesCompensatorio() {
+            const ordenados = [...registros].sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0);
+            const disponibles = [];
+            const fechaLimiteDesde = (fechaRef) => {
+                const d = TimeUtils.parsearFechaLocal(fechaRef);
+                d.setDate(d.getDate() - LIMITE_DIAS_COMPENSATORIO);
+                return TimeUtils.formatearFechaLocal(d);
+            };
+            const sacarMejor = (fechaRef) => {
+                const limite = fechaLimiteDesde(fechaRef);
+                let idx = -1;
+                for (let i = 0; i < disponibles.length; i++) {
+                    if (disponibles[i].fecha < limite) continue; // fuera de la ventana de 2 semanas
+                    if (idx === -1 || disponibles[i].excedente > disponibles[idx].excedente) idx = i;
+                }
+                return idx === -1 ? null : disponibles.splice(idx, 1)[0];
+            };
+            const asignaciones = [];
+            for (const r of ordenados) {
+                const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                if (tipo?.id === 'compensatorio') {
+                    const elegido = sacarMejor(r.fecha);
+                    asignaciones.push({
+                        compensatorioId: r.id, compensatorioFecha: r.fecha,
+                        referenciaId: elegido ? elegido.id : null, referenciaFecha: elegido ? elegido.fecha : null,
+                        excedente: elegido ? elegido.excedente : 0
+                    });
+                } else if (!tipo) {
+                    const excedente = _excedenteDeRegistro(r);
+                    if (excedente > 0) disponibles.push({ id: r.id, fecha: r.fecha, excedente });
+                }
+            }
+            return asignaciones;
+        }
+
+        function _montoCompensadoPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
+            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
+            const asignacion = asignaciones.find(a => a.compensatorioId === registroCompensatorio.id);
+            return asignacion ? asignacion.excedente : 0;
+        }
+
+        function _fechaCompensadaPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
+            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
+            const asignacion = asignaciones.find(a => a.compensatorioId === registroCompensatorio.id);
+            return asignacion ? asignacion.referenciaFecha : null;
+        }
+
+        function _fechaCompensadoDeRegistro(registroReferencia, asignacionesPrecalculadas = null) {
+            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
+            const asignacion = asignaciones.find(a => a.referenciaId === registroReferencia.id);
+            return asignacion ? asignacion.compensatorioFecha : null;
+        }
+
         function horasEfectivasDeRegistro(registro) {
             const tipo = TiposRegistro.obtenerTipoPorCodigo(registro.entrada, registro.salida);
             if (tipo && tipo.id === 'remoto') return objetivoDeRegistro(registro);
+            if (tipo && tipo.id === 'compensatorio') return 0;
             if (!tipo) return registro.total;
             return 0;
         }
@@ -2050,7 +2116,10 @@
             horasDiarias: () => horasDiarias, setDiasHabiles: (v) => diasHabiles = v, setHorasDiarias: (v) => horasDiarias = v,
             getIgnorarTiempoFuera: () => ignorarTiempoFuera, setIgnorarTiempoFuera: (v) => { ignorarTiempoFuera = v; },
             objetivoDeRegistro, objetivoEdicionEnVivo, migrarObjetivoHorasFaltante, aplicarHorasATodosLosRegistros,
-            esTipoRemoto, horasEfectivasDeRegistro,
+            esTipoRemoto, horasEfectivasDeRegistro, montoCompensadoPorRegistro: _montoCompensadoPorRegistro,
+            fechaCompensadaPorRegistro: _fechaCompensadaPorRegistro,
+            fechaCompensadoDeRegistro: _fechaCompensadoDeRegistro,
+            calcularAsignacionesCompensatorio: _calcularAsignacionesCompensatorio,
             recalcularTotalesEnMemoria: function () {
                 registros.forEach(r => {
                     if (r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
@@ -2107,17 +2176,41 @@
             if (!el || el.dataset.swipeInit) return;
             el.dataset.swipeInit = '1';
             let _x = null, _y = null;
+            let _direccionBloqueada = null;
+
             el.addEventListener('touchstart', e => {
                 if (e.touches.length !== 1) return;
                 if (ignoreInputs && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
                 _x = e.touches[0].clientX;
                 _y = e.touches[0].clientY;
+                _direccionBloqueada = null;
             }, { passive: true });
+
+            el.addEventListener('touchmove', e => {
+                if (_x === null || _y === null) return;
+                
+                const dx = Math.abs(e.touches[0].clientX - _x);
+                const dy = Math.abs(e.touches[0].clientY - _y);
+
+                if (!_direccionBloqueada && (dx > 5 || dy > 5)) {
+                    _direccionBloqueada = dx > dy ? 'x' : 'y';
+                }
+
+                if (_direccionBloqueada === 'x' && e.cancelable) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+
             el.addEventListener('touchend', e => {
-                if (_x === null) return;
+                if (_x === null || _direccionBloqueada === 'y') {
+                    _x = null; _y = null;
+                    return;
+                }
+                
                 const dx = e.changedTouches[0].clientX - _x;
                 const dy = e.changedTouches[0].clientY - _y;
                 _x = null; _y = null;
+                
                 if (Math.abs(dy) > maxY) return;
                 if (Math.abs(dx) < minX) return;
                 callback(dx < 0 ? 1 : -1);
@@ -2251,7 +2344,6 @@
             const rect = el.getBoundingClientRect();
             const clon = el.cloneNode(true);
             clon.classList.add('mutacion-saliente');
-            const zIndex = document.body.classList.contains('modal-open') ? '50' : '9999';
 
             Object.assign(clon.style, {
                 position: 'fixed',
@@ -2261,7 +2353,7 @@
                 height: rect.height + 'px',
                 margin: '0',
                 pointerEvents: 'none',
-                zIndex
+                zIndex: '80'
             });
 
             const primerHijo = el.firstElementChild;
@@ -2950,6 +3042,7 @@
             const todosRegsPorFecha = Object.fromEntries(todosLosRegistros.map(r => [r.fecha, r]));
             const diasHabilesObj = D.diasHabiles();
             const filtroActivo = registrosFiltrados.length !== todosLosRegistros.length;
+            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
             const claseDelDia = (fecha) => {
                 const r = regsPorFecha[fecha];
                 if (!r && filtroActivo && todosRegsPorFecha[fecha]) return 'dia-filtrado';
@@ -2960,7 +3053,7 @@
                 }
                 if (r.entrada && !r.salida) return 'dia-en-curso';
                 if (!UILogic._esFechaHabil(fecha, diasHabilesObj) || horasGte(r.total, D.objetivoDeRegistro(r))) return 'dia-normal';
-                return UILogic._cubiertoPorSaldo(fecha) ? 'dia-cubierto' : 'dia-incompleto';
+                return UILogic._cubiertoPorSaldo(fecha, asignacionesCompensatorio) ? 'dia-cubierto' : 'dia-incompleto';
             };
 
             const diasNombre = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -3056,7 +3149,14 @@
                 const emoji = S.escapeHtml(tipoConfig?.emoji ?? '');
                 const label = tipoConfig ? S.escapeHtml(tipoConfig.label) : S.escapeHtml(reg.entrada);
                 const colorSafe = /^[a-z]+$/.test(tipoConfig?.color || '') ? tipoConfig.color : 'purple';
-                return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>`;
+                let fechaCompensadaHtml = '';
+                if (tipoConfig?.id === 'compensatorio') {
+                    const fechaCompensada = D.fechaCompensadaPorRegistro(reg);
+                    if (fechaCompensada) {
+                        fechaCompensadaHtml = ` <span class="cal-popup-badge cal-popup-badge--${colorSafe}">${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensada))}</span>`;
+                    }
+                }
+                return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>${fechaCompensadaHtml}`;
             }
             if (reg.entrada && !reg.salida) {
                 const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
@@ -3069,7 +3169,7 @@
             if (reg.tiempoFuera && reg.tiempoFuera !== '00:00') {
                 tfStr = `${TimeUtils.horasATexto(TimeUtils.horaAMinutos(reg.tiempoFuera) / 60, 'short')} fuera`;
             }
-            let totalConDiff = totalStr, diffClase = '', cubiertoLineaHtml = '';
+            let totalConDiff = totalStr, diffClase = '', cubiertoLineaHtml = '', compensadoLineaHtml = '';
             const objetivoReg = D.objetivoDeRegistro(reg);
             if (objetivoReg > 0 && UILogic._esFechaHabil(reg.fecha, D.diasHabiles())) {
                 const diffText = formatoDiferencia(totalHoras, objetivoReg);
@@ -3085,8 +3185,13 @@
                     if (diffText) totalConDiff += ` (${diffText})`;
                 }
             }
+            const fechaCompensado = D.fechaCompensadoDeRegistro(reg);
+            if (fechaCompensado) {
+                compensadoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--purple">Compensado ${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensado))}</span>`;
+            }
             return `<div class="cal-popup-info${diffClase ? ' ' + diffClase : ''}">${totalConDiff}</div>
                 ${cubiertoLineaHtml}
+                ${compensadoLineaHtml}
                 <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} – ${S.escapeHtml(reg.salida)}</div>
                 ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
         }
@@ -3747,21 +3852,27 @@
             btnRespaldar.parentNode.replaceChild(newRespaldar, btnRespaldar);
             btnRestaurar.parentNode.replaceChild(newRestaurar, btnRestaurar);
 
+            const autoCierre = () => {
+                if (window.UILogic && window.UILogic.iniciarTimerAutoCierreBotones) {
+                    window.UILogic.iniciarTimerAutoCierreBotones();
+                }
+            };
+
             if (tieneGist) {
                 newRespaldar.title = 'Subir a Gist';
-                newRespaldar.addEventListener('click', () => gistSubir());
+                newRespaldar.addEventListener('click', () => { autoCierre(); gistSubir(); });
                 newRespaldar.querySelector('use').setAttribute('href', '#icon-cloud-upload');
 
                 newRestaurar.title = 'Bajar de Gist';
-                newRestaurar.addEventListener('click', () => gistBajar());
+                newRestaurar.addEventListener('click', () => { autoCierre(); gistBajar(); });
                 newRestaurar.querySelector('use').setAttribute('href', '#icon-cloud-download');
             } else {
                 newRespaldar.title = 'Respaldar';
-                newRespaldar.addEventListener('click', () => mostrarExportar(true));
+                newRespaldar.addEventListener('click', () => { autoCierre(); mostrarExportar(true); });
                 newRespaldar.querySelector('use').setAttribute('href', '#icon-download');
 
                 newRestaurar.title = 'Restaurar';
-                newRestaurar.addEventListener('click', () => mostrarImportar(true));
+                newRestaurar.addEventListener('click', () => { autoCierre(); mostrarImportar(true); });
                 newRestaurar.querySelector('use').setAttribute('href', '#icon-upload');
             }
         }
@@ -3901,6 +4012,7 @@
 
             await D.guardarYActualizar();
             UILogic.actualizarUI();
+            UILogic.refrescarConfigSiVisible?.();
 
             if (!modoAutomatico) _gistMergeCerrarOVolver();
             const lastSyncEl = document.getElementById('gist-ultima-sync');
@@ -4290,7 +4402,7 @@
             return svg;
         }
 
-        function crearItemRegistroIndividual(r, idResaltar = null, hoy = TimeUtils.obtenerFechaHoy()) {
+        function crearItemRegistroIndividual(r, idResaltar = null, hoy = TimeUtils.obtenerFechaHoy(), asignacionesCompensatorio = null) {
             const item = document.createElement('div');
 
             let className = r.fecha === hoy ? 'registro-item hoy' : 'registro-item';
@@ -4339,7 +4451,7 @@
                     if (horasGte(r.total, objetivoReg)) {
                         totalEl.classList.add('green-text');
                         if (diffText) totalText += ` (${diffText})`;
-                    } else if (UILogic._cubiertoPorSaldo(r.fecha)) {
+                    } else if (UILogic._cubiertoPorSaldo(r.fecha, asignacionesCompensatorio)) {
                         totalEl.classList.add('gold-text');
                         if (diffText) totalText += ` (${diffText})`;
                         esCubierto = true;
@@ -4366,6 +4478,24 @@
                 cubiertoEl.textContent = 'Cubierto';
                 badgesEl.appendChild(cubiertoEl);
             }
+            if (tipoEspecial?.id === 'compensatorio') {
+                const fechaCompensada = D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
+                if (fechaCompensada) {
+                    const fechaCompEl = document.createElement('div');
+                    fechaCompEl.className = `registro-total ${tipoEspecial.color}-text`;
+                    fechaCompEl.textContent = TimeUtils.fechaCorta(fechaCompensada);
+                    badgesEl.appendChild(fechaCompEl);
+                }
+            }
+            if (!tipoEspecial) {
+                const fechaCompensado = D.fechaCompensadoDeRegistro(r, asignacionesCompensatorio);
+                if (fechaCompensado) {
+                    const compensadoEl = document.createElement('div');
+                    compensadoEl.className = 'registro-total purple-text';
+                    compensadoEl.textContent = `Compensado ${TimeUtils.fechaCorta(fechaCompensado)}`;
+                    badgesEl.appendChild(compensadoEl);
+                }
+            }
 
             info.appendChild(fechaEl);
             info.appendChild(horasEl);
@@ -4375,7 +4505,7 @@
             return item;
         }
 
-        function crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy) {
+        function crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy, asignacionesCompensatorio = null) {
             const grupos = agruparRegistrosConsecutivos(registrosDelMes);
 
             const contenedorMesActual = document.createElement('div');
@@ -4424,8 +4554,8 @@
 
                 innerMesActual.appendChild(
                     esGrupo
-                        ? crearGrupoExpandible(grupo, idNuevo)
-                        : crearItemRegistroIndividual(r, idNuevo, hoy)
+                        ? crearGrupoExpandible(grupo, idNuevo, asignacionesCompensatorio)
+                        : crearItemRegistroIndividual(r, idNuevo, hoy, asignacionesCompensatorio)
                 );
                 semanaAnterior = semanaActual;
             });
@@ -4453,7 +4583,7 @@
             lista.appendChild(emptyDiv);
         }
 
-        function _crearContenedorAnio(anio, mesesDelAnio, idNuevo, mesHoy, hoy) {
+        function _crearContenedorAnio(anio, mesesDelAnio, idNuevo, mesHoy, hoy, asignacionesCompensatorio = null) {
             const contenedor = document.createElement('div');
             contenedor.className = 'registro-mes-container';
 
@@ -4471,7 +4601,7 @@
             if (expandido) { detalle.classList.add('expanded'); chevron.classList.add('rotated'); }
 
             mesesDelAnio.forEach((registrosDelMes, claveMes) =>
-                innerAnio.appendChild(crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy))
+                innerAnio.appendChild(crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy, asignacionesCompensatorio))
             );
 
             contenedor.appendChild(header);
@@ -4491,6 +4621,7 @@
             const anioHoy = hoy.substring(0, 4);
             const gruposPorMes = agruparRegistrosPorMes(registrosAMostrar);
             const fragmento = document.createDocumentFragment();
+            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
 
             const mesesAnioActual = new Map();
             const mesesPorAnio = new Map();
@@ -4505,17 +4636,17 @@
             });
 
             mesesAnioActual.forEach((regs, claveMes) =>
-                fragmento.appendChild(crearContenedorMes(claveMes, regs, idNuevo, mesHoy, hoy))
+                fragmento.appendChild(crearContenedorMes(claveMes, regs, idNuevo, mesHoy, hoy, asignacionesCompensatorio))
             );
             [...mesesPorAnio.keys()].sort().reverse().forEach(anio =>
-                fragmento.appendChild(_crearContenedorAnio(anio, mesesPorAnio.get(anio), idNuevo, mesHoy, hoy))
+                fragmento.appendChild(_crearContenedorAnio(anio, mesesPorAnio.get(anio), idNuevo, mesHoy, hoy, asignacionesCompensatorio))
             );
 
             lista.appendChild(fragmento);
             _actualizarOffsetsStickyMes();
         }
 
-        function crearGrupoExpandible(grupo, idResaltar = null) {
+        function crearGrupoExpandible(grupo, idResaltar = null, asignacionesCompensatorio = null) {
             const primerReg = grupo.registros[0];
             const ultimoReg = grupo.registros[grupo.registros.length - 1];
 
@@ -4565,6 +4696,15 @@
             const badgesEl = document.createElement('div');
             badgesEl.className = 'registro-badges';
             badgesEl.appendChild(totalEl);
+            if (tipoConfig?.id === 'compensatorio') {
+                const fechasCompensadas = [...new Set(grupo.registros.map(r => D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio)).filter(Boolean))];
+                if (fechasCompensadas.length === 1) {
+                    const fechaCompEl = document.createElement('div');
+                    fechaCompEl.className = `registro-total ${colorClase}`;
+                    fechaCompEl.textContent = TimeUtils.fechaCorta(fechasCompensadas[0]);
+                    badgesEl.appendChild(fechaCompEl);
+                }
+            }
 
             info.appendChild(fechaEl);
             info.appendChild(horasEl);
@@ -6159,7 +6299,7 @@
             return !StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false, true);
         }
 
-        function _cubiertoPorSaldo(fecha) {
+        function _cubiertoPorSaldo(fecha, asignacionesPrecalculadas = null) {
             if (!_logicaCubiertoActiva()) return false;
             const lunes = TimeUtils.obtenerLunesSemanaISO(fecha);
             const lunesDate = TimeUtils.parsearFechaLocal(lunes);
@@ -6191,6 +6331,7 @@
                 } else if (r && !esEspecial && r.salida) {
                     const objetivo = _esFechaHabil(isoDate, diasHabilesObj) ? D.objetivoDeRegistro(r) : 0;
                     delta = r.total - objetivo;
+                    if (delta > EPS && D.fechaCompensadoDeRegistro(r, asignacionesPrecalculadas)) delta = 0; // excedente ya usado por un compensatorio
                 }
 
                 if (delta > EPS) pool += delta;
@@ -6235,8 +6376,9 @@
             const regHoy = registros.find(r => r.fecha === hoy) ?? null;
             const semanaAbierta = quedanDiasFuturos || (esDiaHabil && !(regHoy && regHoy.salida));
             const minutosBreakActivo = _minutosBreakActivo();
-            const bufferSemanalBase = D.calcularBufferPeriodo(ini, hoy, false);
-            const bufferSemanal = D.calcularBufferPeriodo(ini, hoy, true, minutosBreakActivo);
+            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
+            const bufferSemanalBase = D.calcularBufferPeriodo(ini, hoy, false, 0, asignacionesCompensatorio);
+            const bufferSemanal = D.calcularBufferPeriodo(ini, hoy, true, minutosBreakActivo, asignacionesCompensatorio);
 
             const tipoEspecialHoy = TiposRegistro.obtenerTipoPorCodigo(regHoy?.entrada, regHoy?.salida);
 
@@ -6252,10 +6394,15 @@
 
             const fechaLimite = hoy < fn ? hoy : fn;
             const registrosSemana = registros.filter(r => r.fecha >= ini && r.fecha <= fechaLimite);
-            const totalSemana = registrosSemana.reduce((sum, r) => {
-                if (regActivo && r.fecha === regActivo.fecha) return sum + tiempoHoy;
-                return sum + D.horasEfectivasDeRegistro(r);
-            }, 0);
+            let totalSemana = 0;
+            let descuentoCompensatorioSemana = 0;
+            registrosSemana.forEach(r => {
+                if (regActivo && r.fecha === regActivo.fecha) { totalSemana += tiempoHoy; return; }
+                totalSemana += D.horasEfectivasDeRegistro(r);
+                const tipoDia = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                if (tipoDia?.id === 'compensatorio') descuentoCompensatorioSemana += D.montoCompensadoPorRegistro(r, asignacionesCompensatorio);
+            });
+            const totalSemanaProgreso = totalSemana - descuentoCompensatorioSemana;
 
             const registrosSemanaCompletaPorFecha = new Map(
                 registros.filter(r => r.fecha >= ini && r.fecha <= fn).map(r => [r.fecha, r])
@@ -6277,7 +6424,7 @@
                 horasDiarias, horasSemanales,
                 diasHabiles, esDiaHabil,
                 semanaAbierta, bufferSemanal, bufferSemanalBase,
-                totalSemana, objetivoSemana,
+                totalSemana, totalSemanaProgreso, objetivoSemana,
                 tipoEspecialHoy, tiempoHoy,
                 todosEspeciales,
                 ayerAbierto, ayerStr: ayer, regAyer
@@ -6364,9 +6511,10 @@
         }
 
         function derivarVistaSemana(est) {
-            const { totalSemana: tot, objetivoSemana, semanaAbierta, horasDiarias, todosEspeciales } = est;
+            const { totalSemana: tot, totalSemanaProgreso, objetivoSemana, semanaAbierta, horasDiarias, todosEspeciales } = est;
+            const prog = totalSemanaProgreso ?? tot;
 
-            const prog = _calcularProgreso(tot, objetivoSemana);
+            const progreso = _calcularProgreso(prog, objetivoSemana);
 
             let colorBarra, colorBorde, estadoFondo, mensaje, mostrarMensaje;
 
@@ -6382,27 +6530,27 @@
                 mostrarMensaje = true;
             } else if (semanaAbierta) {
                 estadoFondo = 'en_curso';
-                if (horasGte(tot, objetivoSemana)) {
+                if (horasGte(prog, objetivoSemana)) {
                     colorBarra = 'green'; colorBorde = 'green';
-                    const dif = tot - objetivoSemana;
+                    const dif = prog - objetivoSemana;
                     mensaje = horasEq(dif, 0) ? 'Vas justo' : `Vas ${TimeUtils.horasATexto(dif)} de más`;
                 } else {
                     colorBarra = 'blue'; colorBorde = 'blue';
                     mensaje = objetivoSemana === 0
-                        ? `${TimeUtils.horasATexto(tot)} (Sin objetivo)`
-                        : _fraseCantidad(objetivoSemana - tot, 'Falta', 'Faltan');
+                        ? `${TimeUtils.horasATexto(prog)} (Sin objetivo)`
+                        : _fraseCantidad(objetivoSemana - prog, 'Falta', 'Faltan');
                 }
                 mostrarMensaje = true;
-            } else if (horasGte(tot, objetivoSemana)) {
+            } else if (horasGte(prog, objetivoSemana)) {
                 colorBarra = 'green'; colorBorde = 'green';
                 estadoFondo = 'finalizado_ok';
-                const dif = tot - objetivoSemana;
+                const dif = prog - objetivoSemana;
                 mensaje = horasEq(dif, 0) ? 'Perfecto' : `Hiciste ${TimeUtils.horasATexto(dif)} de más`;
                 mostrarMensaje = true;
             } else {
                 colorBarra = 'red'; colorBorde = 'red';
                 estadoFondo = 'finalizado_fail';
-                mensaje = _fraseCantidad(objetivoSemana - tot, 'Faltó', 'Faltaron');
+                mensaje = _fraseCantidad(objetivoSemana - prog, 'Faltó', 'Faltaron');
                 mostrarMensaje = true;
             }
 
@@ -6410,7 +6558,7 @@
                 titulo: `<svg class="icon"><use href="#icon-calendar-simple" /></svg> Esta Semana`,
                 stats: todosEspeciales ? '🌞' : TimeUtils.horasATexto(tot),
                 mensaje, mostrarMensaje,
-                colorBarra, anchoBarra: prog,
+                colorBarra, anchoBarra: progreso,
                 colorBorde, estadoFondo,
                 hint: 'Tocá para ver Hoy',
                 hintEsHTML: false,
@@ -7735,6 +7883,12 @@
             ModalManager.alternar('modal-selector-perfiles', 'modal-config', null, _precargarCamposConfig);
         }
 
+        function refrescarConfigSiVisible() {
+            if (document.getElementById('modal-config')?.classList.contains('show')) {
+                _precargarCamposConfig();
+            }
+        }
+
         function mostrarConfigOnboarding() {
             document.body.classList.add('config-onboarding');
             ModalManager.abrir('modal-config', _precargarCamposConfig);
@@ -8195,39 +8349,26 @@
         }
 
         return {
-            init, obtenerFechaHoy: TimeUtils.obtenerFechaHoy, pegarHoraActual, alternarTema, alternarVista, cerrarConfig, abrirSelectorMesesCalendario,
-            abrirModalAyuda, cerrarModalAyuda,
-            cerrarEdicion, mostrarImportar, cerrarImportar, actualizarUI, mostrarToast,
-            resetearBoton, toggleFormulario, aplicarOrdenCards, iniciarDragOrdenCards,
-            limpiarCampo, mostrarFiltros, irHoyCalendario, obtenerOrdenCards,
-            cambiarMesStats, abrirModalReporteSecciones, cerrarModalReporteSecciones,
-            toggleSeccionReporte, confirmarGenerarReporte,
-            toggleHistorico, toggleStats, actualizarEstadoBotonHoverPopup,
-            toggleTimerBreakMain, toggleBloqueoEdicion,
-            actualizarFeedbackConfig, abrirSelectorPerfiles,
-            toggleLogicaCubierto, actualizarEstadoBotonLogicaCubierto,
-            toggleObjetivoPorRegistro, actualizarEstadoBotonObjetivoPorRegistro,
-            aplicarHorasConfiguradasATodos, actualizarEstadoBotonAplicarHoras,
-            iniciarCambioObjetivoEdicion, detenerCambioObjetivoEdicion,
-            cerrarSelectorPerfiles, abrirEditorPerfil, cerrarEditorPerfil, guardarEdicionPerfil, toggleModoLote, toggleHoverPopupCalendario,
-            eliminarPerfilDesdeEditor, crearPerfilDesdeSelector, ejecutarAccionRegistro,
-            iniciarCambioHoras, detenerCambio, mostrarconfig, mostrarConfigOnboarding, alternarFechaActual, gistSubir, gistBajar,
-            toggleCredito, toggleBloqueoEdicionGrupo, cerrarEdicionGrupo, poblarSelectoresTipos,
-            mostrarExportar, cerrarExportar, ejecutarExportacion, toggleCamposRangoExport, aplicarFeedbackCampos,
-            toggleIgnorarTiempoFuera, actualizarEstadoBotonIgnorarTF,
-            togglePeriodoStats, cambiarAnioStats, cambiarSemanaStats, toggleFondoCard, setFondoCard, toggleVisibilidadCard, aplicarVisibilidadCards,
-            togglePersistirTarjetas, toggleVistaHistorico,
-            navegarCalendario, actualizarEstadoBotonesGist,
-            abrirModalGist, cerrarModalGist, guardarConfigGist, toggleVerToken, abrirGistEnBrowser, gistMergeCancelar, gistMergeAplicar,
-            toggleGistBackup, toggleGistMerge, iniciarCambioLimite, detenerCambioLimite,
-            _popupCalendarioHover, _onclickCalendarioDia, _cerrarPopupCalendarioHover,
-            _popupCalendarioDiaSinRegistro,
-            _esFechaHabil, _cubiertoPorSaldo, agruparRegistrosConsecutivos, _irAFicharConFecha,
-            _activarVistaCalendarioHistorico, _agruparMesesPorAnio, _nombreMesCapitalizado, _renderSelectorStats,
-            setModoEstadisticas, setTiempoExpansionBotones, getFondoCard,
-            actualizarListaRegistros, getVistaHistoricoCalendario, _cerrarSelectorMeses, _renderizarCalendario,
-            _iniciarCicloStats, _cicloStatsActivo, _prepararMostrarFaseAlRenderizar, _forzarVista, vistaActual: D.vistaActual,
-            actualizarBotonLote,
+            _activarVistaCalendarioHistorico, _agruparMesesPorAnio, _cerrarPopupCalendarioHover, _cerrarSelectorMeses, _cicloStatsActivo, _cubiertoPorSaldo,
+            _esFechaHabil, _forzarVista, _iniciarCicloStats, _irAFicharConFecha, _nombreMesCapitalizado, _onclickCalendarioDia,
+            _popupCalendarioDiaSinRegistro, _popupCalendarioHover, _prepararMostrarFaseAlRenderizar, _renderSelectorStats, _renderizarCalendario, abrirEditorPerfil,
+            abrirGistEnBrowser, abrirModalAyuda, abrirModalGist, abrirModalReporteSecciones, abrirSelectorMesesCalendario, abrirSelectorPerfiles,
+            actualizarBotonLote, actualizarEstadoBotonAplicarHoras, actualizarEstadoBotonHoverPopup, actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
+            actualizarEstadoBotonesGist, actualizarFeedbackConfig, actualizarListaRegistros, actualizarUI, agruparRegistrosConsecutivos, alternarFechaActual,
+            alternarTema, alternarVista, aplicarFeedbackCampos, aplicarHorasConfiguradasATodos, aplicarOrdenCards, aplicarVisibilidadCards,
+            cambiarAnioStats, cambiarMesStats, cambiarSemanaStats, cerrarConfig, cerrarEdicion, cerrarEdicionGrupo,
+            cerrarEditorPerfil, cerrarExportar, cerrarImportar, cerrarModalAyuda, cerrarModalGist, cerrarModalReporteSecciones,
+            cerrarSelectorPerfiles, confirmarGenerarReporte, crearPerfilDesdeSelector, detenerCambio, detenerCambioLimite, detenerCambioObjetivoEdicion,
+            ejecutarAccionRegistro, ejecutarExportacion, eliminarPerfilDesdeEditor, getFondoCard, getVistaHistoricoCalendario, gistBajar,
+            gistMergeAplicar, gistMergeCancelar, gistSubir, guardarConfigGist, guardarEdicionPerfil, iniciarCambioHoras,
+            iniciarCambioLimite, iniciarCambioObjetivoEdicion, iniciarDragOrdenCards, iniciarTimerAutoCierreBotones, init, irHoyCalendario,
+            limpiarCampo, mostrarConfigOnboarding, mostrarExportar, mostrarFiltros, mostrarImportar, mostrarToast,
+            mostrarconfig, navegarCalendario, obtenerFechaHoy: TimeUtils.obtenerFechaHoy, obtenerOrdenCards, pegarHoraActual, poblarSelectoresTipos,
+            resetearBoton, setFondoCard, setModoEstadisticas, setTiempoExpansionBotones, toggleBloqueoEdicion, toggleBloqueoEdicionGrupo,
+            toggleCamposRangoExport, toggleCredito, toggleFondoCard, toggleFormulario, toggleGistBackup, toggleGistMerge,
+            toggleHistorico, toggleHoverPopupCalendario, toggleIgnorarTiempoFuera, toggleLogicaCubierto, toggleModoLote, toggleObjetivoPorRegistro,
+            togglePeriodoStats, togglePersistirTarjetas, toggleSeccionReporte, toggleStats, toggleTimerBreakMain, toggleVerToken,
+            toggleVisibilidadCard, toggleVistaHistorico, vistaActual: D.vistaActual, refrescarConfigSiVisible
         };
 
     })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje);
@@ -8564,7 +8705,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260823';
+        const _v = '-v260827';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

@@ -1413,7 +1413,7 @@ button:disabled {
 
 .nuevo-registro-animacion {
     transform-origin: center;
-    z-index: 10;
+    z-index: 3;
     position: relative;
 }
 

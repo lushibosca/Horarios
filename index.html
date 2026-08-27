@@ -439,7 +439,7 @@
                 </h2>
                 <div class="form-collapsible collapsible" id="form-stats">
                     <div class="stats-inner" id="stats-inner">
-                        <div class="form-group">
+                        <div class="form-group form-group-pt">
                             <label>Período</label>
                             <div class="stats-periodo-row">
                                 <select id="select-mes-stats" aria-label="Período"></select>
@@ -836,6 +836,8 @@
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-fichar">Fichar</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-estadisticas">Estadísticas</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-registros">Registros</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-remoto">Remoto</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-compensatorio">Compensatorio</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-perfiles">Perfiles</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">Dónde se guardan tus datos</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">Backup y sincronización</button>
@@ -862,6 +864,17 @@
                         <section class="ayuda-seccion" id="ayuda-sec-registros">
                             <h4>Registros</h4>
                             <p>Acá están todos tus registros, en lista o en calendario. Podés filtrarlos por fecha o tipo, deshacer y rehacer cambios (también con Ctrl+Z / Ctrl+Y), y tocar cualquiera para editarlo o borrarlo.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-remoto">
+                            <h4>Remoto</h4>
+                            <p>El tipo especial <strong>Remoto</strong> se comporta distinto al resto de los tipos especiales (vacaciones, feriados, paro, etc.): esos días quedan afuera del cálculo, no exigen objetivo ni suman horas. Un día Remoto, en cambio, se cuenta como si hubieras cumplido justo tu objetivo de esa jornada: exige el objetivo del día y automáticamente suma esas mismas horas como trabajadas, así que no genera ni déficit ni excedente.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-compensatorio">
+                            <h4>Compensatorio</h4>
+                            <p>El tipo especial <strong>Compensatorio</strong> sirve para tomarte un día justificado a cambio de horas extra que ya trabajaste. Al cargarlo, la app busca automáticamente, dentro de los 14 días anteriores, el día con mayor excedente de horas (por encima de tu objetivo) que todavía no haya sido usado para compensar otro día, y le resta ese excedente al buffer y al restante semanal.</p>
+                            <p>Por eso vas a ver, al lado del badge "Compensatorio", otro badge con la fecha (dd/mm/aa) del día que está siendo compensado.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-perfiles">
