@@ -1874,7 +1874,12 @@
                 if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += objetivoDia;
                 if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
                 if (esRemoto) hechas += objetivoDia;
-                if (esCompensatorio && diaTerminado) hechas -= _montoCompensadoPorRegistro(r, asignacionesCompensatorio);
+                if (esCompensatorio && diaTerminado) {
+                    const fechaRef = _fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
+                    if (fechaRef && fechaRef >= desde && fechaRef <= hasta) {
+                        hechas -= _montoCompensadoPorRegistro(r, asignacionesCompensatorio);
+                    }
+                }
 
                 if (incluirActivoEnVivo && !diaTerminado && esDiaHabil && !esEspecial && r && r === regActivo) {
                     const t = calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
@@ -6400,7 +6405,12 @@
                 if (regActivo && r.fecha === regActivo.fecha) { totalSemana += tiempoHoy; return; }
                 totalSemana += D.horasEfectivasDeRegistro(r);
                 const tipoDia = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                if (tipoDia?.id === 'compensatorio') descuentoCompensatorioSemana += D.montoCompensadoPorRegistro(r, asignacionesCompensatorio);
+                if (tipoDia?.id === 'compensatorio') {
+                    const fechaRef = D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
+                    if (fechaRef && TimeUtils.obtenerLunesSemanaISO(fechaRef) === TimeUtils.obtenerLunesSemanaISO(r.fecha)) {
+                        descuentoCompensatorioSemana += D.montoCompensadoPorRegistro(r, asignacionesCompensatorio);
+                    }
+                }
             });
             const totalSemanaProgreso = totalSemana - descuentoCompensatorioSemana;
 
