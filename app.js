@@ -1867,19 +1867,15 @@
                 const r = regsPorFecha.get(iso);
                 const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
                 const esRemoto = esEspecial && esTipoRemoto(r);
-                const esCompensatorio = esEspecial && TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === 'compensatorio';
                 const diaTerminado = iso === hoy ? !!(r && r.salida) : !(ayerAbierto && iso === ayerStr);
                 const objetivoDia = r ? objetivoDeRegistro(r) : horasDiarias;
 
                 if (esDiaHabil && (!esEspecial || esRemoto) && diaTerminado) objetivo += objetivoDia;
-                if (r && r.salida && !esEspecial && diaTerminado) hechas += r.total;
-                if (esRemoto) hechas += objetivoDia;
-                if (esCompensatorio && diaTerminado) {
-                    const fechaRef = _fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
-                    if (fechaRef && fechaRef >= desde && fechaRef <= hasta) {
-                        hechas -= _montoCompensadoPorRegistro(r, asignacionesCompensatorio);
-                    }
+                if (r && r.salida && !esEspecial && diaTerminado) {
+                    hechas += r.total;
+                    hechas -= _montoCompensadoDeReferencia(r, asignacionesCompensatorio);
                 }
+                if (esRemoto) hechas += objetivoDia;
 
                 if (incluirActivoEnVivo && !diaTerminado && esDiaHabil && !esEspecial && r && r === regActivo) {
                     const t = calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
@@ -2061,6 +2057,12 @@
             return asignacion ? asignacion.compensatorioFecha : null;
         }
 
+        function _montoCompensadoDeReferencia(registroReferencia, asignacionesPrecalculadas = null) {
+            const asignaciones = asignacionesPrecalculadas || _calcularAsignacionesCompensatorio();
+            const asignacion = asignaciones.find(a => a.referenciaId === registroReferencia.id);
+            return asignacion ? asignacion.excedente : 0;
+        }
+
         function horasEfectivasDeRegistro(registro) {
             const tipo = TiposRegistro.obtenerTipoPorCodigo(registro.entrada, registro.salida);
             if (tipo && tipo.id === 'remoto') return objetivoDeRegistro(registro);
@@ -2124,6 +2126,7 @@
             esTipoRemoto, horasEfectivasDeRegistro, montoCompensadoPorRegistro: _montoCompensadoPorRegistro,
             fechaCompensadaPorRegistro: _fechaCompensadaPorRegistro,
             fechaCompensadoDeRegistro: _fechaCompensadoDeRegistro,
+            montoCompensadoDeReferencia: _montoCompensadoDeReferencia,
             calcularAsignacionesCompensatorio: _calcularAsignacionesCompensatorio,
             recalcularTotalesEnMemoria: function () {
                 registros.forEach(r => {
@@ -6405,11 +6408,8 @@
                 if (regActivo && r.fecha === regActivo.fecha) { totalSemana += tiempoHoy; return; }
                 totalSemana += D.horasEfectivasDeRegistro(r);
                 const tipoDia = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                if (tipoDia?.id === 'compensatorio') {
-                    const fechaRef = D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
-                    if (fechaRef && TimeUtils.obtenerLunesSemanaISO(fechaRef) === TimeUtils.obtenerLunesSemanaISO(r.fecha)) {
-                        descuentoCompensatorioSemana += D.montoCompensadoPorRegistro(r, asignacionesCompensatorio);
-                    }
+                if (!tipoDia) {
+                    descuentoCompensatorioSemana += D.montoCompensadoDeReferencia(r, asignacionesCompensatorio);
                 }
             });
             const totalSemanaProgreso = totalSemana - descuentoCompensatorioSemana;
