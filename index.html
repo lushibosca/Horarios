@@ -159,7 +159,8 @@
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" class="icon-line" stroke="currentColor">
             </polygon>
         </symbol>
-        <symbol id="icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <symbol id="icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
             <line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -587,7 +588,8 @@
             </div><!-- #contenido-historico -->
         </div>
     </div>
-    <div class="modal modal-scrollable" id="modal-config" role="dialog" aria-modal="true" aria-labelledby="modal-config-titulo">
+    <div class="modal modal-scrollable" id="modal-config" role="dialog" aria-modal="true"
+        aria-labelledby="modal-config-titulo">
         <div class="modal-content">
             <div class="modal-panel-header">
                 <h3 id="modal-config-titulo">
@@ -601,7 +603,8 @@
             </div>
             <div class="modal-panel-body custom-scroll">
                 <div class="config-onboarding-banner" id="config-onboarding-banner">
-                    <p>Configurá tus horas diarias y días laborales, o restaurá un backup</p>
+                    <p>Configurá tus horas diarias y días laborales, restaurá tus datos anteriores o tocá el botón de
+                        ayuda para ver las características.</p>
                 </div>
                 <div class="modal-config-cols">
 
@@ -616,8 +619,10 @@
                                     </svg>
                                 </button>
                                 <span id="config-horas-diarias" class="input-number-display" data-valor="0">0h</span>
-                                <button id="btn-horas-diarias-inc" class="btn-increment" title="Incrementar tiempo">+</button>
-                                <button id="btn-horas-diarias-dec" class="btn-increment" title="Disminuir tiempo">-</button>
+                                <button id="btn-horas-diarias-inc" class="btn-increment"
+                                    title="Incrementar tiempo">+</button>
+                                <button id="btn-horas-diarias-dec" class="btn-increment"
+                                    title="Disminuir tiempo">-</button>
                             </div>
                         </div>
                         <div class="form-group">
@@ -651,7 +656,15 @@
                                     <input type="checkbox" name="dia-habil" value="0"> <span>Do</span>
                                 </label>
                             </div>
-                            <div id="config-total-feedback" class="config-hint-text">(Total semanal: --hs)</div>
+                            <div class="config-total-feedback-row">
+                                <div id="config-total-feedback" class="config-hint-text">(Total semanal: --hs)</div>
+                                <button id="btn-historial-dias-habiles" class="btn-historial-dias" type="button"
+                                    title="Ver historial de días laborales">
+                                    <svg class="icon">
+                                        <use href="#icon-list" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <div class="config-actions form-group config-onboarding-hide">
                             <label>Interfaz</label>
@@ -817,7 +830,8 @@
         </div>
     </div>
 
-    <div class="modal modal-scrollable" id="modal-ayuda" role="dialog" aria-modal="true" aria-labelledby="modal-ayuda-titulo">
+    <div class="modal modal-scrollable" id="modal-ayuda" role="dialog" aria-modal="true"
+        aria-labelledby="modal-ayuda-titulo">
         <div class="modal-content">
             <div class="modal-panel-header">
                 <h3 id="modal-ayuda-titulo">
@@ -832,66 +846,115 @@
             <div class="modal-panel-body custom-scroll">
                 <div class="ayuda-layout">
                     <nav class="ayuda-indice" id="ayuda-indice">
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-general">Cómo funciona</button>
+                        <button type="button" class="ayuda-indice-item"
+                            data-target="ayuda-sec-general">Características</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-fichar">Fichar</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-estadisticas">Estadísticas</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-registros">Registros</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-tf">Tiempo fuera</button>
+                        <button type="button" class="ayuda-indice-item"
+                            data-target="ayuda-sec-estadisticas">Estadísticas</button>
+                        <button type="button" class="ayuda-indice-item"
+                            data-target="ayuda-sec-registros">Registros</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-remoto">Remoto</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-compensatorio">Compensatorio</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-perfiles">Perfiles</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">Dónde se guardan tus datos</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">Backup y sincronización</button>
+                        <button type="button" class="ayuda-indice-item"
+                            data-target="ayuda-sec-compensatorio">Compensatorio</button>
+                        <button type="button" class="ayuda-indice-item"
+                            data-target="ayuda-sec-perfiles">Perfiles</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">Dónde se guardan
+                            tus datos</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">Backup y
+                            sincronización</button>
                     </nav>
 
                     <div class="ayuda-secciones">
                         <section class="ayuda-seccion" id="ayuda-sec-general">
-                            <h4>Cómo funciona</h4>
-                            <p>La app registra tus jornadas laborales: hora de entrada, hora de salida y el tiempo que estuviste fuera (por ejemplo, el almuerzo). Con eso calcula cuánto trabajaste hoy, en la semana, en el mes o en el año, y lo compara contra tu objetivo de horas.</p>
-                            <p>La tarjeta de arriba de todo muestra tu estado actual. Tocándola alternás entre la vista de Hoy y la vista de Semana.</p>
+                            <h4>Características</h4>
+                            <p>- Registrar tus jornadas y días especiales como feriados o vacaciones.</p>
+                            <p>- Establecer horas diarias objetivo de forma global e individual y días laborales por
+                                semana.</p>
+                            <p>- Ver el estado del tiempo transcurrido, restante y saldo semanal.</p>
+                            <p>- Visualizar estadísticas semanales, mensuales y anuales con distintas métricas en base a
+                                registros existentes.</p>
+                            <p>- Crear informes mensuales o anuales en detalle.</p>
+                            <p>- Ver un histórico de los registros en una lista o calendario.</p>
+                            <p>- Crear distintos perfiles (de usuario o laborales).</p>
+                            <p>- Crear backups locales o sincronizar con token de GitHub Gist.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-fichar">
                             <h4>Fichar</h4>
-                            <p>El botón principal registra tu entrada y, más tarde, tu salida. El reloj de al lado sirve para marcar un Tiempo Fuera (como el almuerzo): se resta automáticamente de tu jornada.</p>
-                            <p>Desplegando la flecha del formulario podés cargar o corregir un registro a mano, para hoy o para cualquier fecha pasada. En modo Lote podés cargar feriados, vacaciones u otros días especiales en un rango de fechas de una sola vez, o borrar varios registros de golpe.</p>
+                            <p>Este es el botón principal para registrar tus jornadas, y funciona de forma inteligente:
+                                al tocarlo, verifica si hoy hay un registro y agrega una entrada o salida según lo que
+                                haya en el momento.</p>
+                            <p>Desplegando la flecha del formulario (a la derecha), se extiende la tarjeta donde vas a
+                                poder personalizar un registro eligiendo la fecha, entrada o salida.</p>
+                            <p>Tocando el botón al costado derecho de la fecha se accede al modo de registro por lotes o
+                                especiales, donde podés registrar feriados, vacaciones, etc.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-tf">
+                            <h4>Tiempo fuera</h4>
+                            <p>El reloj a la izquierda en la tarjeta de fichaje (cuando hay un registro activo en el día
+                                actual) sirve para registrar el tiempo fuera del establecimiento; al tocarlo comienza el
+                                temporizador y al tocarlo nuevamente consolida y guarda lo transcurrido en el registro
+                                actual. Se puede usar varias veces, sumando el TF existente.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-estadisticas">
                             <h4>Estadísticas</h4>
-                            <p>Consultá tus horas trabajadas, promedios, regularidad y saldo, por semana, mes o año. Tocando cada dato aparece una explicación de qué significa y cómo se calcula. Desde acá también podés generar un reporte descargable del período elegido.</p>
+                            <p>Consultá tus horas trabajadas, promedios, regularidad y saldo, por semana, mes o año.
+                                Tocando cada dato aparece una explicación de qué significa y cómo se calcula. Desde acá
+                                también podés generar un reporte descargable del período elegido.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-registros">
                             <h4>Registros</h4>
-                            <p>Acá están todos tus registros, en lista o en calendario. Podés filtrarlos por fecha o tipo, deshacer y rehacer cambios (también con Ctrl+Z / Ctrl+Y), y tocar cualquiera para editarlo o borrarlo.</p>
+                            <p>En esta tarjeta están todos tus registros, en vista de lista o en calendario. Podés
+                                filtrarlos por fecha o tipo, deshacer y rehacer cambios (también con Ctrl+Z / Ctrl+Y) y
+                                tocar cualquiera para editarlo o borrarlo.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-remoto">
-                            <h4>Remoto</h4>
-                            <p>El tipo especial <strong>Remoto</strong> se comporta distinto al resto de los tipos especiales (vacaciones, feriados, paro, etc.): esos días quedan afuera del cálculo, no exigen objetivo ni suman horas. Un día Remoto, en cambio, se cuenta como si hubieras cumplido justo tu objetivo de esa jornada: exige el objetivo del día y automáticamente suma esas mismas horas como trabajadas, así que no genera ni déficit ni excedente.</p>
+                            <h4>Remoto (registro especial)</h4>
+                            <p>El tipo especial <strong>Remoto</strong> se comporta distinto al resto de los tipos
+                                especiales (vacaciones, feriados, paro, etc.): esos días quedan afuera del cálculo, no
+                                exigen objetivo ni suman horas. Un día Remoto, en cambio, se cuenta como si hubieras
+                                cumplido justo tu objetivo de esa jornada: exige el objetivo del día y automáticamente
+                                suma esas mismas horas como trabajadas, así que no genera ni déficit ni excedente.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-compensatorio">
-                            <h4>Compensatorio</h4>
-                            <p>El tipo especial <strong>Compensatorio</strong> sirve para tomarte un día justificado a cambio de horas extra que ya trabajaste. Al cargarlo, la app busca automáticamente, dentro de los 14 días anteriores, el día con mayor excedente de horas (por encima de tu objetivo) que todavía no haya sido usado para compensar otro día, y le resta ese excedente al buffer y al restante semanal <strong>de la semana en la que está ese día de referencia</strong> (no de la semana del compensatorio), ya que es ahí donde esas horas extra dejan de estar disponibles.</p>
-                            <p>Por eso vas a ver, al lado del badge "Compensatorio", otro badge con la fecha (dd/mm/aa) del día que está siendo compensado.</p>
+                            <h4>Compensatorio (registro especial)</h4>
+                            <p>El tipo especial <strong>Compensatorio</strong> sirve para tomarte un día justificado a
+                                cambio de horas extra que ya tengas acumuladas en otro registro. Por defecto, la app
+                                busca automáticamente, dentro de los 14 días anteriores, el día con mayor excedente de
+                                horas (por encima de tu objetivo) que todavía no haya sido usado para compensar otro
+                                día.</p>
+                            <p>También podés elegir vos mismo el día a compensar, en el campo "Fecha compensada" del
+                                editor (con el botón de al lado podés pegar la sugerencia automática o limpiar el
+                                campo). Una referencia elegida a mano no tiene el límite de 14 días, y tiene
+                                <strong>prioridad</strong> sobre las asignaciones automáticas.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-perfiles">
                             <h4>Perfiles</h4>
-                            <p>Podés tener varios perfiles (por ejemplo, distintos trabajos) con registros, objetivos y ajustes totalmente independientes entre sí. Se cambia de perfil desde el botón de arriba de todo.</p>
+                            <p>Podés tener varios perfiles (por ejemplo, distintos trabajos) con registros, objetivos y
+                                ajustes totalmente independientes entre sí. Se cambia de perfil desde el botón situado
+                                en el borde superior derecho de la app.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-datos">
                             <h4>Dónde se guardan tus datos</h4>
-                            <p>Todo se guarda localmente en este dispositivo, en el almacenamiento del navegador (localStorage). No se envía a ningún servidor a menos que vos actives la sincronización con GitHub Gist.</p>
-                            <p>Eso también quiere decir que tus datos no viajan solos entre dispositivos: si borrás los datos del navegador, desinstalás la app o cambiás de celular/computadora, los registros no van a estar ahí a menos que hayas hecho un respaldo o sincronizado antes.</p>
+                            <p>Todo se guarda localmente en tu dispositivo, en el almacenamiento del navegador
+                                (localStorage). Si borrás el historial del navegador, los datos se perderán.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-respaldo">
                             <h4>Backup y sincronización</h4>
-                            <p>Desde Ajustes → Datos podés Respaldar (exportar un archivo con todos tus registros) y Restaurar (importar un backup) en este u otro dispositivo.</p>
-                            <p>Si preferís no hacerlo a mano, GitHub Gist te permite sincronizar automáticamente entre dispositivos usando tu propia cuenta de GitHub. Es opcional: la app funciona por completo sin conexión y sin necesidad de configurarlo.</p>
+                            <p>Desde Perfiles → Ajustes → Respaldar podés exportar un archivo con todos tus registros,
+                                o usar "Restaurar" para importar un backup en este u otro dispositivo.</p>
+                            <p>Si preferís no hacerlo a mano, el menú de GitHub Gist te permite sincronizar
+                                automáticamente entre dispositivos creando un token con tu cuenta de GitHub (por
+                                seguridad, usá solamente el scope "gist").</p>
                         </section>
                     </div>
                 </div>
@@ -909,7 +972,8 @@
         </div>
     </div>
 
-    <div class="modal modal-scrollable" id="modal-gist" role="dialog" aria-modal="true" aria-labelledby="modal-gist-titulo">
+    <div class="modal modal-scrollable" id="modal-gist" role="dialog" aria-modal="true"
+        aria-labelledby="modal-gist-titulo">
         <div class="modal-content">
             <div class="modal-panel-header">
                 <h3 id="modal-gist-titulo">
@@ -1061,7 +1125,8 @@
         </div>
     </div>
 
-    <div class="modal modal-scrollable" id="modal-editar" role="dialog" aria-modal="true" aria-labelledby="modal-editar-titulo">
+    <div class="modal modal-scrollable" id="modal-editar" role="dialog" aria-modal="true"
+        aria-labelledby="modal-editar-titulo">
         <div class="modal-content">
             <div class="modal-panel-header">
                 <h3 id="modal-editar-titulo">
@@ -1085,56 +1150,78 @@
                         </button>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="edit-entrada">Entrada</label>
-                    <div class="input-with-btn">
-                        <input type="text" id="edit-entrada" inputmode="numeric" maxlength="5" />
-                        <button class="time-btn" id="btn-edit-entrada" title="Pegar hora actual o limpiar"><svg
-                                class="icon">
-                                <use href="#icon-clock" />
-                            </svg>
-                        </button>
+                <div id="grupo-referencia-compensatorio" class="collapsible">
+                    <div class="collapsible-inner">
+                        <div class="form-group">
+                            <label for="edit-referencia-compensatorio">Fecha compensada (vacio=Automático)</label>
+                            <div class="input-with-btn">
+                                <input type="date" id="edit-referencia-compensatorio" />
+                                <button class="time-btn" id="btn-edit-referencia-compensatorio"
+                                    title="Pegar referencia automática o limpiar">
+                                    <svg class="icon">
+                                        <use href="#icon-calendar-simple" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="edit-salida">Salida</label>
-                    <div class="input-with-btn">
-                        <input type="text" id="edit-salida" inputmode="numeric" maxlength="5" />
-                        <button class="time-btn" id="btn-edit-salida" title="Pegar hora actual o limpiar"><svg
-                                class="icon">
-                                <use href="#icon-clock" />
-                            </svg>
-                        </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-entrada">Entrada</label>
+                        <div class="input-icon-wrap">
+                            <input type="text" id="edit-entrada" inputmode="numeric" maxlength="5" />
+                            <button class="input-icon-btn" id="btn-edit-entrada" title="Pegar hora actual o limpiar">
+                                <svg class="icon">
+                                    <use href="#icon-clock" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-salida">Salida</label>
+                        <div class="input-icon-wrap">
+                            <input type="text" id="edit-salida" inputmode="numeric" maxlength="5" />
+                            <button class="input-icon-btn" id="btn-edit-salida" title="Pegar hora actual o limpiar">
+                                <svg class="icon">
+                                    <use href="#icon-clock" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="edit-tiempo-fuera">Tiempo Fuera</label>
-                    <div class="input-with-btn">
-                        <input type="text" id="edit-tiempo-fuera" inputmode="numeric" maxlength="5" />
-                        <button class="time-btn" id="btn-edit-tf" title="Limpiar">
-                            <svg class="icon">
-                                <use href="#icon-broom" />
-                            </svg>
-                        </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-tiempo-fuera">Tiempo Fuera</label>
+                        <div class="input-icon-wrap">
+                            <input type="text" id="edit-tiempo-fuera" inputmode="numeric" maxlength="5" />
+                            <button class="input-icon-btn" id="btn-edit-tf" title="Limpiar">
+                                <svg class="icon">
+                                    <use href="#icon-broom" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
-                </div>                
+                    <div class="form-group">
+                        <label>Objetivo</label>
+                        <div class="input-number-group input-number-group--embed">
+                            <span id="edit-objetivo" class="input-number-display" data-valor="0">0h</span>
+                            <button type="button" class="btn-increment" id="btn-edit-objetivo-inc"
+                                title="Incrementar objetivo">+</button>
+                            <button type="button" class="btn-increment" id="btn-edit-objetivo-dec"
+                                title="Disminuir objetivo">-</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label for="edit-notas">Comentarios</label>
-                    <div class="input-with-btn">
+                    <div class="input-icon-wrap">
                         <input type="text" id="edit-notas" maxlength="35" autocomplete="off" />
-                        <button class="time-btn" id="btn-edit-notas" title="Limpiar">
+                        <button class="input-icon-btn" id="btn-edit-notas" title="Limpiar">
                             <svg class="icon">
                                 <use href="#icon-broom" />
                             </svg>
                         </button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Objetivo</label>
-                    <div class="input-number-group">
-                        <span id="edit-objetivo" class="input-number-display" data-valor="0">0h</span>
-                        <button type="button" class="btn-increment" id="btn-edit-objetivo-inc" title="Incrementar objetivo">+</button>
-                        <button type="button" class="btn-increment" id="btn-edit-objetivo-dec" title="Disminuir objetivo">-</button>
                     </div>
                 </div>
             </div>
@@ -1245,7 +1332,8 @@
             </div>
         </div>
     </div>
-    <div class="modal" id="modal-reporte-secciones" role="dialog" aria-modal="true" aria-labelledby="modal-reporte-secciones-titulo">
+    <div class="modal" id="modal-reporte-secciones" role="dialog" aria-modal="true"
+        aria-labelledby="modal-reporte-secciones-titulo">
         <div class="modal-content">
             <h3 id="modal-reporte-secciones-titulo">
                 <span class="modal-title-block">
@@ -1272,7 +1360,8 @@
             </div>
         </div>
     </div>
-    <div class="modal" id="modal-selector-perfiles" role="dialog" aria-modal="true" aria-labelledby="modal-selector-perfiles-titulo">
+    <div class="modal" id="modal-selector-perfiles" role="dialog" aria-modal="true"
+        aria-labelledby="modal-selector-perfiles-titulo">
         <div class="modal-content">
             <h3 id="modal-selector-perfiles-titulo">
                 <span class="modal-title-block">
@@ -1301,7 +1390,7 @@
                         <use href="#icon-settings" />
                     </svg>
                     Ajustes
-                </button>                
+                </button>
                 <button class="time-btn" id="theme-toggle-modal" title="Cambiar tema">
                     <svg class="icon">
                         <use href="#icon-moon" />
@@ -1322,7 +1411,8 @@
             </div>
         </div>
     </div>
-    <div class="modal" id="modal-editar-perfil" role="dialog" aria-modal="true" aria-labelledby="modal-editar-perfil-titulo">
+    <div class="modal" id="modal-editar-perfil" role="dialog" aria-modal="true"
+        aria-labelledby="modal-editar-perfil-titulo">
         <div class="modal-content">
             <h3 id="modal-editar-perfil-titulo">
                 <span class="modal-title-block">
@@ -1364,7 +1454,109 @@
         </div>
     </div>
 
-    <div class="modal modal-scrollable" id="modal-editar-grupo" role="dialog" aria-modal="true" aria-labelledby="modal-editar-grupo-titulo">
+    <div class="modal" id="modal-historial-dias" role="dialog" aria-modal="true"
+        aria-labelledby="modal-historial-dias-titulo">
+        <div class="modal-content">
+            <h3 id="modal-historial-dias-titulo">
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-list" />
+                    </svg>
+                    Historial de días laborales
+                </span>
+            </h3>
+
+            <div id="lista-historial-dias" class="perfil-list-container custom-scroll"></div>
+
+            <div class="btn-group">
+                <button class="btn-cancel">
+                    <svg class="icon">
+                        <use href="#icon-back" />
+                    </svg>
+                    Volver
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-editar-tramo-dias" role="dialog" aria-modal="true"
+        aria-labelledby="modal-editar-tramo-dias-titulo">
+        <div class="modal-content">
+            <h3 id="modal-editar-tramo-dias-titulo">
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-edit" />
+                    </svg>
+                    Editar tramo
+                </span>
+            </h3>
+
+            <div class="form-group">
+                <label for="editar-tramo-desde">Vigente desde</label>
+                <input type="date" id="editar-tramo-desde" />
+            </div>
+
+            <div class="form-group">
+                <label>Días laborales</label>
+                <div class="week-selector">
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="1">
+                        <span>Lu</span>
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="2">
+                        <span>Ma</span>
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="3">
+                        <span>Mi</span>
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="4">
+                        <span>Ju</span>
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="5">
+                        <span>Vi</span>
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="6">
+                        <span>Sa</span>
+                    </label>
+                    <label class="day-checkbox">
+                        <input type="checkbox" name="dia-habil-tramo" value="0"> <span>Do</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-edit">
+                    <svg class="icon">
+                        <use href="#icon-check" />
+                    </svg>
+                    Guardar
+                </button>
+                <button class="btn-delete" id="btn-eliminar-tramo-dias">
+                    <svg class="icon">
+                        <use href="#icon-trash" />
+                    </svg>
+                    Eliminar
+                </button>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-cancel">
+                    <svg class="icon">
+                        <use href="#icon-back" />
+                    </svg>
+                    Volver
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal modal-scrollable" id="modal-editar-grupo" role="dialog" aria-modal="true"
+        aria-labelledby="modal-editar-grupo-titulo">
         <div class="modal-content">
             <div class="modal-panel-header">
                 <h3 id="modal-editar-grupo-titulo">

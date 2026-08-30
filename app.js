@@ -13,6 +13,7 @@
         MODO_ESTADISTICAS: 'modoEstadisticas',
         HOVER_POPUP: 'hoverPopupCalendario',
         DIAS_HABILES: 'diasHabiles',
+        HISTORIAL_DIAS_HABILES: 'historialDiasHabiles',
         HORAS_DIARIAS: 'horasDiarias',
         VISTA_HISTORICO_CAL: 'vistaHistoricoCalendario',
         IGNORAR_TF: 'ignorarTiempoFuera',
@@ -299,6 +300,8 @@
     const SecurityAndUtils = (function () {
         const SECURITY_LIMITS = {
             MAX_REGISTROS: 1000,
+            MAX_REGISTROS_POR_OPERACION: 30,
+            MAX_HISTORIAL_DIAS_HABILES: 20,
             MAX_STRING_LENGTH: 100,
             MAX_NOTAS_LENGTH: 35,
             MAX_JSON_SIZE: 4 * 1024 * 1024,
@@ -388,11 +391,14 @@
             if (r.objetivoHoras !== null && r.objetivoHoras !== undefined) {
                 if (!Number.isFinite(r.objetivoHoras) || r.objetivoHoras < 0 || r.objetivoHoras > 24) return false;
             }
+            if (r.referenciaCompensatorio !== null && r.referenciaCompensatorio !== undefined) {
+                if (typeof r.referenciaCompensatorio !== 'string' || !TimeUtils.validarFecha(r.referenciaCompensatorio)) return false;
+            }
             if (!Number.isFinite(r.horas) || r.horas < 0 || r.horas > 24) return false;
             if (!Number.isFinite(r.minutos) || r.minutos < 0 || r.minutos > 59) return false;
             if (!Number.isFinite(r.total) || r.total < 0 || r.total > 24) return false;
 
-            const propiedadesPermitidas = ['id', 'fecha', 'entrada', 'salida', 'tiempoFuera', 'horas', 'minutos', 'total', 'credito', 'notas', 'objetivoHoras'];
+            const propiedadesPermitidas = ['id', 'fecha', 'entrada', 'salida', 'tiempoFuera', 'horas', 'minutos', 'total', 'credito', 'notas', 'objetivoHoras', 'referenciaCompensatorio'];
             const propiedadesActuales = Object.keys(r);
             const tienePropiedadesSospechosas = propiedadesActuales.some(prop => !propiedadesPermitidas.includes(prop));
             if (tienePropiedadesSospechosas) return false;
@@ -542,6 +548,7 @@
                 registros: [...DataManagement.registros()],
                 diasHabiles: DataManagement.diasHabiles(),
                 horasDiarias: DataManagement.horasDiarias(),
+                historialDiasHabiles: DataManagement.historialDiasHabiles(),
                 ...(actual.gistId && { gistId: actual.gistId }),
                 ...(actual.gistLastSync && { gistLastSync: actual.gistLastSync }),
                 ...(actual.gistAutoSync != null && { gistAutoSync: actual.gistAutoSync }),
@@ -1096,6 +1103,7 @@
         }
 
         let registros = [], diasHabiles = [1, 2, 3, 4, 5], horasDiarias = 7, editandoId = null; let vistaActual = 'diaria'; let ignorarTiempoFuera = false;
+        let historialDiasHabiles = [];
         let filtroActivo = false;
         let filtroDesde = null;
         let filtroHasta = null;
@@ -1165,7 +1173,7 @@
             if (ini < dosPasado || fin > dosFuturo) return 'El rango debe estar entre 2 años atrás y 2 años adelante';
             if (!TiposRegistro.validarTipoPermitido(nuevoTipo)) return 'Tipo de registro inválido';
             const dias = Math.ceil(Math.abs(fin - ini) / 864e5) + 1;
-            if (dias > 60) return `El rango contiene ${dias} días.\n Máximo: 60 días por operación.`;
+            if (dias > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) return `El rango contiene ${dias} días.\n Máximo: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} días por operación.`;
             return null;
         }
 
@@ -1209,8 +1217,8 @@
 
         async function eliminarGrupoActual() {
             if (!grupoEnEdicion) return;
-            if (grupoEnEdicion.registros.length > 60) {
-                notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: 60 registros por operación.`, 'error', 4000);
+            if (grupoEnEdicion.registros.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) {
+                notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} registros por operación.`, 'error', 4000);
                 return;
             }
             const idsAEliminar = grupoEnEdicion.registros.map(r => r.id);
@@ -1503,6 +1511,19 @@
                 elObjetivo.textContent = TimeUtils.horasATexto(objetivoActual, 'short');
             }
 
+            const elRef = $('edit-referencia-compensatorio');
+            if (elRef) {
+                const esCompensatorio = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === 'compensatorio';
+                const grupoRef = $('grupo-referencia-compensatorio');
+                if (grupoRef) {
+                    grupoRef.classList.add('sin-transicion');
+                    grupoRef.classList.toggle('expanded', esCompensatorio);
+                    void grupoRef.offsetHeight;
+                    grupoRef.classList.remove('sin-transicion');
+                }
+                elRef.value = esCompensatorio ? (r.referenciaCompensatorio || '') : '';
+            }
+
             const btnCredito = document.getElementById('btn-toggle-credito');
 
             if (r.credito && r.credito !== '00:00') {
@@ -1521,6 +1542,26 @@
                 const hintEl = document.getElementById('edit-hint-resumen');
                 if (hintEl) document.getElementById('edit-entrada').dispatchEvent(new Event('input'));
             });
+        }
+
+        function pegarReferenciaAutomatica() {
+            const elRef = $('edit-referencia-compensatorio');
+            if (!elRef || editandoId === null) return;
+
+            if (elRef.value) {
+                elRef.value = '';
+            } else {
+                const f = S.sanitizeString($('edit-fecha').value, 10);
+                const e = S.sanitizeString($('edit-entrada').value.trim(), 5);
+                const s = S.sanitizeString($('edit-salida').value.trim(), 5);
+                const listaSinManual = registros.map(x => x.id === editandoId
+                    ? { ...x, fecha: f, entrada: e || null, salida: s || null, referenciaCompensatorio: undefined }
+                    : x);
+                const asignaciones = _calcularAsignacionesCompensatorio(listaSinManual);
+                const asignacion = asignaciones.find(a => a.compensatorioId === editandoId);
+                elRef.value = asignacion?.referenciaFecha || '';
+            }
+            elRef.dispatchEvent(new Event('input'));
         }
 
         function _validarCamposEdicion(f, e, s, tf) {
@@ -1605,11 +1646,43 @@
             if (!_esObjetivoValido(objetivoNuevo)) objetivoNuevo = horasDiarias;
             const objetivoPrevio = (typeof r.objetivoHoras === 'number' && Number.isFinite(r.objetivoHoras)) ? r.objetivoHoras : horasDiarias;
 
+            const esCompensatorioNuevo = TiposRegistro.obtenerTipoPorCodigo(e, s)?.id === 'compensatorio';
+            let referenciaCompensatorioNueva;
+            if (esCompensatorioNuevo) {
+                const refInput = S.sanitizeString($('edit-referencia-compensatorio')?.value || '', 10);
+                referenciaCompensatorioNueva = TimeUtils.validarFecha(refInput) ? refInput : undefined;
+
+                if (referenciaCompensatorioNueva) {
+                    if (referenciaCompensatorioNueva > f) {
+                        notify.restaurarBotonGuardarEdicion(btnGuardar);
+                        notify.mostrarToast('El día a compensar no puede ser posterior al compensatorio', 'error');
+                        return;
+                    }
+                    const asignacionesActuales = _calcularAsignacionesCompensatorio();
+                    const yaUsadoPorOtro = asignacionesActuales.find(a => a.compensatorioId !== r.id && a.referenciaFecha === referenciaCompensatorioNueva);
+                    if (yaUsadoPorOtro) {
+                        notify.restaurarBotonGuardarEdicion(btnGuardar);
+                        notify.mostrarToast(`Ese día ya está asignado al compensatorio del ${TimeUtils.fechaCorta(yaUsadoPorOtro.compensatorioFecha)}`, 'error');
+                        return;
+                    }
+                    const listaSimulada = registros.map(x => x.id === r.id
+                        ? { ...x, fecha: f, entrada: e || null, salida: s || null, referenciaCompensatorio: referenciaCompensatorioNueva }
+                        : x);
+                    const asigTest = _calcularAsignacionesCompensatorio(listaSimulada);
+                    const resuelto = _buscarAsignacionCompensatorio(r.id, 'compensatorioId', asigTest);
+                    if (!resuelto?.referenciaFecha) {
+                        notify.restaurarBotonGuardarEdicion(btnGuardar);
+                        notify.mostrarToast('Ese día no tiene excedente disponible (o ya fue usado por otro compensatorio)', 'error');
+                        return;
+                    }
+                }
+            }
+
             let cr = _calcularCredito(e, s, tf, objetivoEdicionEnVivo());
 
             if (r.fecha === f && (r.entrada || '') === (e || '') && (r.salida || '') === (s || '') &&
                 (r.tiempoFuera || '') === (tf || '') && (r.credito || '') === (cr || '') && (r.notas || '') === (notas || '') &&
-                objetivoNuevo === objetivoPrevio) {
+                objetivoNuevo === objetivoPrevio && (r.referenciaCompensatorio || '') === (referenciaCompensatorioNueva || '')) {
                 notify.mostrarToast('Sin cambios', 'info');
                 notify.restaurarBotonGuardarEdicion(btnGuardar);
                 notify.cerrarEdicion();
@@ -1634,6 +1707,8 @@
                 }
             }
             r.salida = s || null; r.tiempoFuera = tf; r.credito = cr; r.notas = notas; r.objetivoHoras = objetivoNuevo;
+            if (referenciaCompensatorioNueva) r.referenciaCompensatorio = referenciaCompensatorioNueva;
+            else delete r.referenciaCompensatorio;
 
             _aplicarCalculoHoras(r, r.entrada, r.salida, r.tiempoFuera, r.credito);
 
@@ -1655,6 +1730,7 @@
 
             diasHabiles = [1, 2, 3, 4, 5];
             horasDiarias = 7;
+            historialDiasHabiles = [];
             registros.splice(0, registros.length);
             ignorarTiempoFuera = false;
 
@@ -1700,6 +1776,9 @@
                     objetivoHoras: (typeof r.objetivoHoras === 'number' && Number.isFinite(r.objetivoHoras))
                         ? Math.max(0, Math.min(24, r.objetivoHoras))
                         : undefined,
+                    referenciaCompensatorio: (typeof r.referenciaCompensatorio === 'string' && TimeUtils.validarFecha(r.referenciaCompensatorio))
+                        ? r.referenciaCompensatorio
+                        : undefined,
                 }));
 
             normalizados.forEach(r => {
@@ -1711,7 +1790,7 @@
 
         async function exportarJSON() {
             const data = {
-                registros, diasHabiles, horasDiarias,
+                registros, diasHabiles, horasDiarias, historialDiasHabiles,
                 fecha: TimeUtils.fechaLocalISOFull(), version: S.SECURITY_LIMITS.SCHEMA_VERSION,
                 hash: await S.calcularHashSHA256(registros), timestamp: Date.now()
             };
@@ -1730,7 +1809,7 @@
         async function _validarDatosImport(data) {
             if (!data || typeof data !== 'object' || Array.isArray(data)) { notify.mostrarToast('Estructura de archivo inválida', 'error'); return false; }
             if (!data.registros || !Array.isArray(data.registros)) { notify.mostrarToast('Archivo inválido o corrupto', 'error'); return false; }
-            const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', 'rangoExportado'];
+            const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, STORAGE_KEYS.HISTORIAL_DIAS_HABILES, 'fecha', 'version', 'hash', 'timestamp', 'rangoExportado'];
             if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) { notify.mostrarToast('Archivo con estructura sospechosa', 'error'); return false; }
             if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
                 notify.mostrarToast(`Archivo de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning', 4000);
@@ -1806,6 +1885,9 @@
                             const h = typeof data.horasDiarias === 'string' ? parseFloat(data.horasDiarias) : data.horasDiarias;
                             if (Number.isFinite(h) && h >= 0 && h <= 24) horasDiarias = h;
                         }
+                        const historialImportado = _sanitizarHistorialDiasHabiles(data.historialDiasHabiles);
+                        historialDiasHabiles = historialImportado || [{ desde: '0001-01-01', dias: diasHabiles }];
+                        diasHabiles = diasHabilesEnFecha(TimeUtils.obtenerFechaHoy());
                         const n = registrosImportados.length;
                         finalizarImportacionAndSave(`Se reemplazaron los datos por ${n === 1 ? '1 registro' : `${n} registros`}`, 'restauración local');
                     } else if (modo === 'merge') {
@@ -1829,6 +1911,7 @@
                 if (esPerfilDefault) {
                     StorageHelper.setItem(STORAGE_KEYS.DIAS_HABILES, diasHabiles);
                     StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, horasDiarias);
+                    StorageHelper.setItem(STORAGE_KEYS.HISTORIAL_DIAS_HABILES, historialDiasHabiles);
                 }
                 notify.mostrarToast(mensajeExito, 'success');
                 notify.cerrarImportar();
@@ -1887,7 +1970,7 @@
             let objetivo = 0, hechas = 0;
             for (const iso of TimeUtils.generarRangoFechas(desde, hasta)) {
                 if (iso > hoy) continue;
-                const esDiaHabil = diasHabiles.includes(TimeUtils.parsearFechaLocal(iso).getDay());
+                const esDiaHabil = diasHabilesEnFecha(iso).includes(TimeUtils.parsearFechaLocal(iso).getDay());
                 const r = regsPorFecha.get(iso);
                 const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
                 const esRemoto = esEspecial && esTipoRemoto(r);
@@ -1957,7 +2040,7 @@
 
             const fechasARegistrar = TimeUtils.generarRangoFechas(desde, hasta);
 
-            if (fechasARegistrar.length > 60) { notify.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: 60 días por operación.`, 'error', 4000); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite de días excedido'); }
+            if (fechasARegistrar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) { notify.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} días por operación.`, 'error', 4000); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite de días excedido'); }
 
             const nuevosRegistros = fechasARegistrar.filter(f => !registros.some(r => r.fecha === f));
             if (nuevosRegistros.length === 0) { notify.mostrarToast('Todas las fechas ya están registradas', 'warning'); notify.flashCampoTipo('warning', 'btn-agregar'); throw new Error('Sin fechas nuevas'); }
@@ -1997,7 +2080,7 @@
                 if (r.fecha < desde || r.fecha > hasta) return false;
                 return !TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
             });
-            if (registrosAEliminar.length > 60) { notify.mostrarToast(`Máximo 60 registros por operación. Encontrados: ${registrosAEliminar.length}`, 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite excedido'); }
+            if (registrosAEliminar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) { notify.mostrarToast(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} registros por operación. Encontrados: ${registrosAEliminar.length}`, 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite excedido'); }
             if (registrosAEliminar.length === 0) { notify.mostrarToast('No hay registros de jornadas en ese período', 'info'); notify.flashCampoTipo('info', 'btn-agregar'); throw new Error('Sin registros'); }
 
             registros = registros.filter(r => !registrosAEliminar.includes(r));
@@ -2007,6 +2090,60 @@
                 notify.mostrarToast(registrosAEliminar.length === 1 ? '1 registro eliminado' : `${registrosAEliminar.length} registros eliminados`, 'success');
                 notify.flashCampoTipo('success', 'btn-agregar');
             } else { throw new Error('Error al guardar'); }
+        }
+
+        function _sanitizarHistorialDiasHabiles(historial) {
+            if (!Array.isArray(historial)) return null;
+            const limpio = historial
+                .filter(t => t && typeof t.desde === 'string' && (t.desde === '0001-01-01' || TimeUtils.validarFecha(t.desde)) && Array.isArray(t.dias))
+                .map(t => ({ desde: t.desde, dias: t.dias.filter(d => Number.isInteger(d) && d >= 0 && d <= 6) }))
+                .filter(t => t.dias.length > 0);
+            limpio.sort((a, b) => a.desde.localeCompare(b.desde));
+
+            const porFecha = new Map();
+            limpio.forEach(t => porFecha.set(t.desde, t));
+            const sinDuplicados = [...porFecha.values()].sort((a, b) => a.desde.localeCompare(b.desde));
+
+            const mismosDias = (a, b) => a.length === b.length && [...a].sort((x, y) => x - y).every((d, i) => d === [...b].sort((x, y) => x - y)[i]);
+            const fusionado = [];
+            for (const tramo of sinDuplicados) {
+                const anterior = fusionado[fusionado.length - 1];
+                if (anterior && mismosDias(anterior.dias, tramo.dias)) continue;
+                fusionado.push(tramo);
+            }
+
+            const limitado = fusionado.length > S.SECURITY_LIMITS.MAX_HISTORIAL_DIAS_HABILES
+                ? fusionado.slice(-S.SECURITY_LIMITS.MAX_HISTORIAL_DIAS_HABILES)
+                : fusionado;
+            if (limitado.length < fusionado.length) {
+                console.warn(`historialDiasHabiles: se descartaron ${fusionado.length - limitado.length} tramos antiguos (límite: ${S.SECURITY_LIMITS.MAX_HISTORIAL_DIAS_HABILES}).`);
+            }
+
+            return limitado.length > 0 ? limitado : null;
+        }
+
+        function diasHabilesEnFecha(iso) {
+            if (!Array.isArray(historialDiasHabiles) || historialDiasHabiles.length === 0) return diasHabiles;
+            let vigente = null;
+            for (const tramo of historialDiasHabiles) {
+                if (tramo.desde <= iso) vigente = tramo;
+                else break;
+            }
+            if (!vigente) vigente = historialDiasHabiles[0];
+            return Array.isArray(vigente.dias) ? vigente.dias : diasHabiles;
+        }
+
+        function registrarCambioDiasHabiles(nuevosDias) {
+            const hoy = TimeUtils.obtenerFechaHoy();
+            if (!Array.isArray(historialDiasHabiles)) historialDiasHabiles = [];
+            const idx = historialDiasHabiles.findIndex(t => t.desde === hoy);
+            if (idx >= 0) {
+                historialDiasHabiles[idx] = { desde: hoy, dias: nuevosDias };
+            } else {
+                historialDiasHabiles.push({ desde: hoy, dias: nuevosDias });
+                historialDiasHabiles.sort((a, b) => a.desde.localeCompare(b.desde));
+            }
+            diasHabiles = nuevosDias;
         }
 
         function objetivoDeRegistro(registro) {
@@ -2027,39 +2164,58 @@
 
         const LIMITE_DIAS_COMPENSATORIO = 14;
 
-        function _calcularAsignacionesCompensatorio() {
-            const ordenados = [...registros].sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0);
-            const disponibles = [];
+        function _calcularAsignacionesCompensatorio(listaRegistros = registros) {
+            const ordenados = [...listaRegistros].sort((a, b) => a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0);
+
+            const excedentePorFecha = new Map();
+            for (const r of ordenados) {
+                const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+                if (!tipo) {
+                    const excedente = _excedenteDeRegistro(r);
+                    if (excedente > 0) excedentePorFecha.set(r.fecha, { id: r.id, fecha: r.fecha, excedente });
+                }
+            }
+
+            const compensatorios = ordenados.filter(r => TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === 'compensatorio');
+            const asignaciones = new Map();
+            const usados = new Set();
+
+            for (const r of compensatorios) {
+                if (!r.referenciaCompensatorio) continue;
+                const candidata = excedentePorFecha.get(r.referenciaCompensatorio);
+                const valido = !!candidata && r.referenciaCompensatorio <= r.fecha && !usados.has(r.referenciaCompensatorio);
+                asignaciones.set(r.id, {
+                    compensatorioId: r.id, compensatorioFecha: r.fecha,
+                    referenciaId: valido ? candidata.id : null,
+                    referenciaFecha: valido ? candidata.fecha : null,
+                    excedente: valido ? candidata.excedente : 0
+                });
+                if (valido) usados.add(r.referenciaCompensatorio);
+            }
+
             const fechaLimiteDesde = (fechaRef) => {
                 const d = TimeUtils.parsearFechaLocal(fechaRef);
                 d.setDate(d.getDate() - LIMITE_DIAS_COMPENSATORIO);
                 return TimeUtils.formatearFechaLocal(d);
             };
-            const sacarMejor = (fechaRef) => {
-                const limite = fechaLimiteDesde(fechaRef);
-                let idx = -1;
-                for (let i = 0; i < disponibles.length; i++) {
-                    if (disponibles[i].fecha < limite) continue;
-                    if (idx === -1 || disponibles[i].excedente > disponibles[idx].excedente) idx = i;
+            for (const r of compensatorios) {
+                if (asignaciones.has(r.id)) continue;
+                const limite = fechaLimiteDesde(r.fecha);
+                let mejor = null;
+                for (const [fecha, candidata] of excedentePorFecha) {
+                    if (usados.has(fecha) || fecha < limite || fecha > r.fecha) continue;
+                    if (!mejor || candidata.excedente > mejor.excedente) mejor = candidata;
                 }
-                return idx === -1 ? null : disponibles.splice(idx, 1)[0];
-            };
-            const asignaciones = [];
-            for (const r of ordenados) {
-                const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                if (tipo?.id === 'compensatorio') {
-                    const elegido = sacarMejor(r.fecha);
-                    asignaciones.push({
-                        compensatorioId: r.id, compensatorioFecha: r.fecha,
-                        referenciaId: elegido ? elegido.id : null, referenciaFecha: elegido ? elegido.fecha : null,
-                        excedente: elegido ? elegido.excedente : 0
-                    });
-                } else if (!tipo) {
-                    const excedente = _excedenteDeRegistro(r);
-                    if (excedente > 0) disponibles.push({ id: r.id, fecha: r.fecha, excedente });
-                }
+                asignaciones.set(r.id, {
+                    compensatorioId: r.id, compensatorioFecha: r.fecha,
+                    referenciaId: mejor ? mejor.id : null,
+                    referenciaFecha: mejor ? mejor.fecha : null,
+                    excedente: mejor ? mejor.excedente : 0
+                });
+                if (mejor) usados.add(mejor.fecha);
             }
-            return asignaciones;
+
+            return [...asignaciones.values()];
         }
 
         function _buscarAsignacionCompensatorio(idBuscado, campoId, asignacionesPrecalculadas = null) {
@@ -2144,6 +2300,12 @@
         return {
             registros: () => registros, horasSemanales: () => (horasDiarias * diasHabiles.length), diasHabiles: () => diasHabiles,
             horasDiarias: () => horasDiarias, setDiasHabiles: (v) => diasHabiles = v, setHorasDiarias: (v) => horasDiarias = v,
+            historialDiasHabiles: () => historialDiasHabiles,
+            setHistorialDiasHabiles: (v) => {
+                historialDiasHabiles = Array.isArray(v) ? v : [];
+                if (historialDiasHabiles.length > 0) diasHabiles = diasHabilesEnFecha(TimeUtils.obtenerFechaHoy());
+            },
+            diasHabilesEnFecha, registrarCambioDiasHabiles, sanitizarHistorialDiasHabiles: _sanitizarHistorialDiasHabiles,
             getIgnorarTiempoFuera: () => ignorarTiempoFuera, setIgnorarTiempoFuera: (v) => { ignorarTiempoFuera = v; },
             objetivoDeRegistro, objetivoEdicionEnVivo, migrarObjetivoHorasFaltante, aplicarHorasATodosLosRegistros,
             esTipoRemoto, horasEfectivasDeRegistro, montoCompensadoPorRegistro: _montoCompensadoPorRegistro,
@@ -2160,7 +2322,7 @@
             },
             editandoId: () => editandoId, setEditandoId: (id) => editandoId = id, vistaActual: () => vistaActual, setVistaActual: (v) => vistaActual = v,
             cargarConfiguracion, calcularHoras, normalizarRegistrosImportados, guardarYActualizar,
-            agregarRegistro, eliminarRegistroActual, editarRegistro, guardarEdicion, borrarTodoHistorial, exportarJSON, importarDatos,
+            agregarRegistro, eliminarRegistroActual, editarRegistro, guardarEdicion, pegarReferenciaAutomatica, borrarTodoHistorial, exportarJSON, importarDatos,
             calcularBufferPeriodo, detectarAyerAbierto, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
             registrarVacacionesDirecto, borrarPeriodoDirecto, registrarDiaEspecial, editarGrupo, guardarEdicionGrupo,
             eliminarGrupoActual, setGrupoEnEdicion: (val) => grupoEnEdicion = val,
@@ -2560,6 +2722,34 @@
             return cerrar;
         }
 
+        function _crearPopupFlotante({ className, id, dataset = {}, html, event, selectorTrigger, esMismoTrigger, alCerrar }) {
+            const popup = document.createElement('div');
+            popup.className = className;
+            popup.id = id;
+            Object.entries(dataset).forEach(([k, v]) => { popup.dataset[k] = v; });
+            popup.innerHTML = html;
+            popup.style.visibility = 'hidden';
+            document.body.appendChild(popup);
+
+            const cerrar = _registrarCierrePopup(popup, selectorTrigger, esMismoTrigger, alCerrar);
+            _posicionarPopup(popup, event);
+            return { popup, cerrar };
+        }
+
+        function _abrirModalConPadre(modalId, setupFn = null) {
+            const modalAbierto = document.querySelector('.modal.show');
+            const padre = modalAbierto ? modalAbierto.id : null;
+            if (setupFn) setupFn();
+            if (padre) ModalManager.alternar(padre, modalId);
+            else ModalManager.abrir(modalId);
+        }
+
+        function _cerrarModalConPadre(modalId, callbackAbrirPadre = null) {
+            const padre = ModalManager.getPadre(modalId);
+            if (padre) ModalManager.alternar(modalId, padre, null, callbackAbrirPadre ? () => callbackAbrirPadre(padre) : null);
+            else ModalManager.cerrar(modalId);
+        }
+
         function _flashCampoConClase(clase, ids, colorVar = null) {
             ids.forEach(id => {
                 const el = document.getElementById(id);
@@ -2687,6 +2877,9 @@
             _setBtnDisabled,
             _posicionarPopup,
             _registrarCierrePopup,
+            _crearPopupFlotante,
+            _abrirModalConPadre,
+            _cerrarModalConPadre,
             _flashCampo,
             _flashCampoTipo,
             _finalizarSlidePendiente,
@@ -2704,6 +2897,23 @@
         const { mostrarToast } = UICore;
 
         let perfilEnEdicion = null;
+
+        const REGEX_NOMBRE_PERFIL = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/;
+
+        function _obtenerTodosPerfilesSafe() {
+            return window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+        }
+        
+        function _guardarPerfilesConManejo(perfiles, contextoError = 'Error al guardar perfil:') {
+            try {
+                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
+                return true;
+            } catch (e) {
+                console.error(contextoError, e);
+                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
+                return false;
+            }
+        }
 
         function renderizarListaPerfiles(animarCrecimiento = false) {
             const lista = document.getElementById('lista-perfiles-botones');
@@ -2783,7 +2993,7 @@
 
         function _validarNombrePerfil(nombre, perfiles) {
             if (!nombre) return 'Ingresá un nombre para el perfil';
-            if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/.test(nombre)) return 'El nombre contiene caracteres no válidos.\n Solo letras, números y espacios.';
+            if (!REGEX_NOMBRE_PERFIL.test(nombre)) return 'El nombre contiene caracteres no válidos.\n Solo letras, números y espacios.';
             if (Object.values(perfiles).some(p => p.nombre.toLowerCase().trim() === nombre.toLowerCase().trim())) return 'Ya existe un perfil con ese nombre';
             if (Object.keys(perfiles).length >= PerfilManager.MAX_PERFILES) return `Máximo de perfiles alcanzado (${PerfilManager.MAX_PERFILES})`;
             return null;
@@ -2793,7 +3003,7 @@
             const input = document.getElementById('nombre-nuevo-perfil-selector');
             if (!input) return;
             const nombre = S.sanitizeString(input.value.trim(), 30);
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+            const perfiles = _obtenerTodosPerfilesSafe();
 
             const error = _validarNombrePerfil(nombre, perfiles);
             if (error) { mostrarToast(error, 'error'); return; }
@@ -2801,14 +3011,7 @@
             const id = 'perfil_' + S.generarIDSeguro();
             perfiles[id] = { nombre, registros: [], diasHabiles: [1, 2, 3, 4, 5], horasDiarias: 7 };
 
-            try {
-                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
-            } catch (e) {
-                console.error('Error al guardar perfil:', e);
-                delete perfiles[id];
-                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
-                return;
-            }
+            if (!_guardarPerfilesConManejo(perfiles)) { delete perfiles[id]; return; }
 
             if (window.PerfilManager) window.PerfilManager.inicializar();
             mostrarToast(`Perfil "${nombre}" creado`, 'success');
@@ -2826,7 +3029,7 @@
 
         function abrirEditorPerfil(perfilId) {
             perfilEnEdicion = perfilId;
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+            const perfiles = _obtenerTodosPerfilesSafe();
             const perfil = perfiles[perfilId];
 
             if (!perfil) {
@@ -2857,7 +3060,7 @@
 
         function _validarNombrePerfilEdicion(nuevoNombre, perfiles, excluirId) {
             if (!nuevoNombre) return 'Ingresá un nombre válido';
-            if (!/^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\-_ ]+$/.test(nuevoNombre)) return 'Caracteres no permitidos en el nombre.';
+            if (!REGEX_NOMBRE_PERFIL.test(nuevoNombre)) return 'Caracteres no permitidos en el nombre.';
             if (!perfiles[excluirId]) return 'Perfil no encontrado';
             const norm = nuevoNombre.toLowerCase().trim();
             if (Object.entries(perfiles).some(([id, p]) => id !== excluirId && p.nombre.toLowerCase().trim() === norm)) return 'Ya existe otro perfil con ese nombre';
@@ -2867,7 +3070,7 @@
         function guardarEdicionPerfil() {
             if (!perfilEnEdicion) return;
             const nuevoNombre = S.sanitizeString(document.getElementById('nombre-perfil-editar').value.trim(), 30);
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+            const perfiles = _obtenerTodosPerfilesSafe();
 
             const error = _validarNombrePerfilEdicion(nuevoNombre, perfiles, perfilEnEdicion);
             if (error) { mostrarToast(error, 'error'); return; }
@@ -2878,14 +3081,7 @@
 
             const nombreAnterior = perfiles[perfilEnEdicion].nombre;
             perfiles[perfilEnEdicion].nombre = nuevoNombre;
-            try {
-                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
-            } catch (e) {
-                console.error('Error al guardar perfil:', e);
-                perfiles[perfilEnEdicion].nombre = nombreAnterior;
-                mostrarToast('Error al guardar: almacenamiento lleno', 'error');
-                return;
-            }
+            if (!_guardarPerfilesConManejo(perfiles)) { perfiles[perfilEnEdicion].nombre = nombreAnterior; return; }
 
             if (perfilEnEdicion === window.PerfilManager?.obtenerPerfilActual()) {
                 const btnTexto = document.getElementById('nombre-perfil-header');
@@ -2906,7 +3102,7 @@
             if (!perfilEnEdicion || perfilEnEdicion === 'default') {
                 mostrarToast('No se puede eliminar el perfil Principal', 'error'); return;
             }
-            const perfiles = window.PerfilManager ? PerfilManager.obtenerTodosPerfiles() : {};
+            const perfiles = _obtenerTodosPerfilesSafe();
             const perfil = perfiles[perfilEnEdicion];
             if (!perfil) { mostrarToast('Perfil no encontrado', 'error'); return; }
 
@@ -2917,11 +3113,7 @@
 
             _limpiarClavesPerfil(perfilEnEdicion);
             delete perfiles[perfilEnEdicion];
-            try {
-                if (!StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles)) throw new Error('quota');
-            } catch (e) {
-                console.error('Error al eliminar perfil:', e); mostrarToast('Error al guardar: almacenamiento lleno', 'error'); return;
-            }
+            if (!_guardarPerfilesConManejo(perfiles, 'Error al eliminar perfil:')) return;
 
             if (perfilEnEdicion === window.PerfilManager?.obtenerPerfilActual()) {
                 try {
@@ -2955,7 +3147,7 @@
     //                     MÓDULO UI CALENDARIO
     // ====================================================================
     const UICalendario = (function (S, D, UICore) {
-        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, formatoDiferencia } = UICore;
+        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia } = UICore;
 
         function _agruparMesesPorAnio(mesesOrdenados) {
             const map = new Map();
@@ -3050,7 +3242,7 @@
 
         let _calendarioMes = null;
 
-        function _renderizarCalendario(idResaltar = null) {
+        function _renderizarCalendario(idResaltar = null, asignacionesPrecalculadas = null) {
             const grid = document.getElementById('calendario-grid');
             const titulo = document.getElementById('calendario-titulo-mes');
             if (!grid) return;
@@ -3070,9 +3262,8 @@
             const todosLosRegistros = D.registros();
             const regsPorFecha = Object.fromEntries(registrosFiltrados.map(r => [r.fecha, r]));
             const todosRegsPorFecha = Object.fromEntries(todosLosRegistros.map(r => [r.fecha, r]));
-            const diasHabilesObj = D.diasHabiles();
             const filtroActivo = registrosFiltrados.length !== todosLosRegistros.length;
-            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
+            const asignacionesCompensatorio = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
             const claseDelDia = (fecha) => {
                 const r = regsPorFecha[fecha];
                 if (!r && filtroActivo && todosRegsPorFecha[fecha]) return 'dia-filtrado';
@@ -3082,7 +3273,7 @@
                     return `dia-especial-${tipo ? tipo.color : 'purple'}`;
                 }
                 if (r.entrada && !r.salida) return 'dia-en-curso';
-                if (!UILogic._esFechaHabil(fecha, diasHabilesObj) || horasGte(r.total, D.objetivoDeRegistro(r))) return 'dia-normal';
+                if (!UILogic._esFechaHabil(fecha, D.diasHabilesEnFecha(fecha)) || horasGte(r.total, D.objetivoDeRegistro(r))) return 'dia-normal';
                 return UILogic._cubiertoPorSaldo(fecha, asignacionesCompensatorio) ? 'dia-cubierto' : 'dia-incompleto';
             };
 
@@ -3173,6 +3364,7 @@
         let _popupCalendarioEl = null;
 
         function _buildInfoHtmlRegistro(reg) {
+            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
             const esEspecial = TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
             if (esEspecial) {
                 const tipoConfig = TiposRegistro.obtenerTipoPorCodigo(reg.entrada, reg.salida);
@@ -3181,7 +3373,7 @@
                 const colorSafe = /^[a-z]+$/.test(tipoConfig?.color || '') ? tipoConfig.color : 'purple';
                 let fechaCompensadaHtml = '';
                 if (tipoConfig?.id === 'compensatorio') {
-                    const fechaCompensada = D.fechaCompensadaPorRegistro(reg);
+                    const fechaCompensada = D.fechaCompensadaPorRegistro(reg, asignacionesCompensatorio);
                     if (fechaCompensada) {
                         fechaCompensadaHtml = ` <span class="cal-popup-badge cal-popup-badge--${colorSafe}">${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensada))}</span>`;
                     }
@@ -3201,12 +3393,12 @@
             }
             let totalConDiff = totalStr, diffClase = '', cubiertoLineaHtml = '', compensadoLineaHtml = '';
             const objetivoReg = D.objetivoDeRegistro(reg);
-            if (objetivoReg > 0 && UILogic._esFechaHabil(reg.fecha, D.diasHabiles())) {
+            if (objetivoReg > 0 && UILogic._esFechaHabil(reg.fecha, D.diasHabilesEnFecha(reg.fecha))) {
                 const diffText = formatoDiferencia(totalHoras, objetivoReg);
                 if (horasGte(totalHoras, objetivoReg)) {
                     diffClase = 'cal-popup-info--green';
                     if (diffText) totalConDiff += ` (${diffText})`;
-                } else if (UILogic._cubiertoPorSaldo(reg.fecha)) {
+                } else if (UILogic._cubiertoPorSaldo(reg.fecha, asignacionesCompensatorio)) {
                     diffClase = 'cal-popup-info--gold';
                     if (diffText) totalConDiff += ` (${diffText})`;
                     cubiertoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--gold">Cubierto</span>`;
@@ -3215,7 +3407,7 @@
                     if (diffText) totalConDiff += ` (${diffText})`;
                 }
             }
-            const fechaCompensado = D.fechaCompensadoDeRegistro(reg);
+            const fechaCompensado = D.fechaCompensadoDeRegistro(reg, asignacionesCompensatorio);
             if (fechaCompensado) {
                 compensadoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--purple">→ ${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensado))}</span>`;
             }
@@ -3259,21 +3451,23 @@
 
             if (grupoDelRegistro) window._calPopupGrupo = grupoDelRegistro;
 
-            const popup = document.createElement('div');
-            popup.className = 'cal-popup';
-            popup.id = '_cal-popup';
-            popup.dataset.registroId = reg.id;
-            popup.innerHTML = `
+            const popup = _crearPopupFlotante({
+                className: 'cal-popup',
+                id: '_cal-popup',
+                dataset: { registroId: reg.id },
+                html: `
                 <div class="cal-popup-fecha">${fechaLabel}</div>
                 ${infoHtml}
                 <button class="cal-popup-btn-edit" id="_cal-popup-btn-edit">
                     <svg class="icon"><use href="#icon-edit"/></svg>
                     Editar
                 </button>
-                ${btnGrupoHtml}`;
-
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
+                ${btnGrupoHtml}`,
+                event,
+                selectorTrigger: '.calendario-dia',
+                esMismoTrigger: dia => dia.dataset.regId === reg.id,
+                alCerrar: () => { _popupCalendarioEl = null; }
+            }).popup;
             _popupCalendarioEl = popup;
 
             popup.querySelector('#_cal-popup-btn-edit')?.addEventListener('click', () => {
@@ -3294,9 +3488,6 @@
                     }, 500);
                 }
             });
-
-            _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.regId === reg.id, () => { _popupCalendarioEl = null; });
-            _posicionarPopup(popup, event);
         }
 
         let _popupCalendarioEsHover = false;
@@ -3314,31 +3505,30 @@
             const esFechaFutura = fecha > TimeUtils.obtenerFechaHoy();
             const fechaLabel = _formatearFechaLabelPopup(fecha);
 
-            const popup = document.createElement('div');
-            popup.className = 'cal-popup';
-            popup.id = '_cal-popup';
-            popup.dataset.fecha = fecha;
-            popup.innerHTML = `
+            const { popup, cerrar } = _crearPopupFlotante({
+                className: 'cal-popup',
+                id: '_cal-popup',
+                dataset: { fecha },
+                html: `
                 <div class="cal-popup-fecha">${fechaLabel}</div>
                 <div class="cal-popup-sin-reg">Sin registros</div>
-                ${esFechaFutura ? '' : `<button class="cal-popup-btn-edit cal-popup-btn-accion--normal" id="_cal-popup-btn-normal">
+                ${esFechaFutura ? '' : `<button class="cal-popup-btn-edit cal-popup-btn-accion cal-popup-btn-accion--normal" id="_cal-popup-btn-normal">
                     <svg class="icon"><use href="#icon-clock"/></svg>
                     Jornada regular
                 </button>`}
-                <button class="cal-popup-btn-edit cal-popup-btn-accion--especial" id="_cal-popup-btn-especial">
+                <button class="cal-popup-btn-edit cal-popup-btn-accion cal-popup-btn-accion--especial" id="_cal-popup-btn-especial">
                     <svg class="icon"><use href="#icon-calendar-simple"/></svg>
                     Jornada especial
-                </button>`;
-
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
+                </button>`,
+                event,
+                selectorTrigger: '.calendario-dia',
+                esMismoTrigger: dia => dia.dataset.fecha === fecha,
+                alCerrar: () => { _popupCalendarioEl = null; }
+            });
             _popupCalendarioEl = popup;
 
-            const cerrarPopup = _registrarCierrePopup(popup, '.calendario-dia', dia => dia.dataset.fecha === fecha, () => { _popupCalendarioEl = null; });
-            popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrarPopup(); UILogic._irAFicharConFecha(fecha, false); });
-            popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrarPopup(); UILogic._irAFicharConFecha(fecha, true); });
-
-            _posicionarPopup(popup, event);
+            popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrar(); UILogic._irAFicharConFecha(fecha, false); });
+            popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrar(); UILogic._irAFicharConFecha(fecha, true); });
         }
 
         function _popupCalendarioHover(event, registroId) {
@@ -3570,12 +3760,12 @@
             return response.json();
         }
 
-        async function subir(registros, diasHabiles, horasDiarias) {
+        async function subir(registros, diasHabiles, horasDiarias, historialDiasHabiles) {
             const token = getToken();
             if (!token) throw new Error('Falta el token de GitHub');
 
             const hash = await S.calcularHashSHA256(registros);
-            const data = { registros, diasHabiles, horasDiarias, fecha: TimeUtils.fechaLocalISOFull(), version: S.SECURITY_LIMITS.SCHEMA_VERSION, hash, timestamp: Date.now() };
+            const data = { registros, diasHabiles, horasDiarias, historialDiasHabiles, fecha: TimeUtils.fechaLocalISOFull(), version: S.SECURITY_LIMITS.SCHEMA_VERSION, hash, timestamp: Date.now() };
             const gistId = getGistId();
             const gistIdValido = esGistIdValido(gistId);
             const url = gistIdValido ? `https://api.github.com/gists/${gistId}` : 'https://api.github.com/gists';
@@ -3615,7 +3805,7 @@
     // ====================================================================
     const UIGistYRespaldo = (function (S, D, GistSync, UICore) {
         const {
-            mostrarToast, _setBtnDisabled, _setBtnActivo, _flashCampo, _crearPressHold,
+            mostrarToast, _setBtnDisabled, _setBtnActivo, _flashCampo, _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre,
             descargarJSON, obtenerNombrePerfilSafe, _posicionarPopup, _registrarCierrePopup
         } = UICore;
 
@@ -3763,6 +3953,7 @@
                 registros: registrosFiltrados,
                 diasHabiles: D.diasHabiles(),
                 horasDiarias: D.horasDiarias(),
+                historialDiasHabiles: D.historialDiasHabiles(),
                 fecha: fechaLocal,
                 version: S.SECURITY_LIMITS.SCHEMA_VERSION,
                 hash: await S.calcularHashSHA256(registrosFiltrados),
@@ -3781,7 +3972,6 @@
             }
         }
 
-        let _gistModalPadre = null;
         let _gistAutoSyncTemp = null;
         let _gistLimitesTemp = null;
         let _gistMergeDesdeModal = false;
@@ -3805,31 +3995,29 @@
         }
 
         function abrirModalGist() {
-            const modalAbierto = document.querySelector('.modal.show');
-            _gistModalPadre = modalAbierto ? modalAbierto.id : null;
+            _abrirModalConPadre('modal-gist', () => {
+                const tokenInput = document.getElementById('gist-token');
+                const gistIdInput = document.getElementById('gist-id');
+                const lastSyncEl = document.getElementById('gist-ultima-sync');
 
-            const tokenInput = document.getElementById('gist-token');
-            const gistIdInput = document.getElementById('gist-id');
-            const lastSyncEl = document.getElementById('gist-ultima-sync');
+                if (tokenInput) tokenInput.value = GistSync.getToken();
+                if (gistIdInput) gistIdInput.value = GistSync.getGistId();
+                if (lastSyncEl) {
+                    const last = GistSync.getLastSync();
+                    lastSyncEl.textContent = last ? `Sincronizado: ${GistSync.formatLastSync(last)}` : 'No sincronizado';
+                }
 
-            if (tokenInput) tokenInput.value = GistSync.getToken();
-            if (gistIdInput) gistIdInput.value = GistSync.getGistId();
-            if (lastSyncEl) {
-                const last = GistSync.getLastSync();
-                lastSyncEl.textContent = last ? `Sincronizado: ${GistSync.formatLastSync(last)}` : 'No sincronizado';
-            }
+                const rango = GistSync.getRangoHorario();
+                const desdeEl = document.getElementById('gist-rango-desde');
+                const hastaEl = document.getElementById('gist-rango-hasta');
+                if (desdeEl) desdeEl.value = rango.desde;
+                if (hastaEl) hastaEl.value = rango.hasta;
 
-            const rango = GistSync.getRangoHorario();
-            const desdeEl = document.getElementById('gist-rango-desde');
-            const hastaEl = document.getElementById('gist-rango-hasta');
-            if (desdeEl) desdeEl.value = rango.desde;
-            if (hastaEl) hastaEl.value = rango.hasta;
-
-            _gistAutoSyncTemp = GistSync.getAutoSync();
-            actualizarBotonGistBackup();
-            actualizarBotonGistMerge();
-            actualizarEstadoBotonesGist();
-            ModalManager.alternar(_gistModalPadre, 'modal-gist');
+                _gistAutoSyncTemp = GistSync.getAutoSync();
+                actualizarBotonGistBackup();
+                actualizarBotonGistMerge();
+                actualizarEstadoBotonesGist();
+            });
             _gistLimitesTemp = null;
             _actualizarCampoLimite();
         }
@@ -3943,17 +4131,11 @@
         function cerrarModalGist() {
             _gistAutoSyncTemp = null;
             _gistLimitesTemp = null;
-            if (_gistModalPadre) {
-                const padre = _gistModalPadre;
-                _gistModalPadre = null;
-                ModalManager.alternar('modal-gist', padre);
+            _cerrarModalConPadre('modal-gist', (padre) => {
                 if (padre === 'modal-config' && !document.body.classList.contains('config-onboarding')) {
                     ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
                 }
-            } else {
-                ModalManager.cerrar('modal-gist');
-                _gistModalPadre = null;
-            }
+            });
             actualizarBotonesHistorico();
         }
 
@@ -3997,6 +4179,8 @@
                     const hd = parseFloat(data.horasDiarias);
                     if (Number.isFinite(hd) && hd >= 0 && hd <= 24) D.setHorasDiarias(hd);
                 }
+                const historialImportado = D.sanitizarHistorialDiasHabiles(data.historialDiasHabiles);
+                D.setHistorialDiasHabiles(historialImportado || [{ desde: '0001-01-01', dias: D.diasHabiles() }]);
                 return {
                     registrosFinales: registrosNormalizados,
                     mensajeExito: `${registrosNormalizados.length} registros restaurados desde Gist`
@@ -4178,7 +4362,8 @@
                 const nuevoId = await GistSync.subir(
                     D.registros(),
                     D.diasHabiles(),
-                    D.horasDiarias()
+                    D.horasDiarias(),
+                    D.historialDiasHabiles()
                 );
                 const gistIdInput = document.getElementById('gist-id');
                 if (gistIdInput) gistIdInput.value = nuevoId;
@@ -4192,7 +4377,7 @@
 
         async function _validarDatosGist(data) {
             if (!data.registros || !Array.isArray(data.registros)) throw new Error('Datos inválidos en el Gist');
-            const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, 'fecha', 'version', 'hash', 'timestamp', '_hashNoCoincide'];
+            const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, STORAGE_KEYS.HISTORIAL_DIAS_HABILES, 'fecha', 'version', 'hash', 'timestamp', '_hashNoCoincide'];
             if (Object.keys(data).some(k => !allowedRootKeys.includes(k))) throw new Error('Estructura del Gist sospechosa');
             if (data._hashNoCoincide) {
                 const continuar = await ModalManager.confirmar('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
@@ -4338,7 +4523,7 @@
     const UIHistorico = (function (S, D, UICore) {
         const {
             formatoDiferencia, mostrarToast, _setBtnActivo, debounce,
-            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup
+            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante
         } = UICore;
 
         let edicionBloqueada = true;
@@ -4432,6 +4617,38 @@
             return svg;
         }
 
+        function _crearInfoRegistro({ fechaText, horasText, totalText, totalClase = '', badgesExtra = [] }) {
+            const info = document.createElement('div');
+            info.className = 'registro-info';
+
+            const fechaEl = document.createElement('div');
+            fechaEl.className = 'registro-fecha';
+            fechaEl.textContent = fechaText;
+
+            const horasEl = document.createElement('div');
+            horasEl.className = 'registro-horas';
+            horasEl.textContent = horasText;
+
+            const totalEl = document.createElement('div');
+            totalEl.className = totalClase ? `registro-total ${totalClase}` : 'registro-total';
+            totalEl.textContent = totalText;
+
+            const badgesEl = document.createElement('div');
+            badgesEl.className = 'registro-badges';
+            badgesEl.appendChild(totalEl);
+            badgesExtra.forEach(({ texto, clase }) => {
+                const badgeEl = document.createElement('div');
+                badgeEl.className = `registro-total ${clase}`;
+                badgeEl.textContent = texto;
+                badgesEl.appendChild(badgeEl);
+            });
+
+            info.appendChild(fechaEl);
+            info.appendChild(horasEl);
+            info.appendChild(badgesEl);
+            return info;
+        }
+
         function crearItemRegistroIndividual(r, idResaltar = null, hoy = TimeUtils.obtenerFechaHoy(), asignacionesCompensatorio = null) {
             const item = document.createElement('div');
 
@@ -4442,15 +4659,10 @@
             item.dataset.registroId = r.id;
             item.dataset.accion = 'editar-registro';
 
-            const info = document.createElement('div');
-            info.className = 'registro-info';
-
             const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
 
-            const fechaEl = document.createElement('div');
-            fechaEl.className = 'registro-fecha';
             const etiqueta = tipoEspecial ? ` ${tipoEspecial.emoji} (${tipoEspecial.label})` : '';
-            fechaEl.textContent = `${TimeUtils.obtenerNombreDia(r.fecha)} ${r.fecha.substring(8)}${etiqueta}`;
+            const fechaText = `${TimeUtils.obtenerNombreDia(r.fecha)} ${r.fecha.substring(8)}${etiqueta}`;
 
             const tfText = (() => {
                 if (!r.tiempoFuera || r.tiempoFuera === '' || r.tiempoFuera === '00:00') return '';
@@ -4458,79 +4670,57 @@
                 return ` (${tfStr} Fuera)`;
             })();
             const crText = r.credito && r.credito !== '00:00' ? ' (Salida Temprana)' : '';
-
-            const horasEl = document.createElement('div');
-            horasEl.className = 'registro-horas';
-            horasEl.textContent = tipoEspecial
+            const horasText = tipoEspecial
                 ? tipoEspecial.descripcion
                 : `${r.entrada || '-'} → ${r.salida || '-'}${tfText}${crText}`;
 
-            const totalEl = document.createElement('div');
-            totalEl.className = 'registro-total';
             let totalText = 'Incompleto';
+            let totalClase = '';
             let esCubierto = false;
 
             if (tipoEspecial) {
                 totalText = 'Justificado';
-                totalEl.classList.add(`${tipoEspecial.color}-text`);
+                totalClase = `${tipoEspecial.color}-text`;
             } else if (r.entrada && r.salida) {
                 totalText = TimeUtils.horasATexto(r.total, 'short');
                 const objetivoReg = D.objetivoDeRegistro(r);
-                if (objetivoReg > 0 && UILogic._esFechaHabil(r.fecha, D.diasHabiles())) {
+                if (objetivoReg > 0 && UILogic._esFechaHabil(r.fecha, D.diasHabilesEnFecha(r.fecha))) {
                     const diffText = formatoDiferencia(r.total, objetivoReg);
                     if (horasGte(r.total, objetivoReg)) {
-                        totalEl.classList.add('green-text');
+                        totalClase = 'green-text';
                         if (diffText) totalText += ` (${diffText})`;
                     } else if (UILogic._cubiertoPorSaldo(r.fecha, asignacionesCompensatorio)) {
-                        totalEl.classList.add('gold-text');
+                        totalClase = 'gold-text';
                         if (diffText) totalText += ` (${diffText})`;
                         esCubierto = true;
                     } else {
-                        totalEl.classList.add('red-text');
+                        totalClase = 'red-text';
                         if (diffText) totalText += ` (${diffText})`;
                     }
                 }
             } else if (r.entrada && !r.salida) {
                 totalText = r.fecha === hoy ? 'En curso . . .' : 'Incompleto';
-                totalEl.classList.add('blue-text');
+                totalClase = 'blue-text';
             } else {
                 totalText = 'Sin datos';
             }
 
-            totalEl.textContent = totalText;
-
-            const badgesEl = document.createElement('div');
-            badgesEl.className = 'registro-badges';
-            badgesEl.appendChild(totalEl);
-            if (esCubierto) {
-                const cubiertoEl = document.createElement('div');
-                cubiertoEl.className = 'registro-total gold-text';
-                cubiertoEl.textContent = 'Cubierto';
-                badgesEl.appendChild(cubiertoEl);
-            }
+            const badgesExtra = [];
+            if (esCubierto) badgesExtra.push({ texto: 'Cubierto', clase: 'gold-text' });
             if (tipoEspecial?.id === 'compensatorio') {
                 const fechaCompensada = D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
                 if (fechaCompensada) {
-                    const fechaCompEl = document.createElement('div');
-                    fechaCompEl.className = `registro-total ${tipoEspecial.color}-text`;
-                    fechaCompEl.textContent = TimeUtils.fechaCorta(fechaCompensada);
-                    badgesEl.appendChild(fechaCompEl);
+                    badgesExtra.push({ texto: TimeUtils.fechaCorta(fechaCompensada), clase: `${tipoEspecial.color}-text` });
+                } else {
+                    badgesExtra.push({ texto: '⚠ Sin referencia', clase: 'red-text' });
                 }
             }
             if (!tipoEspecial) {
                 const fechaCompensado = D.fechaCompensadoDeRegistro(r, asignacionesCompensatorio);
-                if (fechaCompensado) {
-                    const compensadoEl = document.createElement('div');
-                    compensadoEl.className = 'registro-total purple-text';
-                    compensadoEl.textContent = `→ ${TimeUtils.fechaCorta(fechaCompensado)}`;
-                    badgesEl.appendChild(compensadoEl);
-                }
+                if (fechaCompensado) badgesExtra.push({ texto: `→ ${TimeUtils.fechaCorta(fechaCompensado)}`, clase: 'purple-text' });
             }
 
-            info.appendChild(fechaEl);
-            info.appendChild(horasEl);
-            info.appendChild(badgesEl);
-            item.appendChild(info);
+            item.appendChild(_crearInfoRegistro({ fechaText, horasText, totalText, totalClase, badgesExtra }));
 
             return item;
         }
@@ -4639,7 +4829,7 @@
             return contenedor;
         }
 
-        function actualizarListaRegistros(registros, idNuevo = null) {
+        function actualizarListaRegistros(registros, idNuevo = null, asignacionesPrecalculadas = null) {
             const lista = $('lista-registros');
             lista.innerHTML = '';
 
@@ -4651,7 +4841,7 @@
             const anioHoy = hoy.substring(0, 4);
             const gruposPorMes = agruparRegistrosPorMes(registrosAMostrar);
             const fragmento = document.createDocumentFragment();
-            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
+            const asignacionesCompensatorio = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
 
             const mesesAnioActual = new Map();
             const mesesPorAnio = new Map();
@@ -4701,45 +4891,24 @@
             }
             header.className = className;
 
-            const info = document.createElement('div');
-            info.className = 'registro-info';
-
-            const fechaEl = document.createElement('div');
-            fechaEl.className = 'registro-fecha';
-
             const tipoConfig = TiposRegistro.obtenerTipoPorId(grupo.subtipo);
             const emoji = tipoConfig ? tipoConfig.emoji : '📅';
             const label = tipoConfig ? tipoConfig.labelPlural : 'Registros';
+            const fechaText = `${emoji} ${label} (${grupo.registros.length} días)`;
 
-            fechaEl.textContent = `${emoji} ${label} (${grupo.registros.length} días)`;
+            const horasText = `${ultimoReg.fecha.substring(8)} al ${primerReg.fecha.substring(8)}`;
 
-            const horasEl = document.createElement('div');
-            horasEl.className = 'registro-horas';
-            const rangoFechas = `${ultimoReg.fecha.substring(8)} al ${primerReg.fecha.substring(8)}`;
-            horasEl.textContent = rangoFechas;
-
-            const totalEl = document.createElement('div');
             const colorClase = tipoConfig ? `${tipoConfig.color}-text` : 'purple-text';
-            totalEl.className = `registro-total ${colorClase}`;
-            totalEl.textContent = 'Justificado';
 
-            const badgesEl = document.createElement('div');
-            badgesEl.className = 'registro-badges';
-            badgesEl.appendChild(totalEl);
+            const badgesExtra = [];
             if (tipoConfig?.id === 'compensatorio') {
                 const fechasCompensadas = [...new Set(grupo.registros.map(r => D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio)).filter(Boolean))];
                 if (fechasCompensadas.length === 1) {
-                    const fechaCompEl = document.createElement('div');
-                    fechaCompEl.className = `registro-total ${colorClase}`;
-                    fechaCompEl.textContent = TimeUtils.fechaCorta(fechasCompensadas[0]);
-                    badgesEl.appendChild(fechaCompEl);
+                    badgesExtra.push({ texto: TimeUtils.fechaCorta(fechasCompensadas[0]), clase: colorClase });
                 }
             }
 
-            info.appendChild(fechaEl);
-            info.appendChild(horasEl);
-            info.appendChild(badgesEl);
-            header.appendChild(info);
+            header.appendChild(_crearInfoRegistro({ fechaText, horasText, totalText: 'Justificado', totalClase: colorClase, badgesExtra }));
 
             header.dataset.accion = 'editar-grupo';
             header.dataset.grupoData = JSON.stringify({
@@ -4750,6 +4919,7 @@
             container.appendChild(header);
             return container;
         }
+
 
         function cerrarEdicion() {
             window.UILogic?.detenerCambioObjetivoEdicion();
@@ -4787,7 +4957,7 @@
             edicionBloqueada = bloqueado;
             _setBloqueoEdicionGenerico(bloqueado, {
                 btnLockId: 'btn-lock-toggle',
-                inputIds: ['edit-fecha', 'edit-entrada', 'edit-salida', 'edit-tiempo-fuera', 'edit-notas'],
+                inputIds: ['edit-fecha', 'edit-entrada', 'edit-salida', 'edit-tiempo-fuera', 'edit-notas', 'edit-referencia-compensatorio'],
                 modalId: 'modal-editar',
                 excluirBotones: 'button:not(#btn-lock-toggle):not(.btn-cancel):not(#btn-toggle-credito)'
             });
@@ -4818,13 +4988,22 @@
 
         function _actualizarHintEdicion() {
             const hint = document.getElementById('edit-hint-resumen');
-            if (!hint) return;
             const e = document.getElementById('edit-entrada')?.value.trim();
             const s = document.getElementById('edit-salida')?.value.trim();
             let tf = document.getElementById('edit-tiempo-fuera')?.value.trim();
             if (tf) tf = TimeUtils.normalizarMinutosSueltos(tf);
+
+            const tipoEspecial = (e || s) ? TiposRegistro.obtenerTipoPorCodigo(e, s) : null;
+            const elRef = document.getElementById('edit-referencia-compensatorio');
+            if (elRef) {
+                const esCompensatorio = tipoEspecial?.id === 'compensatorio';
+                const grupoRef = document.getElementById('grupo-referencia-compensatorio');
+                if (grupoRef) grupoRef.classList.toggle('expanded', esCompensatorio);
+                if (!esCompensatorio) elRef.value = '';
+            }
+
+            if (!hint) return;
             if (!e && !s) { hint.textContent = ''; return; }
-            const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(e, s);
             if (tipoEspecial) { hint.textContent = tipoEspecial.label; return; }
             if (e?.length === 5 && s?.length === 5) {
                 const t = D.calcularHoras(e, s, tf || null, null, false);
@@ -4980,10 +5159,10 @@
             const tipos = TiposRegistro.obtenerTodosLosTipos();
             const opcionesTipo = tipos.map(t => `<option value="${t.id}">${t.emoji} ${t.labelPlural}</option>`).join('');
 
-            const popup = document.createElement('div');
-            popup.className = 'filtro-popup';
-            popup.id = '_filtro-popup';
-            popup.innerHTML = `
+            const popup = _crearPopupFlotante({
+                className: 'filtro-popup',
+                id: '_filtro-popup',
+                html: `
                 <div class="filtro-popup-titulo">
                     <svg class="icon"><use href="#icon-filter" /></svg>
                     Filtrar Registros
@@ -5003,9 +5182,12 @@
                         <option value="normal">🕒 Jornadas</option>
                         ${opcionesTipo}
                     </select>
-                </div>`;
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
+                </div>`,
+                event: event && event.currentTarget ? event : { currentTarget: btnFiltro },
+                selectorTrigger: '#btn-filtro',
+                esMismoTrigger: () => true,
+                alCerrar: () => { _popupFiltrosEl = null; }
+            }).popup;
             _popupFiltrosEl = popup;
 
             const aplicarInmediato = () => {
@@ -5019,9 +5201,6 @@
                 const el = popup.querySelector(`#${id}`);
                 if (el) el.addEventListener('change', aplicarInmediato);
             });
-
-            _registrarCierrePopup(popup, '#btn-filtro', () => true, () => { _popupFiltrosEl = null; });
-            _posicionarPopup(popup, event && event.currentTarget ? event : { currentTarget: btnFiltro });
         }
 
         function cerrarFiltros() {
@@ -5196,7 +5375,7 @@
     const UIEstadisticas = (function (S, D, UICore) {
         const {
             mostrarToast, _poblarSelect,
-            _animarSlideElemento, _posicionarPopup, _registrarCierrePopup,
+            _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante,
             toggleSeccionGen, registrarSwipe, _animarFadeSwap
         } = UICore;
 
@@ -6058,19 +6237,19 @@
                 };
             }
 
-            const popup = document.createElement('div');
-            popup.className = 'stat-popup';
-            popup.id = '_stat-popup';
-            popup.dataset.statId = statId;
-            popup.innerHTML = `
+            const popup = _crearPopupFlotante({
+                className: 'stat-popup',
+                id: '_stat-popup',
+                dataset: { statId },
+                html: `
                 <div class="stat-popup-titulo">${S.escapeHtml(info.titulo)}</div>
-                <div class="stat-popup-desc">${info.desc}</div>`;
-            popup.style.visibility = 'hidden';
-            document.body.appendChild(popup);
+                <div class="stat-popup-desc">${info.desc}</div>`,
+                event,
+                selectorTrigger: '.stat-item',
+                esMismoTrigger: item => item.dataset.statId === statId,
+                alCerrar: () => { _popupStatEl = null; }
+            }).popup;
             _popupStatEl = popup;
-
-            _registrarCierrePopup(popup, '.stat-item', item => item.dataset.statId === popup.dataset.statId, () => { _popupStatEl = null; });
-            _posicionarPopup(popup, event);
         }
 
         function _onclickStatItem(event) {
@@ -6345,7 +6524,6 @@
             }
 
             const registrosMap = new Map(registrosSemana.map(r => [r.fecha, r]));
-            const diasHabilesObj = D.diasHabiles();
 
             const EPS = 1e-6;
             const pendientes = [];
@@ -6359,7 +6537,7 @@
                 if (esRemoto) {
                     delta = 0;
                 } else if (r && !esEspecial && r.salida) {
-                    const objetivo = _esFechaHabil(isoDate, diasHabilesObj) ? D.objetivoDeRegistro(r) : 0;
+                    const objetivo = _esFechaHabil(isoDate, D.diasHabilesEnFecha(isoDate)) ? D.objetivoDeRegistro(r) : 0;
                     delta = r.total - objetivo;
                     if (delta > EPS && D.fechaCompensadoDeRegistro(r, asignacionesPrecalculadas)) delta = 0;
                 }
@@ -6383,7 +6561,7 @@
         function _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias) {
             if (!Array.isArray(diasHabiles) || diasHabiles.length === 0 || horasDiarias <= 0) return false;
             const fechasLaborables = TimeUtils.generarRangoFechas(ini, fn)
-                .filter(f => diasHabiles.includes(TimeUtils.parsearFechaLocal(f).getDay()));
+                .filter(f => D.diasHabilesEnFecha(f).includes(TimeUtils.parsearFechaLocal(f).getDay()));
             if (fechasLaborables.length === 0) return false;
             return fechasLaborables.every(fecha => {
                 const r = registros.find(x => x.fecha === fecha);
@@ -6393,7 +6571,7 @@
             });
         }
 
-        function calcularEstadoCard() {
+        function calcularEstadoCard(asignacionesPrecalculadas = null) {
             const hoy = TimeUtils.obtenerFechaHoy();
             const { inicio: ini, fin: fn } = TimeUtils.obtenerSemanaRangoActual();
             const registros = D.registros();
@@ -6406,7 +6584,7 @@
             const regHoy = registros.find(r => r.fecha === hoy) ?? null;
             const semanaAbierta = quedanDiasFuturos || (esDiaHabil && !(regHoy && regHoy.salida));
             const minutosBreakActivo = _minutosBreakActivo();
-            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
+            const asignacionesCompensatorio = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
             const bufferSemanalBase = D.calcularBufferPeriodo(ini, hoy, false, 0, asignacionesCompensatorio);
             const bufferSemanal = D.calcularBufferPeriodo(ini, hoy, true, minutosBreakActivo, asignacionesCompensatorio);
 
@@ -6441,7 +6619,7 @@
             );
             let objetivoSemana = 0;
             for (const isoDate of TimeUtils.generarRangoFechas(ini, fn)) {
-                if (!diasHabiles.includes(TimeUtils.parsearFechaLocal(isoDate).getDay())) continue;
+                if (!D.diasHabilesEnFecha(isoDate).includes(TimeUtils.parsearFechaLocal(isoDate).getDay())) continue;
                 const rDia = registrosSemanaCompletaPorFecha.get(isoDate);
                 if (!rDia) { objetivoSemana += horasDiarias; continue; }
                 const tipoDia = TiposRegistro.obtenerTipoPorCodigo(rDia.entrada, rDia.salida);
@@ -6961,11 +7139,13 @@
         }
 
         function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false, sinAnimarTitulo = false) {
+            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
+
             if (!soloReloj) {
-                UILogic.actualizarListaRegistros(D.registros(), idNuevo);
+                UILogic.actualizarListaRegistros(D.registros(), idNuevo, asignacionesCompensatorio);
             }
 
-            const est = calcularEstadoCard();
+            const est = calcularEstadoCard(asignacionesCompensatorio);
             const vista = D.vistaActual() === 'semana'
                 ? derivarVistaSemana(est)
                 : derivarVistaHoy(est);
@@ -6982,7 +7162,7 @@
                 if (selector && selector.style.display !== 'none') {
                     UILogic._cerrarSelectorMeses(idNuevo);
                 } else {
-                    UILogic._renderizarCalendario(idNuevo);
+                    UILogic._renderizarCalendario(idNuevo, asignacionesCompensatorio);
                 }
             }
 
@@ -7531,7 +7711,7 @@
     const UILogic = (function (S, D, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje) {
 
         const {
-            formatoDiferencia, registrarSwipe, debounce, _crearPressHold,
+            formatoDiferencia, registrarSwipe, debounce, _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre,
             _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
             mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON,
             mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
@@ -7870,26 +8050,12 @@
             }
         }
 
-        let _ayudaModalPadre = null;
-
         function abrirModalAyuda() {
-            const modalAbierto = document.querySelector('.modal.show');
-            _ayudaModalPadre = modalAbierto ? modalAbierto.id : null;
-            if (_ayudaModalPadre) {
-                ModalManager.alternar(_ayudaModalPadre, 'modal-ayuda');
-            } else {
-                ModalManager.abrir('modal-ayuda');
-            }
+            _abrirModalConPadre('modal-ayuda');
         }
 
         function cerrarModalAyuda() {
-            if (_ayudaModalPadre) {
-                const padre = _ayudaModalPadre;
-                _ayudaModalPadre = null;
-                ModalManager.alternar('modal-ayuda', padre);
-            } else {
-                ModalManager.cerrar('modal-ayuda');
-            }
+            _cerrarModalConPadre('modal-ayuda');
         }
 
         function _precargarCamposConfig() {
@@ -7938,6 +8104,7 @@
                 borrarTodoHistorial: D.borrarTodoHistorial,
                 editarRegistro: D.editarRegistro,
                 guardarEdicion: D.guardarEdicion,
+                pegarReferenciaAutomatica: D.pegarReferenciaAutomatica,
                 eliminarRegistroActual: D.eliminarRegistroActual,
                 undoAction: D.undoAction,
                 redoAction: D.redoAction,
@@ -7981,6 +8148,8 @@
             ModalManager.registrarAccionVolver('modal-editar-grupo', cerrarEdicionGrupo);
             ModalManager.registrarAccionVolver('modal-reporte-secciones', cerrarModalReporteSecciones);
             ModalManager.registrarAccionVolver('modal-ayuda', cerrarModalAyuda);
+            ModalManager.registrarAccionVolver('modal-historial-dias', cerrarModalHistorialDias);
+            ModalManager.registrarAccionVolver('modal-editar-tramo-dias', cerrarEditorTramoDias);
         }
 
         function _initListenersFormulario() {
@@ -8086,6 +8255,12 @@
             const perfilActual = PerfilManager.obtenerDatosPerfil();
             D.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
             D.setHorasDiarias(perfilActual.horasDiarias !== undefined ? perfilActual.horasDiarias : 7);
+            const historialGuardado = D.sanitizarHistorialDiasHabiles(perfilActual.historialDiasHabiles);
+            D.setHistorialDiasHabiles(
+                historialGuardado && historialGuardado.length > 0
+                    ? historialGuardado
+                    : [{ desde: '0001-01-01', dias: D.diasHabiles() }]
+            );
             D.registros().splice(0, D.registros().length, ...(perfilActual.registros || []));
 
             const historialCargado = HistoryManager.loadFromLocalStorage();
@@ -8252,7 +8427,7 @@
             actualizarBotonesHistorico();
 
             const hoy = TimeUtils.obtenerFechaHoy();
-            const hoyEsLaborable = _esFechaHabil(hoy, D.diasHabiles());
+            const hoyEsLaborable = _esFechaHabil(hoy, D.diasHabilesEnFecha(hoy));
             if (D.vistaActual() === 'semana' && hoyEsLaborable) {
                 setTimerAutoVista(setTimeout(() => {
                     setTimerAutoVista(null);
@@ -8323,7 +8498,10 @@
 
             if (seleccionados > 0) {
                 const nuevosDias = Array.from(checkboxes).map(cb => parseInt(cb.value)).sort((a, b) => a - b);
-                D.setDiasHabiles(nuevosDias);
+                const diasVigentes = [...D.diasHabiles()].sort((a, b) => a - b);
+                const huboCambio = nuevosDias.length !== diasVigentes.length
+                    || nuevosDias.some((d, i) => d !== diasVigentes[i]);
+                if (huboCambio) D.registrarCambioDiasHabiles(nuevosDias);
                 const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
                 if (esDefault) StorageHelper.setItem(STORAGE_KEYS.DIAS_HABILES, nuevosDias);
                 D.guardarYActualizar();
@@ -8331,6 +8509,147 @@
             if (typeof actualizarEstadoBotonPersistir === 'function') {
                 actualizarEstadoBotonPersistir();
             }
+        }
+
+        let _tramoEnEdicionDesde = null;
+
+        function _formatoFechaHistorial(iso) {
+            if (iso === '0001-01-01') return 'Desde siempre';
+            return `Desde ${TimeUtils.fechaCorta(iso)}`;
+        }
+
+        function _obtenerTramosOrdenados() {
+            const historial = D.historialDiasHabiles();
+            return Array.isArray(historial) && historial.length > 0
+                ? [...historial].sort((a, b) => a.desde.localeCompare(b.desde))
+                : [{ desde: '0001-01-01', dias: D.diasHabiles() }];
+        }
+
+        function _renderizarListaHistorialDias() {
+            const lista = $('lista-historial-dias');
+            if (!lista) return;
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const tramos = _obtenerTramosOrdenados();
+            const vigenteReal = tramos.filter(t => t.desde <= hoy).slice(-1)[0] || tramos[0];
+
+            lista.innerHTML = '';
+            [...tramos].reverse().forEach(tramo => {
+                const esActual = tramo === vigenteReal;
+
+                const container = Object.assign(document.createElement('div'), {
+                    className: `btn-perfil-select${esActual ? ' activo' : ''}`
+                });
+
+                const diasTexto = [...tramo.dias].sort((a, b) => a - b).map(d => TimeUtils.nombreDiaPorIndice(d)).join(', ');
+                const infoSection = Object.assign(document.createElement('div'), { className: 'btn-perfil-info' });
+                infoSection.appendChild(Object.assign(document.createElement('div'), {
+                    className: 'btn-perfil-nombre',
+                    textContent: `${_formatoFechaHistorial(tramo.desde)}${esActual ? ' (actual)' : ''}`
+                }));
+                infoSection.appendChild(Object.assign(document.createElement('div'), {
+                    className: 'btn-perfil-badge',
+                    textContent: diasTexto
+                }));
+
+                const editBtn = Object.assign(document.createElement('button'), {
+                    className: 'btn-perfil-edit',
+                    innerHTML: '<svg class="icon"><use href="#icon-edit"/></svg>',
+                    title: 'Editar tramo',
+                    onclick: (e) => { e.stopPropagation(); UILogic.abrirEditorTramoDias(tramo.desde); }
+                });
+
+                container.appendChild(infoSection);
+                container.appendChild(editBtn);
+                lista.appendChild(container);
+            });
+        }
+
+        function abrirModalHistorialDias() {
+            _abrirModalConPadre('modal-historial-dias', _renderizarListaHistorialDias);
+        }
+
+        function cerrarModalHistorialDias() {
+            _cerrarModalConPadre('modal-historial-dias', (padre) => {
+                if (padre === 'modal-config') _precargarCamposConfig();
+            });
+        }
+
+        function abrirEditorTramoDias(desdeOriginal) {
+            const tramos = _obtenerTramosOrdenados();
+            const tramo = tramos.find(t => t.desde === desdeOriginal);
+            if (!tramo) { mostrarToast('Tramo no encontrado', 'error'); return; }
+
+            _tramoEnEdicionDesde = desdeOriginal;
+
+            const inputDesde = $('editar-tramo-desde');
+            if (inputDesde) {
+                inputDesde.value = desdeOriginal === '0001-01-01' ? '' : desdeOriginal;
+                inputDesde.disabled = (desdeOriginal === '0001-01-01');
+            }
+
+            document.querySelectorAll('input[name="dia-habil-tramo"]').forEach(cb => {
+                cb.checked = tramo.dias.includes(parseInt(cb.value));
+            });
+
+            const btnEliminar = $('btn-eliminar-tramo-dias');
+            if (btnEliminar) btnEliminar.disabled = (tramos.length <= 1 || tramos[0].desde === desdeOriginal);
+
+            ModalManager.alternar('modal-historial-dias', 'modal-editar-tramo-dias');
+        }
+
+        function cerrarEditorTramoDias() {
+            _tramoEnEdicionDesde = null;
+            ModalManager.alternar('modal-editar-tramo-dias', 'modal-historial-dias', null, _renderizarListaHistorialDias);
+        }
+
+        async function guardarEdicionTramoDias() {
+            if (!_tramoEnEdicionDesde) return;
+
+            const esSentinela = _tramoEnEdicionDesde === '0001-01-01';
+            const inputDesde = $('editar-tramo-desde');
+            const nuevaFecha = esSentinela ? '0001-01-01' : (inputDesde?.value || '');
+            const checkboxes = document.querySelectorAll('input[name="dia-habil-tramo"]:checked');
+            const nuevosDias = Array.from(checkboxes).map(cb => parseInt(cb.value)).sort((a, b) => a - b);
+
+            if (!esSentinela && !TimeUtils.validarFecha(nuevaFecha)) {
+                mostrarToast('Ingresá una fecha válida', 'error'); return;
+            }
+            if (nuevosDias.length === 0) {
+                mostrarToast('Seleccioná al menos un día', 'error'); return;
+            }
+
+            const tramos = _obtenerTramosOrdenados();
+            const otros = tramos.filter(t => t.desde !== _tramoEnEdicionDesde);
+            if (otros.some(t => t.desde === nuevaFecha)) {
+                mostrarToast('Ya existe un tramo con esa fecha', 'error'); return;
+            }
+
+            const nuevoHistorial = D.sanitizarHistorialDiasHabiles([...otros, { desde: nuevaFecha, dias: nuevosDias }]);
+            D.setHistorialDiasHabiles(nuevoHistorial || [{ desde: '0001-01-01', dias: nuevosDias }]);
+
+            const guardado = await D.guardarYActualizar();
+            if (!guardado) return;
+
+            mostrarToast('Tramo actualizado', 'success');
+            cerrarEditorTramoDias();
+        }
+
+        async function eliminarTramoDias() {
+            if (!_tramoEnEdicionDesde) return;
+            const tramos = _obtenerTramosOrdenados();
+            if (tramos.length <= 1) return;
+            if (tramos[0].desde === _tramoEnEdicionDesde) return;
+            if (!await ModalManager.confirmar('¿Eliminar este tramo del historial? Los registros afectados pasarán a regirse por el tramo anterior.', 'Eliminar')) return;
+
+            const restantes = tramos.filter(t => t.desde !== _tramoEnEdicionDesde);
+            const nuevoHistorial = D.sanitizarHistorialDiasHabiles(restantes);
+            D.setHistorialDiasHabiles(nuevoHistorial || [{ desde: '0001-01-01', dias: D.diasHabiles() }]);
+
+            const guardado = await D.guardarYActualizar();
+            if (!guardado) return;
+
+            mostrarToast('Tramo eliminado', 'success');
+            cerrarEditorTramoDias();
         }
 
         function _ajustarStepperHoras(el, incremento) {
@@ -8384,15 +8703,17 @@
             _activarVistaCalendarioHistorico, _agruparMesesPorAnio, _cerrarPopupCalendarioHover, _cerrarSelectorMeses, _cicloStatsActivo, _cubiertoPorSaldo,
             _esFechaHabil, _forzarVista, _iniciarCicloStats, _irAFicharConFecha, _nombreMesCapitalizado, _onclickCalendarioDia,
             _popupCalendarioDiaSinRegistro, _popupCalendarioHover, _prepararMostrarFaseAlRenderizar, _renderSelectorStats, _renderizarCalendario, abrirEditorPerfil,
-            abrirGistEnBrowser, abrirModalAyuda, abrirModalGist, abrirModalReporteSecciones, abrirSelectorMesesCalendario, abrirSelectorPerfiles,
+            abrirEditorTramoDias, abrirGistEnBrowser, abrirModalAyuda, abrirModalGist, abrirModalHistorialDias, abrirModalReporteSecciones,
+            abrirSelectorMesesCalendario, abrirSelectorPerfiles,
             actualizarBotonLote, actualizarEstadoBotonAplicarHoras, actualizarEstadoBotonHoverPopup, actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
             actualizarEstadoBotonesGist, actualizarFeedbackConfig, actualizarListaRegistros, actualizarUI, agruparRegistrosConsecutivos, alternarFechaActual,
             alternarTema, alternarVista, aplicarFeedbackCampos, aplicarHorasConfiguradasATodos, aplicarOrdenCards, aplicarVisibilidadCards,
             cambiarAnioStats, cambiarMesStats, cambiarSemanaStats, cerrarConfig, cerrarEdicion, cerrarEdicionGrupo,
-            cerrarEditorPerfil, cerrarExportar, cerrarImportar, cerrarModalAyuda, cerrarModalGist, cerrarModalReporteSecciones,
+            cerrarEditorPerfil, cerrarEditorTramoDias, cerrarExportar, cerrarImportar, cerrarModalAyuda, cerrarModalGist,
+            cerrarModalHistorialDias, cerrarModalReporteSecciones,
             cerrarSelectorPerfiles, confirmarGenerarReporte, crearPerfilDesdeSelector, detenerCambio, detenerCambioLimite, detenerCambioObjetivoEdicion,
-            ejecutarAccionRegistro, ejecutarExportacion, eliminarPerfilDesdeEditor, getFondoCard, getVistaHistoricoCalendario, gistBajar,
-            gistMergeAplicar, gistMergeCancelar, gistSubir, guardarConfigGist, guardarEdicionPerfil, iniciarCambioHoras,
+            ejecutarAccionRegistro, ejecutarExportacion, eliminarPerfilDesdeEditor, eliminarTramoDias, getFondoCard, getVistaHistoricoCalendario, gistBajar,
+            gistMergeAplicar, gistMergeCancelar, gistSubir, guardarConfigGist, guardarEdicionPerfil, guardarEdicionTramoDias, iniciarCambioHoras,
             iniciarCambioLimite, iniciarCambioObjetivoEdicion, iniciarDragOrdenCards, iniciarTimerAutoCierreBotones, init, irHoyCalendario,
             limpiarCampo, mostrarConfigOnboarding, mostrarExportar, mostrarFiltros, mostrarImportar, mostrarToast,
             mostrarconfig, navegarCalendario, obtenerFechaHoy: TimeUtils.obtenerFechaHoy, obtenerOrdenCards, pegarHoraActual, poblarSelectoresTipos,
@@ -8645,6 +8966,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
     $('btn-toggle-objetivo-registro')?.addEventListener('click', () => UILogic.toggleObjetivoPorRegistro());
     $('btn-aplicar-horas-todos')?.addEventListener('click', () => UILogic.aplicarHorasConfiguradasATodos());
+    $('btn-historial-dias-habiles')?.addEventListener('click', () => UILogic.abrirModalHistorialDias());
     $('btn-toggle-persistir-tarjetas')?.addEventListener('click', () => UILogic.togglePersistirTarjetas());
     $('btn-toggle-card-registrar')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('registrar'));
     $('btn-toggle-card-estadisticas')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('estadisticas'));
@@ -8652,6 +8974,10 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('btn-ayuda-perfiles')?.addEventListener('click', () => UILogic.abrirModalAyuda());
     document.getElementById('btn-ayuda-config')?.addEventListener('click', () => UILogic.abrirModalAyuda());
     document.querySelector('#modal-ayuda .btn-cancel')?.addEventListener('click', () => UILogic.cerrarModalAyuda());
+    document.querySelector('#modal-historial-dias .btn-cancel')?.addEventListener('click', () => UILogic.cerrarModalHistorialDias());
+    document.querySelector('#modal-editar-tramo-dias .btn-edit')?.addEventListener('click', () => UILogic.guardarEdicionTramoDias());
+    $('btn-eliminar-tramo-dias')?.addEventListener('click', () => UILogic.eliminarTramoDias());
+    document.querySelector('#modal-editar-tramo-dias .btn-cancel')?.addEventListener('click', () => UILogic.cerrarEditorTramoDias());
     document.getElementById('ayuda-indice')?.addEventListener('click', (e) => {
         const btn = e.target.closest('.ayuda-indice-item');
         if (!btn) return;
@@ -8703,6 +9029,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-credito')?.addEventListener('click', () => UILogic.toggleCredito());
     $('btn-lock-toggle')?.addEventListener('click', () => UILogic.toggleBloqueoEdicion());
     $('btn-edit-entrada')?.addEventListener('click', () => UILogic.pegarHoraActual('edit-entrada'));
+    $('btn-edit-referencia-compensatorio')?.addEventListener('click', () => DataManagement.pegarReferenciaAutomatica());
     $('btn-edit-salida')?.addEventListener('click', () => UILogic.pegarHoraActual('edit-salida'));
     $('btn-edit-tf')?.addEventListener('click', () => UILogic.limpiarCampo('edit-tiempo-fuera'));
     $('btn-edit-notas')?.addEventListener('click', () => UILogic.limpiarCampo('edit-notas'));
@@ -8737,7 +9064,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260827';
+        const _v = '-v260830';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {

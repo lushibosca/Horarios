@@ -184,7 +184,7 @@ body {
 .card h2,
 .modal h3,
 h2.mutacion-saliente,
-.mutacion-saliente h2 { 
+.mutacion-saliente h2 {
     font-size: var(--text-base);
     margin-bottom: var(--space-lg);
     display: flex;
@@ -262,6 +262,84 @@ h2.mutacion-saliente.no-margin,
 
 .form-group {
     margin-bottom: var(--space-lg);
+}
+
+.form-row {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 0;
+}
+
+.input-icon-wrap {
+    position: relative;
+}
+
+.input-icon-wrap input {
+    padding-right: calc(var(--touch-target) + var(--space-xs));
+}
+
+.input-icon-btn {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: var(--touch-target);
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+
+.input-icon-btn:active {
+    color: var(--text-main);
+}
+
+.input-icon-btn:disabled,
+.input-number-group--embed .btn-increment:disabled {
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+.input-number-group--embed {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    height: var(--input-height);
+    padding-left: var(--space-md);
+    gap: 0;
+    transition: background var(--transition-ui);
+}
+
+.input-number-group--embed:has(.btn-increment:disabled) {
+    background: var(--bg-card);
+    cursor: not-allowed;
+}
+
+.input-number-group--embed .input-number-display {
+    text-align: left;
+    flex: 1;
+}
+
+.input-number-group--embed .btn-increment {
+    background: transparent;
+    border: none;
+    min-width: 36px;
+    width: 36px;
+    height: 100%;
+    padding: 0;
+    color: var(--text-main);
+}
+
+.input-number-group--embed .btn-increment:active {
+    color: var(--text-main);
 }
 
 .form-group-pt {
@@ -355,6 +433,7 @@ input.error {
     font-size: var(--text-base);
     font-weight: var(--fw-semibold);
     color: var(--text-main);
+    transition: color var(--transition-ui);
 }
 
 .input-number-display.input-number-inerte {
@@ -495,19 +574,20 @@ button:disabled {
     transition: var(--transition-collapse);
 }
 
+.collapsible.sin-transicion {
+    transition: none;
+}
+
 .collapsible.expanded {
     grid-template-rows: 1fr;
     opacity: 1;
 }
 
-.collapsible-inner {
-    overflow: hidden;
-    min-height: 0;
-}
-
+.collapsible-inner,
 .form-collapsible>#modo-contenedor,
 .form-collapsible>.detalle-inner,
-#botones-historico>.botones-historico-inner {
+#botones-historico>.botones-historico-inner,
+.registro-mes-detalle>.detalle-inner {
     overflow: hidden;
     min-height: 0;
 }
@@ -770,7 +850,9 @@ button:disabled {
     color: var(--text-main);
 }
 
-.registro-horas {
+.registro-horas,
+.cal-popup-3l,
+.btn-perfil-badge {
     font-size: var(--text-sm);
     color: var(--text-muted);
 }
@@ -826,11 +908,6 @@ button:disabled {
     transition: grid-template-rows var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
 }
 
-.registro-mes-detalle>.detalle-inner {
-    overflow: hidden;
-    min-height: 0;
-}
-
 .registro-mes-detalle.expanded>.detalle-inner {
     overflow: visible;
 }
@@ -874,7 +951,6 @@ button:disabled {
 .calendario-dia.dia-cubierto,
 .registro-total.gold-text,
 .calendario-dia.dia-especial-gold,
-.registro-total.yellow-text,
 .cal-popup-badge--gold,
 .progress-fill.gold {
     background: var(--c-gold);
@@ -1267,11 +1343,6 @@ button:disabled {
     color: var(--text-main);
 }
 
-.cal-popup-3l {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-}
-
 .cal-popup-badge {
     display: inline-block;
     font-size: var(--text-sm);
@@ -1494,6 +1565,40 @@ button:disabled {
     margin-top: var(--space-xs);
 }
 
+.config-total-feedback-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-xs);
+}
+
+.config-total-feedback-row .config-hint-text {
+    margin-top: 0;
+}
+
+.btn-historial-dias {
+    width: auto;
+    background: none;
+    border: none;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color var(--transition-ui);
+}
+
+.btn-historial-dias .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.btn-historial-dias:hover {
+    color: var(--text-main);
+}
+
 .empty-state {
     text-align: center;
     padding: 3rem var(--space-lg);
@@ -1670,11 +1775,6 @@ body.config-onboarding #btn-ayuda-config {
 .btn-perfil-nombre {
     font-size: var(--text-base);
     font-weight: var(--fw-semibold);
-}
-
-.btn-perfil-badge {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
 }
 
 .btn-perfil-edit {
@@ -2069,7 +2169,7 @@ button.campo-flash-color {
         #btn-reporte,
         .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist, .card-section-title,
         .btn-delete, .btn-cancel, .stats-number, .btn-export, .btn-merge, .btn-backup, .btn-edit,
-        .calendario-nav button, .btn-settings, .ayuda-indice-item, .btn-register):hover:not(:disabled) {
+        .calendario-nav button, .btn-settings, .ayuda-indice-item, .btn-register, .input-icon-btn):hover:not(:disabled) {
         filter: var(--hover);
     }
 
