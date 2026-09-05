@@ -485,7 +485,7 @@
                                 <div class="stat-value" id="stat-tiempo-fuera-total">--:--</div>
                             </div>
                             <div class="stat-item" id="stat-item-saldo">
-                                <div class="stat-label">Saldo</div>
+                                <div class="stat-label">Banco de horas</div>
                                 <div class="stat-value" id="stat-saldo">--</div>
                             </div>
                             <div class="stat-item">
@@ -751,7 +751,7 @@
                                 <svg class="icon">
                                     <use href="#icon-shield-off" />
                                 </svg>
-                                <span>No cubrir faltante con saldo</span>
+                                <span>No cubrir con banco de horas</span>
                                 <svg class="icon icon-indicator">
                                     <use href="#icon-dot" />
                                 </svg>
@@ -820,6 +820,11 @@
                         <span class="label-footer-volver">Volver</span>
                         <span class="label-footer-empezar">Empezar</span>
                     </button>
+                    <button class="time-btn" id="theme-toggle-config" title="Cambiar tema">
+                        <svg class="icon">
+                            <use href="#icon-moon" />
+                        </svg>
+                    </button>
                     <button class="time-btn" id="btn-ayuda-config" title="Ayuda">
                         <svg class="icon">
                             <use href="#icon-help" />
@@ -846,22 +851,23 @@
             <div class="modal-panel-body custom-scroll">
                 <div class="ayuda-layout">
                     <nav class="ayuda-indice" id="ayuda-indice">
+                        <h4>Indice</h4>
                         <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-general">Características</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-fichar">Fichar</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-tf">Tiempo fuera</button>
+                            data-target="ayuda-sec-general">- Características</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-fichar">- Fichar</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-tf">- Tiempo fuera</button>
                         <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-estadisticas">Estadísticas</button>
+                            data-target="ayuda-sec-estadisticas">- Estadísticas</button>
                         <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-registros">Registros</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-remoto">Remoto</button>
+                            data-target="ayuda-sec-registros">- Registros</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-remoto">- Remoto</button>
                         <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-compensatorio">Compensatorio</button>
+                            data-target="ayuda-sec-compensatorio">- Compensatorio</button>
                         <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-perfiles">Perfiles</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">Dónde se guardan
+                            data-target="ayuda-sec-perfiles">- Perfiles</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">- Dónde se guardan
                             tus datos</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">Backup y
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">- Backup y
                             sincronización</button>
                     </nav>
 
@@ -871,7 +877,7 @@
                             <p>- Registrar tus jornadas y días especiales como feriados o vacaciones.</p>
                             <p>- Establecer horas diarias objetivo de forma global e individual y días laborales por
                                 semana.</p>
-                            <p>- Ver el estado del tiempo transcurrido, restante y saldo semanal.</p>
+                            <p>- Ver el estado del tiempo transcurrido, restante y banco de horas por periodos.</p>
                             <p>- Visualizar estadísticas semanales, mensuales y anuales con distintas métricas en base a
                                 registros existentes.</p>
                             <p>- Crear informes mensuales o anuales en detalle.</p>
@@ -901,7 +907,7 @@
 
                         <section class="ayuda-seccion" id="ayuda-sec-estadisticas">
                             <h4>Estadísticas</h4>
-                            <p>Consultá tus horas trabajadas, promedios, regularidad y saldo, por semana, mes o año.
+                            <p>Consultá tus horas trabajadas, promedios, regularidad y banco de horas, por semana, mes o año.
                                 Tocando cada dato aparece una explicación de qué significa y cómo se calcula. Desde acá
                                 también podés generar un reporte descargable del período elegido.</p>
                         </section>
@@ -1048,7 +1054,7 @@
                     <div id="gist-limite-sync">
                         <div class="form-group">
                             <label id="gist-limite-label">Límite por hora</label>
-                            <div class="input-number-group">
+                            <div class="input-number-group input-number-group--embed">
                                 <span id="gist-limite-valor" class="input-number-display">0</span>
                                 <button class="btn-increment">+</button>
                                 <button class="btn-increment">-</button>
@@ -1056,9 +1062,9 @@
                         </div>
                     </div>
                     <div id="gist-rango-horario">
-                        <span>Desde</span>
+                        <label>Desde</label>
                         <input type="text" id="gist-rango-desde" inputmode="numeric" maxlength="5" aria-label="Desde" />
-                        <span>Hasta</span>
+                        <label>Hasta</label>
                         <input type="text" id="gist-rango-hasta" inputmode="numeric" maxlength="5" aria-label="Hasta" />
                     </div>
                 </div>

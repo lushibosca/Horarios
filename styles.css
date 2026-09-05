@@ -68,6 +68,70 @@ body.dark-mode {
     --hover: brightness(1.2);
 }
 
+/* ─── TEMA ROSA (pastel) ───────────────────────────────────────────────── */
+html[data-theme="pink"] body,
+body[data-theme="pink"] {
+    --bg-body: #fdf1f6;
+    --bg-card: #ffffff;
+    --bg-header: #fdf1f6ee;
+    --text-main: #4a2c39;
+    --text-muted: #8a6572;
+    --text-disabled: #8a657299;
+    --border: #f4d9e5;
+    --input-bg: #fbe7f0;
+    --c-gray-btn: #fbe7f0;
+    --shadow: 0 1px 4px rgba(172, 76, 130, 0.1), 0 0 0 1px rgba(172, 76, 130, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA VERDE (pastel) ──────────────────────────────────────────────── */
+html[data-theme="green"] body,
+body[data-theme="green"] {
+    --bg-body: #f0f8f2;
+    --bg-card: #ffffff;
+    --bg-header: #f0f8f2ee;
+    --text-main: #24402c;
+    --text-muted: #628a6d;
+    --text-disabled: #628a6d99;
+    --border: #d9ecdd;
+    --input-bg: #e7f5eb;
+    --c-gray-btn: #e7f5eb;
+    --shadow: 0 1px 4px rgba(76, 152, 100, 0.1), 0 0 0 1px rgba(76, 152, 100, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA AZUL (pastel) ───────────────────────────────────────────────── */
+html[data-theme="blue"] body,
+body[data-theme="blue"] {
+    --bg-body: #eef4fc;
+    --bg-card: #ffffff;
+    --bg-header: #eef4fcee;
+    --text-main: #223449;
+    --text-muted: #5f7691;
+    --text-disabled: #5f769199;
+    --border: #d7e6f6;
+    --input-bg: #e5eff9;
+    --c-gray-btn: #e5eff9;
+    --shadow: 0 1px 4px rgba(76, 114, 172, 0.1), 0 0 0 1px rgba(76, 114, 172, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA VIOLETA PASTEL (Lilac / Lavanda) ───────────────────────────── */
+html[data-theme="lilac"] body,
+body[data-theme="lilac"] {
+    --bg-body: #f6f3fc;
+    --bg-card: #ffffff;
+    --bg-header: #f6f3fcee;
+    --text-main: #3a2e4f;
+    --text-muted: #7b6894;
+    --text-disabled: #7b689499;
+    --border: #e6def2;
+    --input-bg: #f0e9fa;
+    --c-gray-btn: #f0e9fa;
+    --shadow: 0 1px 4px rgba(120, 80, 180, 0.1), 0 0 0 1px rgba(120, 80, 180, 0.05);
+    --hover: brightness(0.95);
+}
+
 /* ─── RESET ─────────────────────────────────────────────────────────────────── */
 
 body.modal-open {
@@ -193,6 +257,10 @@ h2.mutacion-saliente,
     color: var(--text-main);
 }
 
+#stats-titulo {
+    min-height: var(--space-lg);
+}
+
 .modal h3 .version-text {
     margin-left: auto;
 }
@@ -210,21 +278,25 @@ h2.mutacion-saliente.no-margin,
     overflow-x: hidden;
 }
 
-.custom-scroll::-webkit-scrollbar {
+.custom-scroll::-webkit-scrollbar,
+.ayuda-indice::-webkit-scrollbar {
     width: 4px;
 }
 
-.custom-scroll::-webkit-scrollbar-track {
+.custom-scroll::-webkit-scrollbar-track,
+.ayuda-indice::-webkit-scrollbar-track {
     background: var(--bg-body);
     border-radius: var(--radius);
 }
 
-.custom-scroll::-webkit-scrollbar-thumb {
+.custom-scroll::-webkit-scrollbar-thumb,
+.ayuda-indice::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: var(--radius);
 }
 
-.custom-scroll::-webkit-scrollbar-thumb:hover {
+.custom-scroll::-webkit-scrollbar-thumb:hover,
+.ayuda-indice::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
 
@@ -431,7 +503,7 @@ input.error {
     flex: 1;
     text-align: center;
     font-size: var(--text-base);
-    font-weight: var(--fw-semibold);
+    font-weight: var(--fw-medium);
     color: var(--text-main);
     transition: color var(--transition-ui);
 }
@@ -610,12 +682,34 @@ button:disabled {
 #gist-limite-sync {
     margin-top: var(--space-sm);
     transition: opacity var(--transition-ui);
+    color: var(--text-muted);
 }
 
 #gist-rango-horario.disabled,
 #gist-limite-sync.disabled {
     opacity: 0.35;
     pointer-events: none;
+}
+
+#gist-limite-sync .input-number-group {
+    width: 50%;
+    flex: 1;
+}
+
+#gist-limite-sync .input-number-display {
+    text-align: center;
+}
+
+#gist-limite-sync .form-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    margin-bottom: 0;
+}
+
+#gist-limite-label {
+    flex: 1;
+    line-height: 1.25;
 }
 
 
@@ -685,13 +779,18 @@ button:disabled {
     inset: 0;
     pointer-events: none;
     z-index: 0;
+    transition: transform calc(var(--dur-anim)*5) ease;
+}
+
+.stats-card-bg--zoom {
+    transform: scale(1.1);
 }
 
 .stats-card-bg__layer {
     position: absolute;
     inset: 0;
     opacity: 0;
-    transition: opacity 0.6s ease;
+    transition: opacity calc(var(--dur-anim)*2) ease;
 }
 
 .stats-card-bg__layer.visible {
@@ -893,6 +992,7 @@ button:disabled {
     top: var(--sticky-mes-top);
     z-index: 5;
     background: var(--bg-card);
+    border-radius: var(--radius);
 }
 
 /* Header de mes anidado dentro de un año colapsable: se apila debajo del header del año */
@@ -1050,7 +1150,7 @@ button:disabled {
 .ayuda-indice-item {
     justify-content: flex-start;
     text-align: left;
-    padding: var(--space-sm);
+    padding: var(--space-xs);
     border: 1px solid transparent;
     color: var(--text-muted);
     background: var(--bg-card);
@@ -1065,7 +1165,8 @@ button:disabled {
     scroll-margin-top: var(--space-sm);
 }
 
-.ayuda-seccion h4 {
+.ayuda-seccion h4,
+.ayuda-indice h4 {
     margin: 0 0 var(--space-sm);
     font-size: var(--text-md);
     font-weight: var(--fw-semibold);
@@ -1434,6 +1535,27 @@ button:disabled {
     margin: 10px 0;
 }
 
+.stat-popup-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+.stat-popup-metric span {
+    color: var(--text-muted);
+}
+
+.stat-popup-metric strong {
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.stat-popup-metric + .stat-popup-metric {
+    margin-top: 0.3rem;
+}
+
 /* ─── FILTRO POPUP ───────────────────────────────────────────────────────────── */
 
 .filtro-popup {
@@ -1645,11 +1767,13 @@ body.config-onboarding .label-footer-empezar {
     display: inline;
 }
 
-#btn-ayuda-config {
+#btn-ayuda-config,
+#theme-toggle-config {
     display: none;
 }
 
-body.config-onboarding #btn-ayuda-config {
+body.config-onboarding #btn-ayuda-config,
+body.config-onboarding #theme-toggle-config {
     display: flex;
 }
 
@@ -1995,10 +2119,43 @@ body.config-onboarding #btn-ayuda-config {
 }
 
 .break-counter-label {
-    font-size: 0.8em;
+    font-size: var(--text-base);
     font-weight: var(--fw-medium);
     color: var(--c-red);
-    margin-left: 0.3em;
+    margin-left: var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2em;
+}
+
+.break-counter-label .icon {
+    width: 0.85em;
+    height: 0.85em;
+}
+
+.tf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    background: var(--c-red);
+    color: var(--c-white);
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    padding: 0.1rem 0.6rem;
+    border-radius: var(--radius);
+    white-space: nowrap;
+}
+
+.tf-badge .icon {
+    width: 0.9em;
+    height: 0.9em;
+}
+
+.tf-badge .break-counter-label {
+    color: inherit;
+    margin-left: 0.15em;
 }
 
 /* ─── KEYFRAMES ──────────────────────────────────────────────────────────────── */
