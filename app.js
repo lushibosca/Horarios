@@ -31,6 +31,11 @@
         GIST_TOKEN: 'gistToken',
         BIENVENIDA_VISTA: 'bienvenidaVista',
         FERIADOS_PROCESADOS: 'feriadosAR_procesados',
+        PUSH_ANTICIPACION_MIN: 'pushAnticipacionMin',
+        PUSH_USAR_BUFFER_SEMANAL: 'pushUsarBufferSemanal',
+        PUSH_BUFFER_SOLO_ULTIMO_DIA: 'pushBufferSoloUltimoDia',
+        PUSH_HABILITADO: 'pushHabilitado',
+        PUSH_INFO_ACTIVA: 'pushInfoActiva',
 
         BREAK_TIME: (perfilId) => `breakStartTime_${perfilId}`,
         GIST_LIMITE: (tipo) => `gistSyncLimite_${tipo}`,
@@ -291,6 +296,276 @@
             obtenerNombreDia, nombreDiaPorIndice, nombreMesPorIndice, obtenerLunes, obtenerLunesSemanaISO, obtenerSemanaRangoActual,
             horasATexto, formatoDiferencia, formatoTituloMes, _esCantidadSingular, pluralizar,
             generarRangoFechas, fechaCorta
+        };
+    })();
+
+    // ====================================================================
+    // PUSH REMINDER MODULE — recordatorio de fin de jornada vía Cloudflare
+    // ====================================================================
+    const PushReminder = (function () {
+        const WORKER_URL = 'https://horarios-push.lushibosca.workers.dev';
+        const VAPID_PUBLIC_KEY = 'BMU-iLslFVrTxUKMHRUn8r_CtyCLX41ppVTUgdATAdPYE8ayJ0U_ew6d50CmvghkIdv34fGuXvf-KP5W62rs3ms';
+        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9';
+        const MARGEN_CRON_MS = 60 * 1000; //Descuento de 1 minuto en el pair kv
+
+        function _headersWorker() {
+            const headers = { 'Content-Type': 'application/json' };
+            if (APP_SECRET && !APP_SECRET.startsWith('PEGA_ACA')) headers['X-App-Secret'] = APP_SECRET;
+            return headers;
+        }
+
+        function _postWorker(path, payload, keepalive = false) {
+            return fetch(`${WORKER_URL}${path}`, {
+                method: 'POST',
+                headers: _headersWorker(),
+                body: JSON.stringify(payload),
+                keepalive: !!keepalive
+            });
+        }
+
+        function _urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            return Uint8Array.from([...atob(base64)].map(c => c.charCodeAt(0)));
+        }
+
+        let _idInstalacionFallback = null;
+
+        function _idInstalacion() {
+            const KEY = 'pushInstallId';
+            const existente = StorageHelper.getItem(KEY, null);
+            if (existente) return existente;
+
+            const nuevo = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            if (StorageHelper.setItem(KEY, nuevo)) return nuevo;
+            if (!_idInstalacionFallback) {
+                _idInstalacionFallback = crypto.randomUUID
+                    ? crypto.randomUUID()
+                    : `sin-storage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            }
+            return _idInstalacionFallback;
+        }
+
+        function _perfilActivo() {
+            return (window.PerfilManager ? PerfilManager.obtenerPerfilActual() : null) || 'default';
+        }
+
+        function _claveRecordatorio(fechaISO, perfilId) {
+            return `${_idInstalacion()}:${perfilId || _perfilActivo()}:${fechaISO}`;
+        }
+
+        function _getLegacyOPerfil(key, defaultValue, parseFn) {
+            const val = StorageHelper.getItem(key, null, true);
+            if (val !== null) return parseFn ? parseFn(val) : val;
+            const legacyVal = StorageHelper.getItem(key, null, false);
+            if (legacyVal !== null) {
+                const parsed = parseFn ? parseFn(legacyVal) : legacyVal;
+                StorageHelper.setItem(key, parsed, true);
+                StorageHelper.removeItem(key, false);
+                return parsed;
+            }
+            return defaultValue;
+        }
+
+        function getAnticipacionMin() {
+            return _getLegacyOPerfil(STORAGE_KEYS.PUSH_ANTICIPACION_MIN, 0, v => {
+                const n = parseFloat(v);
+                return isNaN(n) ? 0 : n;
+            });
+        }
+        function setAnticipacionMin(minutos) {
+            const n = Number(minutos);
+            const seguro = Number.isFinite(n) ? Math.min(60, Math.max(0, n)) : 0;
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_ANTICIPACION_MIN, seguro, true);
+        }
+        function getUsarBufferSemanal() {
+            return _getLegacyOPerfil(STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, false, v => v === 'true');
+        }
+        function setUsarBufferSemanal(valor) {
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, !!valor, true);
+        }
+        function getBufferSoloUltimoDia() {
+            return _getLegacyOPerfil(STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, false, v => v === 'true');
+        }
+        function setBufferSoloUltimoDia(valor) {
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, !!valor, true);
+        }
+        function getHabilitado() {
+            return _getLegacyOPerfil(STORAGE_KEYS.PUSH_HABILITADO, false, v => v === 'true');
+        }
+        function setHabilitado(valor) {
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_HABILITADO, !!valor, true);
+        }
+
+        function _guardarInfoActiva(fechaISO, targetTimeMs) {
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_INFO_ACTIVA, JSON.stringify({ fechaISO, targetTimeMs }), true);
+        }
+        function _borrarInfoActiva(perfilId) {
+            try {
+                if (perfilId) {
+                    StorageHelper.removeItem(`${STORAGE_KEYS.PUSH_INFO_ACTIVA}_${perfilId}`);
+                } else {
+                    StorageHelper.removeItem(STORAGE_KEYS.PUSH_INFO_ACTIVA, true);
+                    StorageHelper.removeItem(STORAGE_KEYS.PUSH_INFO_ACTIVA, false);
+                }
+            } catch { /* noop */ }
+        }
+        function obtenerInfoActiva(perfilId) {
+            const raw = perfilId
+                ? StorageHelper.getItem(`${STORAGE_KEYS.PUSH_INFO_ACTIVA}_${perfilId}`)
+                : (StorageHelper.getItem(STORAGE_KEYS.PUSH_INFO_ACTIVA, null, true)
+                    ?? StorageHelper.getItem(STORAGE_KEYS.PUSH_INFO_ACTIVA, null, false));
+            if (!raw) return null;
+            try {
+                const info = JSON.parse(raw, SecurityAndUtils.reviverJSONSeguro);
+                if (!info || info.fechaISO !== TimeUtils.obtenerFechaHoy()) return null;
+                return info;
+            } catch {
+                return null;
+            }
+        }
+        async function _asegurarSuscripcion() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+            if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.startsWith('PEGA_ACA')) return null;
+
+            try {
+                const permiso = await Notification.requestPermission();
+                if (permiso !== 'granted') return null;
+
+                const reg = await navigator.serviceWorker.ready;
+                const existente = await reg.pushManager.getSubscription();
+                if (existente) return existente;
+
+                return await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                });
+            } catch (err) {
+                console.error('No se pudo suscribir a push:', err);
+                return null;
+            }
+        }
+
+        function _calcularTarget(entradaHHMM, objetivoHoras, bufferSemanalHoras = 0) {
+            if (!entradaHHMM || !objetivoHoras) return null;
+            const [h, m] = entradaHHMM.split(':').map(Number);
+            if (Number.isNaN(h) || Number.isNaN(m)) return null;
+
+            let objetivoAjustado = objetivoHoras;
+            if (getUsarBufferSemanal() && Number.isFinite(bufferSemanalHoras)) {
+                objetivoAjustado = Math.max(0, objetivoHoras - bufferSemanalHoras);
+            }
+            const anticipacionMin = getAnticipacionMin();
+            const target = new Date();
+            target.setHours(h, m, 0, 0);
+            target.setTime(target.getTime() + objetivoAjustado * 60 * 60 * 1000 - anticipacionMin * 60 * 1000 - MARGEN_CRON_MS);
+            return target.getTime();
+        }
+
+        function _construirMensajeNotificacion(anticipacionMin, bufferSemanalHoras) {
+            const usaBuffer = getUsarBufferSemanal() && Number.isFinite(bufferSemanalHoras) && Math.abs(bufferSemanalHoras * 60) >= 1;
+            if (!usaBuffer) {
+                return anticipacionMin > 0
+                    ? `Te faltan ${anticipacionMin} min para cumplir tu horario de hoy`
+                    : 'Se cumplió tu horario de hoy. ¡Podés irte!';
+            }
+
+            const tiempoTexto = TimeUtils.horasATexto(Math.abs(bufferSemanalHoras));
+            const debeTiempo = bufferSemanalHoras < 0;
+
+            if (debeTiempo) {
+                return anticipacionMin > 0
+                    ? `En ${anticipacionMin} min podés irte (incluye recuperar ${tiempoTexto} faltantes)`
+                    : `Podés irte. Ya recuperaste los ${tiempoTexto} faltantes de la semana`;
+            } else {
+                return anticipacionMin > 0
+                    ? `En ${anticipacionMin} min podés irte (salís ${tiempoTexto} antes por tiempo extra)`
+                    : `Podés irte ${tiempoTexto} antes por tu tiempo extra semanal`;
+            }
+        }
+
+        async function programarFinDeJornada(fechaISO, entradaHHMM, objetivoHoras, bufferSemanalHoras = 0) {
+            if (!getHabilitado()) return;
+            const targetMs = _calcularTarget(entradaHHMM, objetivoHoras, bufferSemanalHoras);
+            if (targetMs == null) return;
+
+            const sub = await _asegurarSuscripcion();
+            if (!sub) return;
+
+            const anticipacionMin = getAnticipacionMin();
+            const mensaje = _construirMensajeNotificacion(anticipacionMin, bufferSemanalHoras);
+
+            try {
+                const res = await _postWorker('/api/schedule', {
+                    id: _claveRecordatorio(fechaISO),
+                    subscription: sub.toJSON(),
+                    targetTime: targetMs,
+                    title: 'Horarios',
+                    message: mensaje
+                });
+                if (res.ok) _guardarInfoActiva(fechaISO, targetMs);
+            } catch (err) {
+                console.error('No se pudo programar el recordatorio:', err);
+            }
+        }
+
+        function limpiarNotificacionVisible() {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.ready) {
+                navigator.serviceWorker.ready.then(reg => {
+                    if (reg && typeof reg.getNotifications === 'function') {
+                        reg.getNotifications({ tag: 'horarios-recordatorio' })
+                            .then(notifs => notifs.forEach(n => n.close()))
+                            .catch(() => { /* noop */ });
+                    }
+                }).catch(() => { /* noop */ });
+            }
+        }
+
+        function cancelarFinDeJornada(fechaISO, perfilId) {
+            if (!fechaISO) return;
+            const esPerfilActivo = !perfilId || perfilId === _perfilActivo();
+            if (esPerfilActivo) limpiarNotificacionVisible();
+
+            const esHoy = fechaISO === TimeUtils.obtenerFechaHoy();
+            const activa = esHoy ? obtenerInfoActiva(perfilId) : null;
+            if (esHoy) _borrarInfoActiva(perfilId);
+
+            if (esHoy && !activa) {
+                return;
+            }
+
+            if (activa?.targetTimeMs && (Date.now() > activa.targetTimeMs + MARGEN_CRON_MS)) {
+                return;
+            }
+            if (!esHoy && fechaISO < TimeUtils.obtenerFechaHoy()) {
+                return;
+            }
+
+            _postWorker('/api/cancel', { id: _claveRecordatorio(fechaISO, perfilId) }, true)
+                .catch(err => console.error('No se pudo cancelar el recordatorio:', err));
+        }
+
+        function restablecer() {
+            cancelarFinDeJornada(TimeUtils.obtenerFechaHoy());
+            [
+                STORAGE_KEYS.PUSH_HABILITADO,
+                STORAGE_KEYS.PUSH_ANTICIPACION_MIN,
+                STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL,
+                STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA,
+                STORAGE_KEYS.PUSH_INFO_ACTIVA
+            ].forEach(k => {
+                StorageHelper.removeItem(k, true);
+                StorageHelper.removeItem(k, false);
+            });
+        }
+
+        return {
+            programarFinDeJornada, cancelarFinDeJornada, limpiarNotificacionVisible,
+            getAnticipacionMin, setAnticipacionMin, setBufferSoloUltimoDia,
+            getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado,
+            getBufferSoloUltimoDia, calcularTarget: _calcularTarget,
+            targetProgramadoParaHoy: () => obtenerInfoActiva()?.targetTimeMs ?? null,
+            restablecer,
         };
     })();
 
@@ -1243,6 +1518,7 @@
                 const nuevosRegistros = fechasNuevas.map(fechaISO => _construirRegistro(fechaISO, entrada, salida));
                 registros.push(...nuevosRegistros);
                 ordenarRegistros();
+                _sincronizarPushHoy();
                 HistoryManager.saveState(registros, `editar grupo (${nuevosRegistros.length} día${TimeUtils.pluralizar(nuevosRegistros.length)})`);
                 const saved = await guardarYActualizar(nuevosRegistros.map(r => r.id));
                 if (saved) { notify.mostrarToast('Grupo actualizado', 'success'); notify.cerrarEdicionGrupo(); }
@@ -1259,6 +1535,7 @@
             }
             const idsAEliminar = grupoEnEdicion.registros.map(r => r.id);
             registros = registros.filter(r => !idsAEliminar.includes(r.id));
+            _sincronizarPushHoy();
             HistoryManager.saveState(registros, `eliminar grupo (${idsAEliminar.length} registro${TimeUtils.pluralizar(idsAEliminar.length)})`);
             const saved = await guardarYActualizar();
             if (saved) { notify.mostrarToast('Grupo eliminado', 'success'); notify.cerrarEdicionGrupo(); }
@@ -1407,6 +1684,7 @@
             HistoryManager.saveState(registros, `salida ${s} (${TimeUtils.fechaCorta(reg.fecha)})`);
             const saved = await _guardarConCicloSiHoy(reg.id, esHoy, 'salida');
             if (!saved) return;
+            PushReminder.cancelarFinDeJornada(reg.fecha);
             if (!usaHoraActual) {
                 notify.aplicarFeedbackCampos([
                     { id: 'entrada', fallback: 'Entrada', mostrar: false },
@@ -1418,6 +1696,51 @@
             notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('salida').value = '';
+        }
+
+        function _sincronizarPushHoy() {
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const esDiaHabil = UILogic._esFechaHabil(hoy, diasHabilesEnFecha(hoy));
+            const abierto = esDiaHabil && registros.find(r => r.fecha === hoy && r.entrada && !r.salida);
+            const habilitado = PushReminder.getHabilitado();
+            const nuevoTarget = (habilitado && abierto)
+                ? PushReminder.calcularTarget(abierto.entrada, abierto.objetivoHoras, _bufferSemanalParaPush(hoy))
+                : null;
+            const targetActual = PushReminder.targetProgramadoParaHoy();
+            if (nuevoTarget === targetActual) return;
+
+            if (abierto && nuevoTarget != null) {
+                PushReminder.programarFinDeJornada(abierto.fecha, abierto.entrada, abierto.objetivoHoras, _bufferSemanalParaPush(hoy));
+            } else if (targetActual != null) {
+                PushReminder.cancelarFinDeJornada(hoy);
+            }
+        }
+
+        function _bufferSemanalActual() {
+            const { inicio: iniSemana } = TimeUtils.obtenerSemanaRangoActual();
+            return calcularBufferPeriodo(iniSemana, TimeUtils.obtenerFechaHoy(), false, 0, _calcularAsignacionesCompensatorio());
+        }
+
+        function _ultimoDiaHabilEfectivoSemana() {
+            const { fin } = TimeUtils.obtenerSemanaRangoActual();
+            let fecha = fin;
+            for (let i = 0; i < 7; i++) {
+                if (UILogic._esFechaHabil(fecha, diasHabilesEnFecha(fecha))) {
+                    const reg = registros.find(r => r.fecha === fecha);
+                    const esEspecial = reg && TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
+                    if (!esEspecial) return fecha;
+                }
+                const d = TimeUtils.parsearFechaLocal(fecha);
+                d.setDate(d.getDate() - 1);
+                fecha = TimeUtils.formatearFechaLocal(d);
+            }
+            return null;
+        }
+
+        function _bufferSemanalParaPush(fecha) {
+            const buffer = _bufferSemanalActual();
+            if (!PushReminder.getUsarBufferSemanal() || !PushReminder.getBufferSoloUltimoDia()) return buffer;
+            return fecha === _ultimoDiaHabilEfectivoSemana() ? buffer : 0;
         }
 
         async function _crearNuevoRegistro(f, e, s, usaHoraActual, btn) {
@@ -1432,6 +1755,10 @@
             HistoryManager.saveState(registros, `${detalleAccion} (${TimeUtils.fechaCorta(f)})`);
             const saved = await _guardarConCicloSiHoy(nuevo.id, esHoy, 'entrada');
             if (!saved) return;
+            if (esHoy && !s && UILogic._esFechaHabil(f, diasHabilesEnFecha(f))) {
+                const bufferSemanal = _bufferSemanalParaPush(f);
+                PushReminder.programarFinDeJornada(nuevo.fecha, nuevo.entrada, nuevo.objetivoHoras, bufferSemanal);
+            }
             const entradaManual = e && !usaHoraActual, salidaManual = s && !usaHoraActual;
             if (entradaManual || salidaManual) {
                 notify.aplicarFeedbackCampos([
@@ -1514,6 +1841,7 @@
                 }
 
                 registros = registros.filter(r => r.id !== editandoId);
+                _sincronizarPushHoy();
                 HistoryManager.saveState(registros, `eliminar registro${registroABorrar ? ` (${TimeUtils.fechaCorta(registroABorrar.fecha)})` : ''}`);
 
                 const saved = await guardarYActualizar();
@@ -1657,6 +1985,7 @@
                 notify.actualizarEstadoBotonTimerMain();
             }
             registros = registros.filter(r => r.id !== editandoId);
+            _sincronizarPushHoy();
             HistoryManager.saveState(registros, `eliminar registro vacío${reg ? ` (${TimeUtils.fechaCorta(reg.fecha)})` : ''}`);
             const saved = await guardarYActualizar();
             notify.restaurarBotonGuardarEdicion(btnGuardar);
@@ -1754,6 +2083,7 @@
             const saved = await guardarYActualizar(null, true);
             notify.restaurarBotonGuardarEdicion(btnGuardar);
             if (saved) {
+                _sincronizarPushHoy();
                 notify.mostrarToast(cr ? `Guardado con Salida Temprana (+${cr})` : 'Registro actualizado', 'success');
                 notify.cerrarEdicion();
             }
@@ -1769,6 +2099,7 @@
             historialDiasHabiles = [];
             registros.splice(0, registros.length);
             ignorarTiempoFuera = false;
+            PushReminder.restablecer();
 
             const perfilId = _obtenerPerfilIdActual();
             StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
@@ -1941,6 +2272,7 @@
         async function finalizarImportacionAndSave(mensajeExito, descripcion = null) {
             ordenarRegistros();
             migrarObjetivoHorasFaltante();
+            _sincronizarPushHoy();
             HistoryManager.saveState(registros, descripcion || mensajeExito);
             if (await guardarYActualizar()) {
                 const esPerfilDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
@@ -2106,6 +2438,7 @@
                     _recalcularHorasSiValido(r);
                 }
             });
+            _sincronizarPushHoy();
             guardarYActualizar(null, true);
             notify.mostrarToast(mensaje, 'info', undefined, resultado.descripcion);
             notify.iniciarTimerAutoCierreBotones();
@@ -2120,6 +2453,7 @@
             if (registrosAEliminar.length === 0) { notify.mostrarToast('No hay registros de jornadas en ese período', 'info'); notify.flashCampoTipo('info', 'btn-agregar'); throw new Error('Sin registros'); }
 
             registros = registros.filter(r => !registrosAEliminar.includes(r));
+            _sincronizarPushHoy();
             HistoryManager.saveState(registros, `eliminar período (${registrosAEliminar.length} registro${TimeUtils.pluralizar(registrosAEliminar.length)})`);
             const saved = await guardarYActualizar();
             if (saved) {
@@ -2362,6 +2696,8 @@
             calcularBufferPeriodo, detectarAyerAbierto, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
             registrarVacacionesDirecto, borrarPeriodoDirecto, registrarDiaEspecial, editarGrupo, guardarEdicionGrupo,
             eliminarGrupoActual, setGrupoEnEdicion: (val) => grupoEnEdicion = val,
+            sincronizarPushHoy: _sincronizarPushHoy,
+            bufferSemanalParaPush: _bufferSemanalParaPush,
             undoAction: function () { _aplicarEstadoHistorial(HistoryManager.undo(), 'Deshecho'); },
             redoAction: function () { _aplicarEstadoHistorial(HistoryManager.redo(), 'Rehecho'); },
             configurarNotificaciones
@@ -2395,6 +2731,7 @@
         let toastTimeout = null;
         let _toastQueue = [];
         let _toastRunning = false;
+        const MAX_TOAST_QUEUE = 4;
 
         function formatoDiferencia(tiempoTotal, objetivo = D.horasDiarias()) {
             return TimeUtils.formatoDiferencia(tiempoTotal, objetivo);
@@ -2519,6 +2856,9 @@
             const actual = _toastRunning ? $('toast')?.textContent : null;
             if ((ultimo && ultimo.mensaje === textoLimpio) || actual === textoLimpio) return;
             _toastQueue.push({ mensaje: textoLimpio, tipo, duracionBase: duracion });
+            if (_toastQueue.length > MAX_TOAST_QUEUE) {
+                _toastQueue.splice(0, _toastQueue.length - MAX_TOAST_QUEUE);
+            }
             if (!_toastRunning) _procesarToastQueue();
         }
 
@@ -2547,6 +2887,22 @@
                     setTimeout(() => _procesarToastQueue(), 350);
                 }, duracionFinal);
             }, 10);
+        }
+
+        function _cerrarToastActual() {
+            if (toastTimeout) { clearTimeout(toastTimeout); toastTimeout = null; }
+            const toast = $('toast');
+            if (!toast || !toast.classList.contains('show')) return;
+            toast.classList.remove('show');
+            setTimeout(() => _procesarToastQueue(), 350);
+        }
+
+        function _habilitarCierreToast() {
+            const toast = $('toast');
+            if (!toast || toast.dataset.cierreInit) return;
+            toast.dataset.cierreInit = '1';
+            toast.addEventListener('click', () => _cerrarToastActual());
+            registrarSwipe(toast, () => _cerrarToastActual(), { minX: 40 });
         }
 
         function resetearBoton(btn) {
@@ -2666,7 +3022,7 @@
                 const nuevo = !getVal();
                 setVal(nuevo);
                 actualizarEstado();
-                mostrarToast(nuevo ? mensajeOn : mensajeOff, 'info');
+                mostrarToast(nuevo ? mensajeOn : mensajeOff, 'info', 4000);
                 onAfterToggle?.(nuevo);
             }
             return { toggle, actualizarEstado };
@@ -2900,6 +3256,8 @@
             obtenerNombrePerfilSafe,
             descargarJSON,
             mostrarToast,
+            _cerrarToastActual,
+            _habilitarCierreToast,
             resetearBoton,
             restaurarBotonGuardarEdicion,
             _getCSSdur,
@@ -3127,7 +3485,8 @@
 
         function _limpiarClavesPerfil(pid) {
             ['breakStartTime', STORAGE_KEYS.HISTORY, STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO,
-                'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS
+                'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS,
+                STORAGE_KEYS.PUSH_HABILITADO, STORAGE_KEYS.PUSH_ANTICIPACION_MIN, STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, STORAGE_KEYS.PUSH_INFO_ACTIVA
             ].forEach(k => StorageHelper.removeItem(`${k}_${pid}`));
         }
 
@@ -3144,6 +3503,7 @@
                 if (!await ModalManager.confirmar(`¿Estás seguro de que querés eliminar el perfil "${perfil.nombre}"? Esta acción no se puede deshacer.`, 'Eliminar')) return;
             }
 
+            PushReminder.cancelarFinDeJornada(TimeUtils.obtenerFechaHoy(), perfilEnEdicion);
             _limpiarClavesPerfil(perfilEnEdicion);
             delete perfiles[perfilEnEdicion];
             if (!_guardarPerfilesConManejo(perfiles, 'Error al eliminar perfil:')) return;
@@ -4264,6 +4624,7 @@
                 return (b.entrada || '').localeCompare(a.entrada || '');
             });
             D.migrarObjetivoHorasFaltante();
+            D.sincronizarPushHoy();
             HistoryManager.saveState(D.registros(), modo === 'replace' ? 'reemplazar con Gist' : 'combinar con Gist');
 
             await D.guardarYActualizar();
@@ -7822,7 +8183,7 @@
             formatoDiferencia, registrarSwipe, debounce, _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre,
             _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
             mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON,
-            mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
+            mostrarToast, _habilitarCierreToast, resetearBoton, restaurarBotonGuardarEdicion,
             _getCSSdur, DUR_ANIM, DUR_CALENDARIO, _crearToggleConfig, _setBtnActivo,
             _crearOpcion, _poblarSelect, setIconoBtn, _setBtnDisabled,
             _posicionarPopup, _registrarCierrePopup, _flashCampo, _flashCampoTipo,
@@ -7934,6 +8295,122 @@
         function actualizarEstadoBotonAplicarHoras() {
             const modoGlobal = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true);
             _setBtnDisabled('btn-aplicar-horas-todos', modoGlobal);
+        }
+
+        function _actualizarDisponibilidadBotonesPush() {
+            const habilitado = PushReminder.getHabilitado();
+            const usaBufferSemanal = PushReminder.getUsarBufferSemanal();
+            _setBtnDisabled('btn-toggle-push-buffer', !habilitado);
+            _setBtnDisabled('btn-toggle-push-buffer-ultimo-dia', !habilitado || !usaBufferSemanal);
+        }
+
+        function actualizarEstadoBotonNotificaciones() {
+            _setBtnActivo('btn-toggle-notification', PushReminder.getHabilitado());
+        }
+
+        const _sincronizarPushHoyDebounced = debounce(() => D.sincronizarPushHoy(), 400);
+
+        const { toggle: togglePushBuffer, actualizarEstado: actualizarEstadoBotonPushBuffer } =
+            _crearToggleConfig({
+                getVal: () => PushReminder.getUsarBufferSemanal(),
+                setVal: (v) => PushReminder.setUsarBufferSemanal(v),
+                btnId: 'btn-toggle-push-buffer',
+                mensajeOn: 'El banco de horas se aplica en las notificaciones',
+                mensajeOff: 'El banco de horas no se aplica en las notificaciones',
+                onAfterToggle: () => {
+                    actualizarEstadoBotonPushBufferUltimoDia();
+                    _actualizarDisponibilidadBotonesPush();
+                    _sincronizarPushHoyDebounced();
+                },
+            });
+
+        const { toggle: togglePushBufferUltimoDia, actualizarEstado: actualizarEstadoBotonPushBufferUltimoDia } =
+            _crearToggleConfig({
+                getVal: () => PushReminder.getBufferSoloUltimoDia(),
+                setVal: (v) => PushReminder.setBufferSoloUltimoDia(v),
+                btnId: 'btn-toggle-push-buffer-ultimo-dia',
+                mensajeOn: 'El banco de horas se aplica el último día hábil de la semana en las notificaciones',
+                mensajeOff: 'El banco de horas se aplica todos los días en las notificaciones',
+                onAfterToggle: () => _sincronizarPushHoyDebounced(),
+            });
+
+        const { toggle: togglePushHabilitado, actualizarEstado: actualizarEstadoBotonPushHabilitado } =
+            _crearToggleConfig({
+                getVal: () => PushReminder.getHabilitado(),
+                setVal: (v) => PushReminder.setHabilitado(v),
+                btnId: 'btn-toggle-push-habilitado',
+                mensajeOn: 'Notificaciones de horario cumplido activadas',
+                mensajeOff: 'Notificaciones de horario cumplido desactivadas',
+                onAfterToggle: () => {
+                    _actualizarDisponibilidadBotonesPush();
+                    actualizarEstadoBotonNotificaciones();
+                    _sincronizarPushHoyDebounced();
+                },
+            });
+
+        function actualizarSelectPushAnticipacion() {
+            const select = $('config-push-anticipacion');
+            if (select) select.value = String(PushReminder.getAnticipacionMin());
+        }
+
+        function cambiarPushAnticipacion(minutos) {
+            PushReminder.setAnticipacionMin(minutos);
+            _sincronizarPushHoyDebounced();
+        }
+
+        let _permisoNotifStatus = null;
+        async function _suscribirCambiosPermisoNotificaciones() {
+            if (_permisoNotifStatus || !navigator.permissions?.query) return;
+            try {
+                _permisoNotifStatus = await navigator.permissions.query({ name: 'notifications' });
+                _permisoNotifStatus.onchange = () => actualizarEstadoPermisoNotificaciones();
+            } catch {
+            }
+        }
+
+        function actualizarEstadoPermisoNotificaciones() {
+            const el = $('push-permiso-estado');
+            if (!el) return;
+            el.innerHTML = '';
+
+            if (!('Notification' in window)) return;
+
+            const permiso = Notification.permission;
+            let claseColor, texto;
+            if (permiso === 'granted') {
+                claseColor = 'positivo';
+                texto = 'Permisos de notificaciones aceptados';
+            } else if (permiso === 'denied') {
+                claseColor = 'negativo';
+                texto = 'Permisos de notificaciones bloqueados en el navegador';
+            } else {
+                claseColor = 'neutral';
+                texto = 'Todavía no se pidió permiso al navegador';
+            }
+
+            const punto = document.createElement('span');
+            punto.className = `buffer-semanal-punto ${claseColor}`;
+            const span = document.createElement('span');
+            span.className = `buffer-semanal-texto ${claseColor}`;
+            span.textContent = texto;
+            span.insertBefore(punto, span.firstChild);
+            el.appendChild(span);
+        }
+
+        function abrirModalNotificaciones() {
+            _abrirModalConPadre('modal-notificaciones', () => {
+                actualizarEstadoBotonPushHabilitado();
+                actualizarEstadoBotonPushBuffer();
+                actualizarEstadoBotonPushBufferUltimoDia();
+                _actualizarDisponibilidadBotonesPush();
+                actualizarEstadoBotonNotificaciones();
+                actualizarSelectPushAnticipacion();
+                actualizarEstadoPermisoNotificaciones();
+            });
+        }
+
+        function cerrarModalNotificaciones() {
+            _cerrarModalConPadre('modal-notificaciones');
         }
 
         async function aplicarHorasConfiguradasATodos() {
@@ -8178,6 +8655,7 @@
             UILogic.actualizarFeedbackConfig();
             actualizarEstadoBotonIgnorarTF();
             UILogic.actualizarEstadoBotonAplicarHoras();
+            actualizarEstadoBotonNotificaciones();
             const lbl = $('hint-fondo-label');
             if (lbl) lbl.textContent = _getLabelFondo(UILogic.getFondoCard());
         }
@@ -8254,6 +8732,7 @@
             ModalManager.registrarAccionVolver('modal-reporte-secciones', cerrarModalReporteSecciones);
             ModalManager.registrarAccionVolver('modal-ayuda', cerrarModalAyuda);
             ModalManager.registrarAccionVolver('modal-historial-dias', cerrarModalHistorialDias);
+            ModalManager.registrarAccionVolver('modal-notificaciones', cerrarModalNotificaciones);
             ModalManager.registrarAccionVolver('modal-editar-tramo-dias', cerrarEditorTramoDias);
         }
 
@@ -8323,6 +8802,7 @@
         }
 
         function _initSwipesYStats() {
+            _habilitarCierreToast();
             registrarSwipe(document.getElementById('stats-card'), () => alternarVista());
             registrarSwipe(document.getElementById('form-registro'), dir => toggleModoLote(dir), { ignoreInputs: true });
 
@@ -8351,6 +8831,10 @@
             UILogic.actualizarEstadoBotonLogicaCubierto();
             UILogic.actualizarEstadoBotonObjetivoPorRegistro();
             UILogic.actualizarEstadoBotonAplicarHoras();
+            UILogic.actualizarEstadoBotonPushBuffer();
+            UILogic.actualizarEstadoBotonPushHabilitado();
+            UILogic.actualizarEstadoBotonNotificaciones();
+            UILogic.actualizarSelectPushAnticipacion();
             UILogic.aplicarVisibilidadCards();
             UILogic.aplicarOrdenCards(UILogic.obtenerOrdenCards());
             UILogic.iniciarDragOrdenCards();
@@ -8449,6 +8933,31 @@
             }
         }
 
+        let _relojUIInterval = null;
+
+        function _iniciarRelojUI() {
+            if (_relojUIInterval) return;
+            _relojUIInterval = setInterval(() => actualizarUI(null, true), 20000);
+        }
+
+        function _detenerRelojUI() {
+            clearInterval(_relojUIInterval);
+            _relojUIInterval = null;
+        }
+
+        function _initListenerVisibility() {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    _detenerRelojUI();
+                    _detenerCicloStats();
+                } else {
+                    actualizarUI(null, true);
+                    _iniciarRelojUI();
+                    _iniciarCicloStats();
+                }
+            });
+        }
+
         function _initListenerEscape() {
             document.addEventListener('keydown', (e) => {
                 if (e.key !== 'Escape') return;
@@ -8522,6 +9031,7 @@
             if (btnEliminarPerfil) btnEliminarPerfil.disabled = true;
 
             PWAInstaller.init();
+            _suscribirCambiosPermisoNotificaciones();
             actualizarUI(null, false, false, true);
             _iniciarCicloStats();
             actualizarBotonesHistorico();
@@ -8537,7 +9047,8 @@
             }
 
             _initAutoSync();
-            setInterval(() => actualizarUI(null, true), 20000);
+            _iniciarRelojUI();
+            _initListenerVisibility();
 
             _initListenerEscape();
             _initListenerUndoRedo();
@@ -8551,6 +9062,23 @@
 
             _actualizarOffsetsStickyMes();
             window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
+
+            _manejarAccionDeShortcut();
+        }
+
+        function _manejarAccionDeShortcut() {
+            const params = new URLSearchParams(location.search);
+            const accion = params.get('accion');
+            if (!accion) return;
+
+            history.replaceState(null, '', location.pathname + location.hash);
+
+            if (accion === 'entrada' || accion === 'salida') {
+                const btn = $('btn-agregar');
+                if (btn && !btn.disabled) setTimeout(() => btn.click(), 300);
+            } else if (accion === 'restante') {
+                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 300);
+            }
         }
 
         function aplicarFeedbackCampos(campos, texto = '✓ Agregado', claseColor = 'label-feedback--green') {
@@ -8807,6 +9335,12 @@
             abrirEditorTramoDias, abrirGistEnBrowser, abrirModalAyuda, abrirModalGist, abrirModalHistorialDias, abrirModalReporteSecciones,
             abrirSelectorMesesCalendario, abrirSelectorPerfiles,
             actualizarBotonLote, actualizarEstadoBotonAplicarHoras, actualizarEstadoBotonHoverPopup, actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
+            actualizarEstadoBotonPushBuffer, togglePushBuffer,
+            actualizarEstadoBotonPushBufferUltimoDia, togglePushBufferUltimoDia,
+            actualizarSelectPushAnticipacion, cambiarPushAnticipacion,
+            actualizarEstadoBotonPushHabilitado, togglePushHabilitado,
+            actualizarEstadoBotonNotificaciones,
+            abrirModalNotificaciones, cerrarModalNotificaciones,
             actualizarEstadoBotonesGist, actualizarFeedbackConfig, actualizarListaRegistros, actualizarUI, agruparRegistrosConsecutivos, alternarFechaActual,
             alternarTema, alternarVista, aplicarFeedbackCampos, aplicarHorasConfiguradasATodos, aplicarOrdenCards, aplicarVisibilidadCards,
             cambiarAnioStats, cambiarMesStats, cambiarSemanaStats, cerrarConfig, cerrarEdicion, cerrarEdicionGrupo,
@@ -9066,6 +9600,12 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-hover-popup')?.addEventListener('click', () => UILogic.toggleHoverPopupCalendario());
     $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
     $('btn-toggle-objetivo-registro')?.addEventListener('click', () => UILogic.toggleObjetivoPorRegistro());
+    $('btn-toggle-push-buffer')?.addEventListener('click', () => UILogic.togglePushBuffer());
+    $('btn-toggle-push-buffer-ultimo-dia')?.addEventListener('click', () => UILogic.togglePushBufferUltimoDia());
+    $('btn-toggle-push-habilitado')?.addEventListener('click', () => UILogic.togglePushHabilitado());
+    $('config-push-anticipacion')?.addEventListener('change', (e) => UILogic.cambiarPushAnticipacion(e.target.value));
+    $('btn-toggle-notification')?.addEventListener('click', () => UILogic.abrirModalNotificaciones());
+    document.querySelector('#modal-notificaciones .btn-cancel')?.addEventListener('click', () => UILogic.cerrarModalNotificaciones());
     $('btn-aplicar-horas-todos')?.addEventListener('click', () => UILogic.aplicarHorasConfiguradasATodos());
     $('btn-historial-dias-habiles')?.addEventListener('click', () => UILogic.abrirModalHistorialDias());
     $('btn-toggle-persistir-tarjetas')?.addEventListener('click', () => UILogic.togglePersistirTarjetas());
@@ -9166,7 +9706,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260905';
+        const _v = '-v260910';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {
@@ -9189,6 +9729,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // PWA INSTALLER MODULE
 // TIME AND DATE UTILITIES MODULE (TimeUtils)
+// PUSH REMINDER MODULE
 // SECURITY AND UTILS MODULE
 // STORAGE HELPER MODULE
 // PERFIL MANAGER MODULE

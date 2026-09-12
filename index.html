@@ -9,7 +9,7 @@
          style-src 'self';
          img-src 'self' data: blob:; 
          font-src 'self' data:; 
-         connect-src 'self' https://api.github.com; 
+         connect-src 'self' https://api.github.com https://horarios-push.lushibosca.workers.dev https://horarios-push.l-lus.workers.dev; 
          object-src 'none'; 
          base-uri 'none'; 
          form-action 'none'; 
@@ -279,6 +279,15 @@
             <path d="M4.73 4.73L4 5v7c0 6 8 10 8 10a20.29 20.29 0 0 0 5.62-4.38" class="icon-line"
                 stroke="currentColor"></path>
             <line x1="1" y1="1" x2="23" y2="23" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" class="icon-line"></path>
+        </symbol>
+        <symbol id="icon-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" class="icon-line"></path>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" class="icon-line"></path>
         </symbol>
         <symbol id="icon-dashboard" viewBox="0 0 24 24">
             <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
@@ -736,6 +745,18 @@
                         </div>
                     </div>
                     <div>
+                        <div class="config-actions form-group">
+                            <label>Notificaciones</label>
+                            <button id="btn-toggle-notification">
+                                <svg class="icon">
+                                    <use href="#icon-bell" />
+                                </svg>
+                                <span>Configurar notificaciones</span>
+                                <svg class="icon icon-indicator">
+                                    <use href="#icon-chevron-right" />
+                                </svg>
+                            </button>
+                        </div>
                         <div class="config-actions form-group config-onboarding-hide">
                             <label>Estadísticas</label>
                             <button id="btn-toggle-ignorar-tf">
@@ -851,20 +872,23 @@
             <div class="modal-panel-body custom-scroll">
                 <div class="ayuda-layout">
                     <nav class="ayuda-indice" id="ayuda-indice">
-                        <h4>Indice</h4>
-                        <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-general">- Características</button>
+                        <h4>Índice</h4>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-general">-
+                            Características</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-fichar">- Fichar</button>
-                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-tf">- Tiempo fuera</button>
-                        <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-estadisticas">- Estadísticas</button>
-                        <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-registros">- Registros</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-tf">- Tiempo
+                            fuera</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-estadisticas">-
+                            Estadísticas</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-registros">-
+                            Registros</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-remoto">- Remoto</button>
-                        <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-compensatorio">- Compensatorio</button>
-                        <button type="button" class="ayuda-indice-item"
-                            data-target="ayuda-sec-perfiles">- Perfiles</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-compensatorio">-
+                            Compensatorio</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-notificaciones">-
+                            Notificaciones</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-perfiles">-
+                            Perfiles</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">- Dónde se guardan
                             tus datos</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">- Backup y
@@ -907,7 +931,8 @@
 
                         <section class="ayuda-seccion" id="ayuda-sec-estadisticas">
                             <h4>Estadísticas</h4>
-                            <p>Consultá tus horas trabajadas, promedios, regularidad y banco de horas, por semana, mes o año.
+                            <p>Consultá tus horas trabajadas, promedios, regularidad y banco de horas, por semana, mes o
+                                año.
                                 Tocando cada dato aparece una explicación de qué significa y cómo se calcula. Desde acá
                                 también podés generar un reporte descargable del período elegido.</p>
                         </section>
@@ -938,7 +963,30 @@
                             <p>También podés elegir vos mismo el día a compensar, en el campo "Fecha compensada" del
                                 editor (con el botón de al lado podés pegar la sugerencia automática o limpiar el
                                 campo). Una referencia elegida a mano no tiene el límite de 14 días, y tiene
-                                <strong>prioridad</strong> sobre las asignaciones automáticas.</p>
+                                <strong>prioridad</strong> sobre las asignaciones automáticas.
+                            </p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-notificaciones">
+                            <h4>Notificaciones</h4>
+                            <p>Desde Ajustes → Notificaciones podés activar una notificación push para avisarte cuando
+                                se cumpla el objetivo del día.</p>
+                            <p><strong>Notificar horario cumplido:</strong> Es el interruptor para habilitar las
+                                alertas. Si al
+                                activarlo ya había un registro en curso, se programa la notificación para ese fichaje.
+                            </p>
+                            <p><strong>Incluir banco de horas:</strong> La notificación se programa en función de la
+                                salida estimada con el banco de horas, ya sea por horas extra o descuentos.</p>
+                            <p><strong>Solo el último día hábil:</strong> Es una subopción de la anterior. Si está
+                                activa, el banco de horas se considera únicamente para el último día hábil de la semana,
+                                teniendo en cuenta los registros especiales.</p>
+                            <p>El campo <strong>¿Cuándo?</strong> define con cuántos minutos de anticipación a la hora
+                                de
+                                salida calculada llegará la notificación. Por defecto, se usa la hora de salida exacta.
+                            </p>
+                            <p>Las notificaciones dependen de que el navegador o dispositivo tenga los permisos
+                                concedidos y de que haya conexión a internet. Recordá que el modo de ahorro de energía
+                                puede retrasarlas y la cuota de Cloudflare puede limitarlas.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-perfiles">
@@ -995,7 +1043,7 @@
                 <div class="form-group">
                     <label for="gist-token">Personal Access Token</label>
                     <div class="input-with-btn">
-                        <input type="password" id="gist-token" placeholder="ghp_xxxxxxxxxxxx" maxlength="100"
+                        <input type="password" id="gist-token" placeholder="ghp_xxxxxxxxxxxx" maxlength="256"
                             autocomplete="off" />
                         <button class="time-btn" id="btn-toggle-token" title="Mostrar/ocultar token">
                             <svg class="icon">
@@ -1159,7 +1207,7 @@
                 <div id="grupo-referencia-compensatorio" class="collapsible">
                     <div class="collapsible-inner">
                         <div class="form-group">
-                            <label for="edit-referencia-compensatorio">Fecha compensada (vacio=Automático)</label>
+                            <label for="edit-referencia-compensatorio">Fecha compensada (vacío = Automático)</label>
                             <div class="input-with-btn">
                                 <input type="date" id="edit-referencia-compensatorio" />
                                 <button class="time-btn" id="btn-edit-referencia-compensatorio"
@@ -1449,6 +1497,77 @@
                 </button>
             </div>
 
+            <div class="btn-group">
+                <button class="btn-cancel">
+                    <svg class="icon">
+                        <use href="#icon-back" />
+                    </svg>
+                    Volver
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="modal-notificaciones" role="dialog" aria-modal="true"
+        aria-labelledby="modal-notificaciones-titulo">
+        <div class="modal-content">
+            <h3 id="modal-notificaciones-titulo">
+                <span class="modal-title-block">
+                    <svg class="icon">
+                        <use href="#icon-bell" />
+                    </svg>
+                    Notificaciones
+                </span>
+            </h3>
+            <div class="form-group">
+                <button id="btn-toggle-push-habilitado">
+                    <svg class="icon">
+                        <use href="#icon-bell" />
+                    </svg>
+                    <span>Notificar horario cumplido</span>
+                    <svg class="icon icon-indicator">
+                        <use href="#icon-dot" />
+                    </svg>
+                </button>
+            </div>
+            <div class="config-actions form-group ">
+                <label>Banco de horas</label>
+                <button id="btn-toggle-push-buffer">
+                    <svg class="icon">
+                        <use href="#icon-shield" />
+                    </svg>
+                    <span>Incluir banco de horas</span>
+                    <svg class="icon icon-indicator">
+                        <use href="#icon-dot" />
+                    </svg>
+                </button>
+                <button id="btn-toggle-push-buffer-ultimo-dia">
+                    <svg class="icon">
+                        <use href="#icon-shield" />
+                    </svg>
+                    <span>Solo el último día hábil</span>
+                    <svg class="icon icon-indicator">
+                        <use href="#icon-dot" />
+                    </svg>
+                </button>
+            </div>
+            <div class="form-group">
+                <label>¿Cuándo?</label>
+                <div class="input-with-btn">
+                    <select id="config-push-anticipacion">
+                        <option value="0">Al cumplir el horario</option>
+                        <option value="5">5 minutos antes</option>
+                        <option value="10">10 minutos antes</option>
+                        <option value="15">15 minutos antes</option>
+                        <option value="30">30 minutos antes</option>
+                    </select>
+                </div>
+            </div>
+            <div id="push-permiso-estado" class="push-permiso-estado" role="status" aria-live="polite"></div>
+            <div class="config-hint-text">
+                Las notificaciones pueden retrasarse según el uso y modo de ahorro de energía del dispositivo, o
+                anularse por límites del servidor.
+            </div>
             <div class="btn-group">
                 <button class="btn-cancel">
                     <svg class="icon">

@@ -1,13 +1,16 @@
 {
   "name": "Horarios",
   "short_name": "Horarios",
-  "start_url": "./index.html",
+  "start_url": "./index.html?mode=pwa",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#1f2937",
   "orientation": "portrait",
   "scope": "./",
-  "id": "/Horarios-app",
+  "id": "./index.html",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "icons": [
     {
       "src": "./icon.svg",

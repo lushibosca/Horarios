@@ -40,6 +40,7 @@
     --dur-collapse: 300ms;
     --dur-calendario: 320ms;
     --dur-pop: 0.35s;
+    --dur-slow: 0.5s;
     --ease-anim: ease;
     --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
     --transition-anim: opacity var(--dur-anim) var(--ease-anim), transform var(--dur-anim) var(--ease-anim);
@@ -495,6 +496,11 @@ input.error {
     flex-grow: 1;
 }
 
+.contenedor-fechas .form-group:last-child,
+.contenedor-horas .form-group:last-child {
+    margin-bottom: 0;
+}
+
 .input-number-group input {
     text-align: center;
 }
@@ -739,15 +745,23 @@ button:disabled {
 
 #modal-config .config-actions button,
 #modal-config #lista-orden-cards button,
-#modal-reporte-secciones .config-actions button {
+#modal-reporte-secciones .config-actions button,
+#modal-notificaciones .form-group button {
     justify-content: flex-start;
     text-align: left;
 }
 
 #modal-config .config-actions button>span,
 #modal-config #lista-orden-cards button>span,
-#modal-reporte-secciones .config-actions button>span {
+#modal-reporte-secciones .config-actions button>span,
+#modal-notificaciones .form-group button>span {
     flex: 1;
+}
+
+#modal-notificaciones .config-hint-text {
+    text-align: center;
+    line-height: 1.4;
+    margin-top: var(--space-md);
 }
 
 .icon-indicator {
@@ -892,7 +906,7 @@ button:disabled {
     height: 100%;
     background: var(--bg-card);
     border-radius: var(--radius);
-    transition: width 0.5s, background-color 0.5s ease;
+    transition: width var(--dur-slow), background-color var(--dur-slow) ease;
     position: relative;
     overflow: hidden;
 }
@@ -1120,7 +1134,7 @@ button:disabled {
 }
 
 .modal-scrollable .modal-panel-header {
-    padding-bottom: 0.5rem;
+    padding-bottom: var(--space-sm);
     border-bottom: 1px solid var(--border);
     margin-bottom: var(--space-sm);
 }
@@ -1309,7 +1323,7 @@ button:disabled {
     text-align: center;
     font-weight: var(--fw-semibold);
     color: var(--text-main);
-    padding: 4px 0;
+    padding: var(--space-xs) 0;
     font-size: var(--text-sm);
 }
 
@@ -1385,7 +1399,7 @@ button:disabled {
     flex-shrink: 0;
     width: var(--touch-target);
     height: var(--touch-target);
-    padding: 4px;
+    padding: var(--space-xs);
     padding-left: var(--space-lg);
     font-size: var(--text-base);
     font-weight: var(--fw-semibold);
@@ -1410,7 +1424,7 @@ button:disabled {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--shadow);
     padding: var(--space-md) var(--space-lg);
     display: flex;
     flex-direction: column;
@@ -1500,10 +1514,6 @@ button:disabled {
 .cal-popup-btn-accion--normal,
 .cal-popup-btn-accion--especial {
     color: var(--text-main);
-}
-
-.cal-popup-btn-accion:hover {
-    filter: var(--hover);
 }
 
 /* ─── STAT POPUP ─────────────────────────────────────────────────────────────── */
@@ -1611,7 +1621,7 @@ button:disabled {
 }
 
 .animated-card {
-    animation: slideDownFade 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
+    animation: slideDownFade var(--dur-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
 }
 
 #form-stats,
@@ -1841,7 +1851,7 @@ body.config-onboarding #theme-toggle-config {
     align-items: center;
     gap: var(--space-sm);
     cursor: pointer;
-    transition: border-color 0.5s;
+    transition: border-color var(--dur-slow);
     width: auto;
     max-width: 180px;
 }
@@ -2094,6 +2104,17 @@ body.config-onboarding #theme-toggle-config {
     background-color: var(--c-red);
 }
 
+.push-permiso-estado {
+    display: flex;
+    align-items: center;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.buffer-semanal-punto.neutral {
+    background-color: var(--c-orange);
+}
+
 .buffer-semanal-texto {
     font-weight: var(--fw-medium);
 }
@@ -2324,8 +2345,8 @@ button.campo-flash-color {
 
     :is([id^="btn-toggle-"],
         #btn-reporte,
-        .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist, .card-section-title,
-        .btn-delete, .btn-cancel, .stats-number, .btn-export, .btn-merge, .btn-backup, .btn-edit,
+        .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist, .card-section-title, .cal-popup-btn-accion,
+        .btn-delete, .btn-cancel, .stats-number, .btn-export, .btn-merge, .btn-backup, .btn-edit, .cal-popup-btn-edit,
         .calendario-nav button, .btn-settings, .ayuda-indice-item, .btn-register, .input-icon-btn):hover:not(:disabled) {
         filter: var(--hover);
     }
@@ -2433,6 +2454,12 @@ button.campo-flash-color {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: var(--space-md);
+    }
+
+    .contenedor-fechas .form-group,
+    .contenedor-horas .form-group {
+        min-width: 0;
+        margin-bottom: 0;
     }
 
     .header-profile-btn {
