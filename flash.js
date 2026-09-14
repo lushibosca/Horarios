@@ -10,7 +10,7 @@
 
         if (s === 'dark') {
             html.classList.add('dark-mode');
-        } else if (s === 'pink' || s === 'green' || s === 'blue') {
+        } else if (s !== 'light') {
             html.setAttribute('data-theme', s);
         }
         // s === 'light' -> no se aplica nada, queda el tema claro por defecto

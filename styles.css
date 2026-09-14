@@ -85,6 +85,22 @@ body[data-theme="pink"] {
     --hover: brightness(0.95);
 }
 
+/* ─── TEMA CREMA (Cálido / Vainilla) ───────────────────────────────────── */
+html[data-theme="crema"] body,
+body[data-theme="crema"] {
+    --bg-body: #fbf6ee;
+    --bg-card: #ffffff;
+    --bg-header: #fbf6eeee;
+    --text-main: #423223;
+    --text-muted: #85705d;
+    --text-disabled: #85705d99;
+    --border: #ede1cc;
+    --input-bg: #f7eee1;
+    --c-gray-btn: #f7eee1;
+    --shadow: 0 1px 4px rgba(140, 100, 60, 0.1), 0 0 0 1px rgba(140, 100, 60, 0.05);
+    --hover: brightness(0.95);
+}
+
 /* ─── TEMA VERDE (pastel) ──────────────────────────────────────────────── */
 html[data-theme="green"] body,
 body[data-theme="green"] {
@@ -895,7 +911,7 @@ button:disabled {
 
 .progress-bar {
     width: 100%;
-    height: 4px;
+    height: 6px;
     background: transparent;
     border-radius: var(--radius);
     overflow: hidden;
@@ -1805,6 +1821,10 @@ body.config-onboarding #theme-toggle-config {
     margin-top: var(--space-lg);
 }
 
+#stats-mensaje {
+    color: var(--text-muted);
+}
+
 .stats-periodo-row select,
 .flex-1,
 .registro-info {
@@ -2002,7 +2022,6 @@ body.config-onboarding #theme-toggle-config {
 
 #stats-buffer {
     font-size: var(--text-base);
-    margin-top: var(--space-sm);
     min-height: 1.2rem;
 }
 
@@ -2092,16 +2111,17 @@ body.config-onboarding #theme-toggle-config {
     display: inline-block;
     width: 10px;
     height: 10px;
-    border-radius: 50%;
     margin-right: 6px;
 }
 
 .buffer-semanal-punto.positivo {
     background-color: var(--c-green);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
 }
 
 .buffer-semanal-punto.negativo {
     background-color: var(--c-red);
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
 }
 
 .push-permiso-estado {
@@ -2129,6 +2149,26 @@ body.config-onboarding #theme-toggle-config {
 
 .hint-buffer-color {
     color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.hint-buffer-color::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: currentColor;
+    flex-shrink: 0;
+}
+
+.hint-buffer-color--green::before {
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.hint-buffer-color--red::before {
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
 }
 
 .hint-buffer-color--green {

@@ -300,13 +300,13 @@
     })();
 
     // ====================================================================
-    // PUSH REMINDER MODULE — recordatorio de fin de jornada vía Cloudflare
+    // PUSH REMINDER MODULE — notifiación vía Cloudflare
     // ====================================================================
     const PushReminder = (function () {
         const WORKER_URL = 'https://horarios-push.lushibosca.workers.dev';
         const VAPID_PUBLIC_KEY = 'BMU-iLslFVrTxUKMHRUn8r_CtyCLX41ppVTUgdATAdPYE8ayJ0U_ew6d50CmvghkIdv34fGuXvf-KP5W62rs3ms';
         const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9';
-        const MARGEN_CRON_MS = 60 * 1000; //Descuento de 1 minuto en el pair kv
+        const MARGEN_CRON_MS = 60 * 1000;
 
         function _headersWorker() {
             const headers = { 'Content-Type': 'application/json' };
@@ -774,7 +774,7 @@
     // THEME MANAGER (temas: claro, oscuro, rosa, verde, azul)
     // ====================================================================
     const ThemeManager = (function () {
-        const TEMAS = ['light', 'dark', 'pink', 'green', 'blue', 'lilac'];
+        const TEMAS = ['light', 'dark', 'pink', 'green', 'blue', 'lilac', 'crema'];
 
         function temaGuardado() {
             const raw = StorageHelper.getItem(STORAGE_KEYS.TEMA_OSCURO, null);
@@ -7257,7 +7257,7 @@
                 const horaBuf = _minutosAHoraWrap(minutosConBuffer);
                 const claseBuffer = bufferSemanal > 0 ? ' hint-buffer-color--green' : bufferSemanal < 0 ? ' hint-buffer-color--red' : '';
                 return {
-                    hint: `Salida estimada: <strong>${horaSalida}</strong> <span class="hint-buffer-color${claseBuffer}">(<strong>${horaBuf}</strong>)</span>`,
+                    hint: `Salida estimada: <strong>${horaSalida}</strong> | <span class="hint-buffer-color${claseBuffer}"><strong>${horaBuf}</strong></span>`,
                     hintEsHTML: true
                 };
             }
@@ -9362,7 +9362,7 @@
     })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje);
 
     // ====================================================================
-    // BIENVENIDA MODULE — primera vez / después de un restablecimiento
+    // BIENVENIDA MODULE
     // ====================================================================
     const BienvenidaModal = (function () {
         'use strict';
@@ -9725,7 +9725,7 @@ document.addEventListener('DOMContentLoaded', function () {
     })();
 });
 
-// MODULOS (en orden de declaración/dependencia):
+// MODULOS:
 
 // PWA INSTALLER MODULE
 // TIME AND DATE UTILITIES MODULE (TimeUtils)
