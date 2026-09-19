@@ -12,6 +12,7 @@
         VISTA_ACTUAL: 'vistaActual',
         MODO_ESTADISTICAS: 'modoEstadisticas',
         HOVER_POPUP: 'hoverPopupCalendario',
+        FORMATO_CORTO_STATS: 'formatoCortoStats',
         DIAS_HABILES: 'diasHabiles',
         HISTORIAL_DIAS_HABILES: 'historialDiasHabiles',
         HORAS_DIARIAS: 'horasDiarias',
@@ -36,6 +37,7 @@
         PUSH_BUFFER_SOLO_ULTIMO_DIA: 'pushBufferSoloUltimoDia',
         PUSH_HABILITADO: 'pushHabilitado',
         PUSH_INFO_ACTIVA: 'pushInfoActiva',
+        PUSH_AVISO_COUNT: 'pushAvisoNuevaFuncionCount',
 
         BREAK_TIME: (perfilId) => `breakStartTime_${perfilId}`,
         GIST_LIMITE: (tipo) => `gistSyncLimite_${tipo}`,
@@ -46,7 +48,7 @@
 
 
     // ====================================================================
-    // PRECISIÓN NUMÉRICA — helper compartido
+    // NUMERIC PRECISION — shared helper
     // ====================================================================
     const EPS_HORAS = 1e-6;
     const horasGte = (valor, objetivo) => (valor - objetivo) > -EPS_HORAS;
@@ -300,12 +302,12 @@
     })();
 
     // ====================================================================
-    // PUSH REMINDER MODULE — notifiación vía Cloudflare
+    // PUSH REMINDER MODULE — notification via Cloudflare
     // ====================================================================
     const PushReminder = (function () {
         const WORKER_URL = 'https://horarios-push.lushibosca.workers.dev';
         const VAPID_PUBLIC_KEY = 'BMU-iLslFVrTxUKMHRUn8r_CtyCLX41ppVTUgdATAdPYE8ayJ0U_ew6d50CmvghkIdv34fGuXvf-KP5W62rs3ms';
-        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9';
+        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9'; // ojo chinwewencha
         const MARGEN_CRON_MS = 60 * 1000;
 
         function _headersWorker() {
@@ -395,6 +397,17 @@
         }
         function setHabilitado(valor) {
             StorageHelper.setItem(STORAGE_KEYS.PUSH_HABILITADO, !!valor, true);
+        }
+        const UMBRAL_REGISTROS_ACTIVACION = 15;
+        function _soportaPush() {
+            return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+        }
+        function puedeHabilitarse() {
+            if (!_soportaPush()) return false;
+            if (Notification.permission === 'denied') return false;
+            const registros = window.DataManagement?.registros?.() || [];
+            const regulares = registros.filter(r => !TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida));
+            return regulares.length > UMBRAL_REGISTROS_ACTIVACION;
         }
 
         function _guardarInfoActiva(fechaISO, targetTimeMs) {
@@ -552,7 +565,8 @@
                 STORAGE_KEYS.PUSH_ANTICIPACION_MIN,
                 STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL,
                 STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA,
-                STORAGE_KEYS.PUSH_INFO_ACTIVA
+                STORAGE_KEYS.PUSH_INFO_ACTIVA,
+                STORAGE_KEYS.PUSH_AVISO_COUNT
             ].forEach(k => {
                 StorageHelper.removeItem(k, true);
                 StorageHelper.removeItem(k, false);
@@ -562,7 +576,7 @@
         return {
             programarFinDeJornada, cancelarFinDeJornada, limpiarNotificacionVisible,
             getAnticipacionMin, setAnticipacionMin, setBufferSoloUltimoDia,
-            getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado,
+            getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado, puedeHabilitarse,
             getBufferSoloUltimoDia, calcularTarget: _calcularTarget,
             targetProgramadoParaHoy: () => obtenerInfoActiva()?.targetTimeMs ?? null,
             restablecer,
@@ -771,7 +785,7 @@
     })();
 
     // ====================================================================
-    // THEME MANAGER (temas: claro, oscuro, rosa, verde, azul)
+    // THEME MANAGER (themes: light, dark, pink, green, blue)
     // ====================================================================
     const ThemeManager = (function () {
         const TEMAS = ['light', 'dark', 'pink', 'green', 'blue', 'lilac', 'crema'];
@@ -807,7 +821,7 @@
     })();
 
     // ====================================================================
-    // PERFIL MANAGER MODULE
+    // PROFILE MANAGER MODULE
     // ====================================================================
     const PerfilManager = (function () {
         const MAX_PERFILES = 9;
@@ -1236,7 +1250,7 @@
     })();
 
     // ====================================================================
-    // TIPOS DE REGISTRO MODULE
+    // RECORD TYPES MODULE
     // ====================================================================
     const TiposRegistro = (function () {
         const TIPOS = {
@@ -2705,7 +2719,7 @@
     })(SecurityAndUtils);
 
     // ====================================================================
-    //                     MÓDULO UI CORE (utilidades genéricas de UI)
+    //                     UI CORE MODULE (generic UI utilities)
     // ====================================================================
     const UICore = (function (S, D) {
 
@@ -2731,6 +2745,7 @@
         let toastTimeout = null;
         let _toastQueue = [];
         let _toastRunning = false;
+        let _toastAccionActual = null;
         const MAX_TOAST_QUEUE = 4;
 
         function formatoDiferencia(tiempoTotal, objetivo = D.horasDiarias()) {
@@ -2849,13 +2864,13 @@
             URL.revokeObjectURL(url);
         }
 
-        function mostrarToast(mensaje, tipo = 'info', duracion = 3000, detalle = null) {
+        function mostrarToast(mensaje, tipo = 'info', duracion = 3000, detalle = null, accion = null) {
             const texto = detalle ? `${mensaje}, ${detalle}` : mensaje;
             const textoLimpio = S.sanitizeString(texto, 200);
             const ultimo = _toastQueue[_toastQueue.length - 1];
             const actual = _toastRunning ? $('toast')?.textContent : null;
             if ((ultimo && ultimo.mensaje === textoLimpio) || actual === textoLimpio) return;
-            _toastQueue.push({ mensaje: textoLimpio, tipo, duracionBase: duracion });
+            _toastQueue.push({ mensaje: textoLimpio, tipo, duracionBase: duracion, accion });
             if (_toastQueue.length > MAX_TOAST_QUEUE) {
                 _toastQueue.splice(0, _toastQueue.length - MAX_TOAST_QUEUE);
             }
@@ -2865,15 +2880,18 @@
         function _procesarToastQueue() {
             if (_toastQueue.length === 0) {
                 _toastRunning = false;
+                _toastAccionActual = null;
                 return;
             }
 
             _toastRunning = true;
             const actual = _toastQueue.shift();
+            _toastAccionActual = actual.accion || null;
             const toast = $('toast');
             toast.classList.remove('show');
             toast.textContent = actual.mensaje;
             toast.className = `toast ${actual.tipo}`;
+            toast.classList.toggle('toast-accionable', !!actual.accion);
             let duracionFinal = actual.duracionBase || 3000;
             if (_toastQueue.length >= 1) {
                 duracionFinal = Math.floor(duracionFinal / 2);
@@ -2901,7 +2919,11 @@
             const toast = $('toast');
             if (!toast || toast.dataset.cierreInit) return;
             toast.dataset.cierreInit = '1';
-            toast.addEventListener('click', () => _cerrarToastActual());
+            toast.addEventListener('click', () => {
+                const accion = _toastAccionActual;
+                _cerrarToastActual();
+                if (accion) accion();
+            });
             registrarSwipe(toast, () => _cerrarToastActual(), { minX: 40 });
         }
 
@@ -3014,12 +3036,18 @@
             return _animarMutacion(el, fn);
         }
 
-        function _crearToggleConfig({ getVal, setVal, btnId, mensajeOn, mensajeOff, onAfterToggle }) {
+        function _crearToggleConfig({ getVal, setVal, btnId, mensajeOn, mensajeOff, onAfterToggle, puedeActivar }) {
             function actualizarEstado() {
-                _setBtnActivo(btnId, getVal());
+                const val = getVal();
+                _setBtnActivo(btnId, val);
+                if (puedeActivar) _setBtnDisabled(btnId, !val && !puedeActivar());
             }
             function toggle() {
                 const nuevo = !getVal();
+                if (nuevo && puedeActivar && !puedeActivar()) {
+                    actualizarEstado();
+                    return;
+                }
                 setVal(nuevo);
                 actualizarEstado();
                 mostrarToast(nuevo ? mensajeOn : mensajeOff, 'info', 4000);
@@ -3142,23 +3170,24 @@
             else ModalManager.cerrar(modalId);
         }
 
+        function _flashElemento(el, clase, colorVar = null) {
+            if (!el) return;
+            clearTimeout(el._flashTimeout);
+            el.classList.remove(clase);
+            if (colorVar) el.style.setProperty('--flash-color', colorVar);
+            void el.offsetWidth;
+            el.classList.add(clase);
+
+            const cs = getComputedStyle(el);
+            const duracionMs = (parseFloat(cs.animationDuration) || 0.5) * 1000;
+            const iteraciones = parseFloat(cs.animationIterationCount) || 1;
+            const totalMs = duracionMs * iteraciones;
+
+            el._flashTimeout = setTimeout(() => el.classList.remove(clase), totalMs);
+        }
+
         function _flashCampoConClase(clase, ids, colorVar = null) {
-            ids.forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                clearTimeout(el._flashTimeout);
-                el.classList.remove(clase);
-                if (colorVar) el.style.setProperty('--flash-color', colorVar);
-                void el.offsetWidth;
-                el.classList.add(clase);
-
-                const cs = getComputedStyle(el);
-                const duracionMs = (parseFloat(cs.animationDuration) || 0.5) * 1000;
-                const iteraciones = parseFloat(cs.animationIterationCount) || 1;
-                const totalMs = duracionMs * iteraciones;
-
-                el._flashTimeout = setTimeout(() => el.classList.remove(clase), totalMs);
-            });
+            ids.forEach(id => _flashElemento(document.getElementById(id), clase, colorVar));
         }
 
         function _flashCampo(...ids) { _flashCampoConClase('campo-flash', ids); }
@@ -3276,6 +3305,7 @@
             _cerrarModalConPadre,
             _flashCampo,
             _flashCampoTipo,
+            _flashElemento,
             _finalizarSlidePendiente,
             _animarSlideElemento,
             toggleSeccionGen,
@@ -3285,7 +3315,7 @@
     })(SecurityAndUtils, DataManagement);
 
     // ====================================================================
-    //                     MÓDULO UI PERFILES
+    //                     UI PROFILES MODULE
     // ====================================================================
     const UIPerfiles = (function (S, UICore) {
         const { mostrarToast } = UICore;
@@ -3486,7 +3516,7 @@
         function _limpiarClavesPerfil(pid) {
             ['breakStartTime', STORAGE_KEYS.HISTORY, STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO,
                 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS,
-                STORAGE_KEYS.PUSH_HABILITADO, STORAGE_KEYS.PUSH_ANTICIPACION_MIN, STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, STORAGE_KEYS.PUSH_INFO_ACTIVA
+                STORAGE_KEYS.PUSH_HABILITADO, STORAGE_KEYS.PUSH_ANTICIPACION_MIN, STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, STORAGE_KEYS.PUSH_INFO_ACTIVA, STORAGE_KEYS.PUSH_AVISO_COUNT
             ].forEach(k => StorageHelper.removeItem(`${k}_${pid}`));
         }
 
@@ -3537,10 +3567,10 @@
     })(SecurityAndUtils, UICore);
 
     // ====================================================================
-    //                     MÓDULO UI CALENDARIO
+    //                     UI CALENDAR MODULE
     // ====================================================================
     const UICalendario = (function (S, D, UICore) {
-        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia } = UICore;
+        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia, _flashElemento, DUR_CALENDARIO } = UICore;
 
         function _agruparMesesPorAnio(mesesOrdenados) {
             const map = new Map();
@@ -3993,16 +4023,23 @@
             _animarCalendario(delta, () => _renderizarCalendario());
         }
 
+        function _flashDiaHoyCalendario() {
+            const el = document.querySelector('#calendario-grid .calendario-dia.hoy');
+            _flashElemento(el, 'campo-flash');
+        }
+
         function irHoyCalendario() {
             const hoy = new Date();
             if (_calendarioMes === null ||
                 (_calendarioMes.anio === hoy.getFullYear() && _calendarioMes.mes === hoy.getMonth())) {
+                _flashDiaHoyCalendario();
                 return;
             }
             const base = _calendarioMes;
             const delta = (base.anio * 12 + base.mes) > (hoy.getFullYear() * 12 + hoy.getMonth()) ? -1 : 1;
             _calendarioMes = null;
             _animarCalendario(delta, () => _renderizarCalendario());
+            setTimeout(_flashDiaHoyCalendario, DUR_CALENDARIO() + 20);
         }
 
         return {
@@ -4027,7 +4064,7 @@
 
 
     // ====================================================================
-    //                     MÓDULO GIST SYNC
+    //                     GIST SYNC MODULE
     // ====================================================================
     const GistSync = (function (S) {
         const GIST_FILENAME = 'horarios_backup.json';
@@ -4203,7 +4240,7 @@
     })(SecurityAndUtils);
 
     // ====================================================================
-    //                     MÓDULO UI GIST Y RESPALDO
+    //                     UI GIST AND BACKUP MODULE
     // ====================================================================
     const UIGistYRespaldo = (function (S, D, GistSync, UICore) {
         const {
@@ -4921,7 +4958,7 @@
     })(SecurityAndUtils, DataManagement, GistSync, UICore);
 
     // ====================================================================
-    //                     MÓDULO UI HISTORICO
+    //                     UI HISTORY MODULE
     // ====================================================================
     const UIHistorico = (function (S, D, UICore) {
         const {
@@ -5149,7 +5186,7 @@
             headerMes.appendChild(document.createTextNode(' ' + TimeUtils.formatoTituloMes(claveMes)));
 
             const detalleMesActual = document.createElement('div');
-            detalleMesActual.className = 'registro-mes-detalle';
+            detalleMesActual.className = 'registro-mes-detalle collapsible';
             const innerMesActual = document.createElement('div');
             innerMesActual.className = 'detalle-inner';
             detalleMesActual.appendChild(innerMesActual);
@@ -5220,7 +5257,7 @@
             header.appendChild(chevron);
             header.appendChild(document.createTextNode(' ' + anio));
 
-            const detalle = Object.assign(document.createElement('div'), { className: 'registro-mes-detalle' });
+            const detalle = Object.assign(document.createElement('div'), { className: 'registro-mes-detalle collapsible' });
             const innerAnio = Object.assign(document.createElement('div'), { className: 'detalle-inner' });
             detalle.appendChild(innerAnio);
             let expandido = false;
@@ -5234,6 +5271,23 @@
             contenedor.appendChild(header);
             contenedor.appendChild(detalle);
             return contenedor;
+        }
+
+        function _consolidarMesesAbiertos(lista, mesHoy) {
+            const abiertos = Array.from(lista.querySelectorAll('.registro-mes-detalle.expanded'))
+                .map(det => ({ det, header: det.closest('.registro-mes-container')?.querySelector('.registro-mes-header') }))
+                .filter(o => o.header && o.header.dataset.accion === 'toggle-mes');
+
+            if (abiertos.length <= 1) return;
+            const preferido = abiertos.find(o => o.header.dataset.mesId === mesHoy)
+                || abiertos.reduce((a, b) => (a.header.dataset.mesId > b.header.dataset.mesId ? a : b));
+
+            abiertos.forEach(({ det, header }) => {
+                if (det === preferido.det) return;
+                det.classList.remove('expanded');
+                header.querySelector('.chevron-mes')?.classList.remove('rotated');
+                try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'false'); } catch (e) { }
+            });
         }
 
         function actualizarListaRegistros(registros, idNuevo = null, asignacionesPrecalculadas = null) {
@@ -5270,6 +5324,7 @@
             );
 
             lista.appendChild(fragmento);
+            _consolidarMesesAbiertos(lista, mesHoy);
             _actualizarOffsetsStickyMes();
         }
 
@@ -5778,7 +5833,7 @@
     })(SecurityAndUtils, DataManagement, UICore);
 
     // ====================================================================
-    //                     MÓDULO UI ESTADISTICAS
+    //                     UI STATISTICS MODULE
     // ====================================================================
     const UIEstadisticas = (function (S, D, UICore) {
         const {
@@ -6326,7 +6381,7 @@
             .config-linea b { color: var(--r-text); font-weight: 600; }
             footer.reporte-footer { text-align: center; font-size: .78rem; color: var(--r-muted); margin-top: 1.5rem; }
 
-            /* --- Responsive: tablas a 2 líneas por fila en pantallas chicas --- */
+            /* --- Responsive: 2-line-per-row tables on small screens --- */
             @media (max-width: 600px) {
                 body { padding: 1.5rem 0.5rem; }
                 .seccion { padding: 1rem 0.6rem; }
@@ -6341,20 +6396,20 @@
                 .tabla-mes tbody tr:last-child, .tabla-diario tbody tr:last-child, .tabla-semana tbody tr:last-child { border-bottom: none; }
                 .tabla-mes td, .tabla-diario td, .tabla-semana td { border-bottom: none; padding: 0; }
 
-                /* Totales por mes: Mes - Horas / Notas (incluye jornadas) */
+                /* Monthly totals: Month - Hours / Notes (includes shifts) */
                 .tabla-mes tbody tr { grid-template-columns: 1fr auto; grid-template-areas: "mes horas" "notas notas"; }
                 .tabla-mes .col-mes { grid-area: mes; }
                 .tabla-mes .col-horas { grid-area: horas; text-align: right; }
                 .tabla-mes .col-notas { grid-area: notas; }
 
-                /* Totales por semana: Semana - Rango - Total / Notas */
+                /* Weekly totals: Week - Range - Total / Notes */
                 .tabla-semana tbody tr { grid-template-columns: auto 1fr; grid-template-areas: "semana rango" "total notas"; }
                 .tabla-semana .col-semana { grid-area: semana; white-space: nowrap; }
                 .tabla-semana .col-rango { grid-area: rango; text-align: right; }
                 .tabla-semana .col-total { grid-area: total; white-space: nowrap; }
                 .tabla-semana .col-notas { grid-area: notas; text-align: right; }
 
-                /* Detalle diario: Fecha - Día - Total (+ indicador) / Horario */
+                /* Daily detail: Date - Day - Total (+ indicator) / Schedule */
                 .tabla-diario tbody tr:not(.fila-especial) {
                     grid-template-columns: auto 1fr auto auto;
                     grid-template-areas: "fecha dia total tag" "horario horario horario horario";
@@ -6744,7 +6799,7 @@
     })(SecurityAndUtils, DataManagement, UICore);
 
     // ====================================================================
-    //                     MÓDULO UI TARJETA DE FICHAJE
+    //                     UI CLOCK-IN CARD MODULE
     // ====================================================================
     const UITarjetaFichaje = (function (D, UICore) {
         const {
@@ -7107,9 +7162,25 @@
             return objetivo === 0 || horasGte(valor, objetivo);
         }
 
+        let _formatoCortoStatsCache = false;
+
+        function _refrescarFormatoCortoStatsCache() {
+            _formatoCortoStatsCache = StorageHelper.getBoolean(STORAGE_KEYS.FORMATO_CORTO_STATS, false);
+        }
+
+        function _modoTextoStats() {
+            return _formatoCortoStatsCache ? 'short' : 'long';
+        }
+
+        function _horasTextoStats(horasDecimales) {
+            return TimeUtils.horasATexto(horasDecimales, _modoTextoStats());
+        }
+
         function _cantidadHoras(horasDecimales) {
-            const texto = TimeUtils.horasATexto(horasDecimales);
-            return { texto, singular: TimeUtils._esCantidadSingular(texto) };
+            const { horas, minutos } = TimeUtils.descomponerHorasDecimales(horasDecimales);
+            const texto = _horasTextoStats(horasDecimales);
+            const singular = horas === 1 || (horas === 0 && minutos === 1);
+            return { texto, singular };
         }
 
         function _fraseCantidad(horasDecimales, singular, plural) {
@@ -7157,7 +7228,12 @@
                 if (!enBadge) {
                     label.innerHTML = '<svg class="icon"><use href="#icon-exit"/></svg><span class="break-counter-label-text"></span>';
                 }
-                destino.appendChild(label);
+                const estadoBadge = !enBadge ? contenedor.querySelector('.estado-badge') : null;
+                if (estadoBadge) {
+                    destino.insertBefore(label, estadoBadge);
+                } else {
+                    destino.appendChild(label);
+                }
             }
             return label;
         }
@@ -7179,6 +7255,14 @@
             return `<svg class="icon"><use href="#icon-clock" /></svg>${nombreDia}`;
         }
 
+        function _badgeEstadoHoy(dayClosed, colorFinal) {
+            if (!dayClosed) {
+                return `<span class="estado-badge estado-badge--en-curso">En curso</span>`;
+            }
+            const color = colorFinal || 'green';
+            return `<span class="estado-badge estado-badge--finalizado estado-badge--${color}">Finalizado</span>`;
+        }
+
         function _conAvisoAyer(vista, avisoAyerHint) {
             return avisoAyerHint ? { ...vista, ...avisoAyerHint } : vista;
         }
@@ -7194,7 +7278,7 @@
             if (horasDiarias === 0) {
                 colorBarra = 'blue'; colorBorde = 'transparent';
                 estadoFondo = 'esperando';
-                mensaje = `Total fichado: ${TimeUtils.horasATexto(tot)}`;
+                mensaje = `Total fichado: ${_horasTextoStats(tot)}`;
                 mostrarMensaje = false;
             } else if (todosEspeciales) {
                 colorBarra = 'blue'; colorBorde = 'transparent';
@@ -7206,11 +7290,11 @@
                 if (horasGte(prog, objetivoSemana)) {
                     colorBarra = 'green'; colorBorde = 'green';
                     const dif = prog - objetivoSemana;
-                    mensaje = horasEq(dif, 0) ? 'Vas justo' : `Vas ${TimeUtils.horasATexto(dif)} de más`;
+                    mensaje = horasEq(dif, 0) ? 'Vas justo' : `Vas ${_horasTextoStats(dif)} de más`;
                 } else {
                     colorBarra = 'blue'; colorBorde = 'blue';
                     mensaje = objetivoSemana === 0
-                        ? `${TimeUtils.horasATexto(prog)} (Sin objetivo)`
+                        ? `${_horasTextoStats(prog)} (Sin objetivo)`
                         : _fraseCantidad(objetivoSemana - prog, 'Falta', 'Faltan');
                 }
                 mostrarMensaje = true;
@@ -7218,7 +7302,7 @@
                 colorBarra = 'green'; colorBorde = 'green';
                 estadoFondo = 'finalizado_ok';
                 const dif = prog - objetivoSemana;
-                mensaje = horasEq(dif, 0) ? 'Perfecto' : `Hiciste ${TimeUtils.horasATexto(dif)} de más`;
+                mensaje = horasEq(dif, 0) ? 'Perfecto' : `Hiciste ${_horasTextoStats(dif)} de más`;
                 mostrarMensaje = true;
             } else {
                 colorBarra = 'red'; colorBorde = 'red';
@@ -7229,7 +7313,7 @@
 
             return {
                 titulo: `<svg class="icon"><use href="#icon-calendar-simple" /></svg> Esta Semana`,
-                stats: todosEspeciales ? '🌞' : TimeUtils.horasATexto(tot),
+                stats: todosEspeciales ? '🌞' : _horasTextoStats(tot),
                 mensaje, mostrarMensaje,
                 colorBarra, anchoBarra: progreso,
                 colorBorde, estadoFondo,
@@ -7273,7 +7357,7 @@
             if (cumplido) {
                 const extra = tiempoHoy - objetivoDiario;
                 if (bufferSemanal < 0 && Math.abs(bufferSemanal) > extra) return 'Te podés ir, pero debés tiempo';
-                return extra > 0 ? `Te podés ir (+${TimeUtils.horasATexto(extra)})` : 'Te podés ir';
+                return extra > 0 ? `Te podés ir (+${_horasTextoStats(extra)})` : 'Te podés ir';
             }
             const faltante = objetivoDiario - tiempoHoy;
             const faltanteTexto = _fraseCantidad(faltante, 'Falta', 'Faltan');
@@ -7300,8 +7384,8 @@
                     const { hint, hintEsHTML } = _hintSalidaODefault(est.regAyer, objetivoDiarioAyerAplica, bufferSemanalBase, diasHabiles, 'Tocá Fichar para registrar salida', true);
 
                     return {
-                        titulo: `${_tituloDia(nombreDiaAyer)} (ayer)`,
-                        stats: TimeUtils.horasATexto(tiempoHoy),
+                        titulo: `${_tituloDia(nombreDiaAyer)} (ayer)${_badgeEstadoHoy(false)}`,
+                        stats: _horasTextoStats(tiempoHoy),
                         mensaje, mostrarMensaje: true,
                         colorBarra, anchoBarra: prog,
                         colorBorde: colorBarra, estadoFondo: 'en_curso', estadoFondoColor: null,
@@ -7382,9 +7466,11 @@
 
             const { hint, hintEsHTML } = _hintSalidaODefault(regHoy, objetivoDiarioAplica, bufferSemanalBase, diasHabiles, 'Tocá para ver la Semana', !dayClosed);
 
+            const colorFinal = estadoFondoColor || (estadoFondo === 'finalizado_fail' ? 'red' : 'green');
+
             return _conAvisoAyer({
-                titulo: _tituloDia(TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy())),
-                stats: TimeUtils.horasATexto(tiempoHoy),
+                titulo: `${_tituloDia(TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy()))}${_badgeEstadoHoy(dayClosed, colorFinal)}`,
+                stats: _horasTextoStats(tiempoHoy),
                 mensaje, mostrarMensaje,
                 colorBarra, anchoBarra: prog,
                 colorBorde, estadoFondo, estadoFondoColor,
@@ -7706,7 +7792,7 @@
                 ? '<svg class="icon"><use href="#icon-calendar-simple"/></svg>'
                 : '<svg class="icon"><use href="#icon-clock"/></svg>';
             const contexto = vistaActual === 'semana' ? 'Esta Semana' : TimeUtils.obtenerNombreDia(TimeUtils.obtenerFechaHoy());
-            const nuevoHTML = `${icono} ${contexto}<span class="tf-badge"><svg class="icon"><use href="#icon-exit"/></svg>Tiempo fuera</span>`;
+            const nuevoHTML = `${icono} ${contexto}<span class="tf-badge">Tiempo fuera</span>`;
             const agregarContador = () => {
                 _obtenerOCrearLabelTF(titulo);
                 _iniciarContadorBreak(storageKey);
@@ -8174,6 +8260,7 @@
             _iniciarCicloStats,
             _cicloStatsActivo,
             _prepararMostrarFaseAlRenderizar,
+            _refrescarFormatoCortoStatsCache,
         };
     })(DataManagement, UICore);
 
@@ -8244,6 +8331,7 @@
             actualizarBotonLote, toggleFormulario, _irAFicharConFecha, _scrollACardFichar,
             alternarFechaActual, pegarHoraActual, limpiarCampo, getFondoCard, setTimerAutoVista,
             _getLabelFondo, _iniciarCicloStats, _cicloStatsActivo, _prepararMostrarFaseAlRenderizar,
+            _refrescarFormatoCortoStatsCache,
         } = UITarjetaFichaje;
 
         function alternarTema() {
@@ -8290,6 +8378,16 @@
                 mensajeOn: 'Las horas objetivo cambian dinámicamente según el valor global configurado',
                 mensajeOff: 'Las horas objetivo son independientes en cada registro',
                 onAfterToggle: () => { actualizarUI(); actualizarEstadoBotonAplicarHoras(); }
+            });
+
+        const { toggle: toggleFormatoCortoStats, actualizarEstado: actualizarEstadoBotonFormatoCortoStats } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.FORMATO_CORTO_STATS, false),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.FORMATO_CORTO_STATS, v),
+                btnId: 'btn-toggle-formato-corto-stats',
+                mensajeOn: 'La tarjeta de estadísticas usa formato corto (5h 9m)',
+                mensajeOff: 'La tarjeta de estadísticas usa formato dictado (5 horas 9 minutos)',
+                onAfterToggle: () => { _refrescarFormatoCortoStatsCache(); actualizarUI(); }
             });
 
         function actualizarEstadoBotonAplicarHoras() {
@@ -8341,6 +8439,7 @@
                 btnId: 'btn-toggle-push-habilitado',
                 mensajeOn: 'Notificaciones de horario cumplido activadas',
                 mensajeOff: 'Notificaciones de horario cumplido desactivadas',
+                puedeActivar: () => PushReminder.puedeHabilitarse(),
                 onAfterToggle: () => {
                     _actualizarDisponibilidadBotonesPush();
                     actualizarEstadoBotonNotificaciones();
@@ -8830,6 +8929,8 @@
             UILogic.actualizarEstadoBotonHoverPopup();
             UILogic.actualizarEstadoBotonLogicaCubierto();
             UILogic.actualizarEstadoBotonObjetivoPorRegistro();
+            UILogic.actualizarEstadoBotonFormatoCortoStats();
+            UILogic._refrescarFormatoCortoStatsCache();
             UILogic.actualizarEstadoBotonAplicarHoras();
             UILogic.actualizarEstadoBotonPushBuffer();
             UILogic.actualizarEstadoBotonPushHabilitado();
@@ -9335,6 +9436,7 @@
             abrirEditorTramoDias, abrirGistEnBrowser, abrirModalAyuda, abrirModalGist, abrirModalHistorialDias, abrirModalReporteSecciones,
             abrirSelectorMesesCalendario, abrirSelectorPerfiles,
             actualizarBotonLote, actualizarEstadoBotonAplicarHoras, actualizarEstadoBotonHoverPopup, actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
+            actualizarEstadoBotonFormatoCortoStats, toggleFormatoCortoStats, _refrescarFormatoCortoStatsCache,
             actualizarEstadoBotonPushBuffer, togglePushBuffer,
             actualizarEstadoBotonPushBufferUltimoDia, togglePushBufferUltimoDia,
             actualizarSelectPushAnticipacion, cambiarPushAnticipacion,
@@ -9362,7 +9464,7 @@
     })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje);
 
     // ====================================================================
-    // BIENVENIDA MODULE
+    // WELCOME MODULE
     // ====================================================================
     const BienvenidaModal = (function () {
         'use strict';
@@ -9384,7 +9486,7 @@
     })();
 
     // ====================================================================
-    // FERIADOS MODULE
+    // HOLIDAYS MODULE
     // ====================================================================
     const FeriadosAR = (function () {
         'use strict';
@@ -9465,11 +9567,47 @@
         return { chequearYNotificar };
     })();
 
+    // ====================================================================
+    // AVISO PUSH — recordatorio discreto de la función de notificaciones
+    // ====================================================================
+    const AvisoPush = (function () {
+        'use strict';
+
+        const MAX_AVISOS = 2;
+
+        async function chequearYAvisar() {
+            if (PushReminder.getHabilitado()) return;
+            if (!PushReminder.puedeHabilitarse()) return;
+
+            const vistos = StorageHelper.getNumber(STORAGE_KEYS.PUSH_AVISO_COUNT, 0, true);
+            if (vistos >= MAX_AVISOS) return;
+
+            while (
+                document.querySelector('.modal.show') ||
+                document.body.classList.contains('config-onboarding')
+            ) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            if (PushReminder.getHabilitado()) return;
+
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_AVISO_COUNT, vistos + 1, true);
+            window.UILogic?.mostrarToast(
+                'Podés activar las notificaciones de salida desde Ajustes o tocando este aviso',
+                'info', 6000, null,
+                () => window.UILogic?.abrirModalNotificaciones()
+            );
+        }
+
+        return { chequearYAvisar };
+    })();
+
     UILogic.init();
 
     (async () => {
         await BienvenidaModal.chequearYMostrar();
         setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
+        setTimeout(() => AvisoPush.chequearYAvisar(), 5000);
     })();
 })();
 
@@ -9581,7 +9719,12 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-volver-reporte-secciones')?.addEventListener('click', () => UILogic.cerrarModalReporteSecciones());
 
     document.querySelector('#card-historico .card-header-clickable')?.addEventListener('click', () => UILogic.toggleHistorico());
-    $('btn-vista-calendario')?.addEventListener('click', () => UILogic.toggleVistaHistorico());
+    $('btn-vista-calendario')?.addEventListener('click', () => {
+        if (window.UILogic && window.UILogic.iniciarTimerAutoCierreBotones) {
+            window.UILogic.iniciarTimerAutoCierreBotones();
+        }
+        UILogic.toggleVistaHistorico();
+    });
     $('btn-filtro')?.addEventListener('click', (e) => UILogic.mostrarFiltros(e));
     $('btn-undo')?.addEventListener('click', () => HistoryManager.undo());
     $('btn-redo')?.addEventListener('click', () => HistoryManager.redo());
@@ -9600,6 +9743,7 @@ document.addEventListener('DOMContentLoaded', function () {
     $('btn-toggle-hover-popup')?.addEventListener('click', () => UILogic.toggleHoverPopupCalendario());
     $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
     $('btn-toggle-objetivo-registro')?.addEventListener('click', () => UILogic.toggleObjetivoPorRegistro());
+    $('btn-toggle-formato-corto-stats')?.addEventListener('click', () => UILogic.toggleFormatoCortoStats());
     $('btn-toggle-push-buffer')?.addEventListener('click', () => UILogic.togglePushBuffer());
     $('btn-toggle-push-buffer-ultimo-dia')?.addEventListener('click', () => UILogic.togglePushBufferUltimoDia());
     $('btn-toggle-push-habilitado')?.addEventListener('click', () => UILogic.togglePushHabilitado());
@@ -9706,7 +9850,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260910';
+        const _v = '-v260916';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {
@@ -9725,26 +9869,26 @@ document.addEventListener('DOMContentLoaded', function () {
     })();
 });
 
-// MODULOS:
+// MODULES:
 
 // PWA INSTALLER MODULE
 // TIME AND DATE UTILITIES MODULE (TimeUtils)
 // PUSH REMINDER MODULE
 // SECURITY AND UTILS MODULE
 // STORAGE HELPER MODULE
-// PERFIL MANAGER MODULE
+// PROFILE MANAGER MODULE
 // MODAL MANAGER MODULE
 // HISTORY MANAGER MODULE
-// TIPOS DE REGISTRO MODULE
+// RECORD TYPES MODULE
 // DATA MANAGEMENT MODULE
-// UI CORE MODULE (helpers genéricos de UI)
-// UI PERFILES MODULE
-// UI CALENDARIO MODULE
+// UI CORE MODULE (generic UI helpers)
+// UI PROFILES MODULE
+// UI CALENDAR MODULE
 // GIST SYNC MODULE
-// UI GIST Y RESPALDO MODULE
-// UI HISTORICO MODULE
-// UI ESTADISTICAS MODULE
-// UI TARJETA DE FICHAJE MODULE
-// UI LOGIC MODULE (orquestador: init, bootstrap, config general)
-// BIENVENIDA MODULE
-// FERIADOS MODULE
+// UI GIST AND BACKUP MODULE
+// UI HISTORY MODULE
+// UI STATISTICS MODULE
+// UI CLOCK-IN CARD MODULE
+// UI LOGIC MODULE (orchestrator: init, bootstrap, general config)
+// WELCOME MODULE
+// HOLIDAYS MODULE

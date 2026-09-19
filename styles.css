@@ -176,7 +176,7 @@ body {
     overflow-y: auto;
 }
 
-/* ─── LAYOUT ─────────────────────────────────────────────────────────────────── */
+/* ─── DISEÑO ─────────────────────────────────────────────────────────────────── */
 
 .container {
     max-width: 1400px;
@@ -235,7 +235,7 @@ body {
     margin-left: var(--space-lg);
 }
 
-/* ─── FLEX COMPARTIDO (display:flex + align-items:center + gap:0.5rem) ───────── */
+/* ─── FLEX COMPARTIDO  ──────────────────────────────────────────────────── ──── */
 
 .header-actions,
 .input-with-btn,
@@ -250,7 +250,7 @@ body {
     gap: var(--space-sm);
 }
 
-/* ─── CARD ───────────────────────────────────────────────────────────────────── */
+/* ─── TARJETA ────────────────────────────────────────────────────────────────── */
 
 .card,
 .modal-content {
@@ -317,7 +317,7 @@ h2.mutacion-saliente.no-margin,
     background: var(--text-muted);
 }
 
-/* ─── ICONS ──────────────────────────────────────────────────────────────────── */
+/* ─── ICONOS ─────────────────────────────────────────────────────────────────── */
 
 .icon {
     width: 1.2em;
@@ -347,7 +347,7 @@ h2.mutacion-saliente.no-margin,
     transform: rotate(-90deg);
 }
 
-/* ─── FORMS ──────────────────────────────────────────────────────────────────── */
+/* ─── FORMULARIOS ────────────────────────────────────────────────────────────── */
 
 .form-group {
     margin-bottom: var(--space-lg);
@@ -534,7 +534,7 @@ input.error {
     color: var(--text-disabled);
 }
 
-/* ─── BUTTONS ────────────────────────────────────────────────────────────────── */
+/* ─── BOTONES ────────────────────────────────────────────────────────────────── */
 
 button {
     width: 100%;
@@ -557,7 +557,6 @@ button:active {
     transform: scale(1);
 }
 
-/* Transición en estado base para que aplique en ambas direcciones */
 button:disabled {
     background: transparent;
     cursor: not-allowed;
@@ -619,7 +618,6 @@ button:disabled {
     touch-action: manipulation;
 }
 
-/* icon-btn y filter-btn comparten fondo transparente */
 .icon-btn,
 .filter-btn {
     background: transparent;
@@ -659,7 +657,7 @@ button:disabled {
     font-weight: var(--fw-bold);
 }
 
-/* ─── COLLAPSIBLE ────────────────────────────────────────────────────────────── */
+/* ─── COLAPSABLE ─────────────────────────────────────────────────────────────── */
 
 .collapsible {
     display: grid;
@@ -747,7 +745,7 @@ button:disabled {
     margin-top: var(--space-md);
 }
 
-/* ─── CONFIG ─────────────────────────────────────────────────────────────────── */
+/* ─── CONFIGURACIÓN ──────────────────────────────────────────────────────────── */
 
 .config-actions {
     display: flex;
@@ -790,7 +788,7 @@ button:disabled {
     opacity: 1;
 }
 
-/* ─── STATS CARD ─────────────────────────────────────────────────────────────── */
+/* ─── TARJETA DE ESTADÍSTICAS ────────────────────────────────────────────────── */
 
 .stats-card {
     cursor: pointer;
@@ -907,7 +905,7 @@ button:disabled {
     margin: 0 auto;
 }
 
-/* ─── PROGRESS BAR ───────────────────────────────────────────────────────────── */
+/* ─── BARRA DE PROGRESO ──────────────────────────────────────────────────────── */
 
 .progress-bar {
     width: 100%;
@@ -1025,29 +1023,16 @@ button:disabled {
     border-radius: var(--radius);
 }
 
-/* Header de mes anidado dentro de un año colapsable: se apila debajo del header del año */
 .registro-mes-detalle .registro-mes-header {
     top: calc(var(--sticky-mes-top) + var(--mes-header-h));
     z-index: 4;
-}
-
-.registro-mes-detalle {
-    display: grid;
-    grid-template-rows: 0fr;
-    opacity: 0;
-    transition: grid-template-rows var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
 }
 
 .registro-mes-detalle.expanded>.detalle-inner {
     overflow: visible;
 }
 
-.registro-mes-detalle.expanded {
-    grid-template-rows: 1fr;
-    opacity: 1;
-}
-
-/* ─── COLORES COMPARTIDOS (registro-total, calendario-dia, progress-fill, toast, cal-popup-badge) */
+/* ─── COLORES COMPARTIDOS ────────────────────────────────────────────────────── */
 
 .registro-total.green-text,
 .calendario-dia.dia-normal,
@@ -1282,6 +1267,10 @@ button:disabled {
     border-color: var(--c-blue);
 }
 
+.toast.toast-accionable {
+    cursor: pointer;
+}
+
 /* ─── CALENDARIO ─────────────────────────────────────────────────────────────── */
 
 #calendario-selector-meses {
@@ -1430,7 +1419,7 @@ button:disabled {
     font-size: var(--text-sm);
 }
 
-/* ─── CAL POPUP ──────────────────────────────────────────────────────────────── */
+/* ─── POPUP DEL CALENDARIO ───────────────────────────────────────────────────── */
 
 .cal-popup,
 .stat-popup,
@@ -1532,7 +1521,7 @@ button:disabled {
     color: var(--text-main);
 }
 
-/* ─── STAT POPUP ─────────────────────────────────────────────────────────────── */
+/* ─── POPUP DE ESTADÍSTICA ───────────────────────────────────────────────────── */
 
 .stat-item {
     cursor: pointer;
@@ -1603,12 +1592,7 @@ button:disabled {
     margin-bottom: 0;
 }
 
-/* ─── COLLAPSIBLE SECTIONS ───────────────────────────────────────────────────── */
-
-.form-collapsible.expanded {
-    grid-template-rows: 1fr;
-    opacity: 1;
-}
+/* ─── SECCIONES COLAPSABLES ──────────────────────────────────────────────────── */
 
 #botones-historico {
     transition: var(--transition-collapse), padding var(--dur-anim) ease-out, margin var(--dur-anim) ease-out;
@@ -1624,11 +1608,6 @@ button:disabled {
 }
 
 /* ─── ANIMACIONES ────────────────────────────────────────────────────────────── */
-
-.nuevo-registro-animacion,
-.input-agregado-animacion {
-    animation: mutacionEntrada var(--dur-anim) ease-out forwards;
-}
 
 .nuevo-registro-animacion {
     transform-origin: center;
@@ -1660,7 +1639,7 @@ button:disabled {
     overflow: visible;
 }
 
-/* ─── MISC COMPONENTS ────────────────────────────────────────────────────────── */
+/* ─── COMPONENTES VARIOS ─────────────────────────────────────────────────────── */
 
 .card-header-clickable {
     cursor: pointer;
@@ -1678,7 +1657,8 @@ button:disabled {
     right: 0;
 }
 
-.chevron.rotated {
+.chevron.rotated,
+.chevron-mes.rotated {
     transform: rotate(180deg);
 }
 
@@ -1691,10 +1671,6 @@ button:disabled {
     flex-shrink: 0;
     transition: transform var(--transition-ui);
     order: 1;
-}
-
-.chevron-mes.rotated {
-    transform: rotate(180deg);
 }
 
 .timer-btn.running {
@@ -1753,7 +1729,7 @@ button:disabled {
     color: var(--text-muted);
 }
 
-/* ─── ONBOARDING (modal-config en modo bienvenida) ─────────────────────────── */
+/* ─── ONBOARDING  ────────────────────────────────────────────────────────────── */
 
 .config-onboarding-banner {
     display: none;
@@ -1858,7 +1834,7 @@ body.config-onboarding #theme-toggle-config {
     color: var(--c-blue);
 }
 
-/* ─── HEADER PROFILE / PERFILES ──────────────────────────────────────────────── */
+/* ─── PERFIL DE CABECERA / PERFILES ──────────────────────────────────────────── */
 
 .header-profile-btn {
     background: transparent;
@@ -1957,7 +1933,7 @@ body.config-onboarding #theme-toggle-config {
     animation: mutacionEntrada var(--dur-anim) ease-out;
 }
 
-/* ─── WEEK SELECTOR ──────────────────────────────────────────────────────────── */
+/* ─── SELECTOR DE SEMANA ─────────────────────────────────────────────────────── */
 
 .week-selector {
     display: flex;
@@ -2004,7 +1980,7 @@ body.config-onboarding #theme-toggle-config {
     transform: scale(1.1);
 }
 
-/* ─── SPECIFIC ELEMENTS ──────────────────────────────────────────────────────── */
+/* ─── ELEMENTOS ESPECÍFICOS ──────────────────────────────────────────────────── */
 
 .svg-sprite,
 #btn-install,
@@ -2133,6 +2109,7 @@ body.config-onboarding #theme-toggle-config {
 
 .buffer-semanal-punto.neutral {
     background-color: var(--c-orange);
+    border-radius: 50%;
 }
 
 .buffer-semanal-texto {
@@ -2207,6 +2184,7 @@ body.config-onboarding #theme-toggle-config {
     padding: 0.1rem 0.6rem;
     border-radius: var(--radius);
     white-space: nowrap;
+    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
 }
 
 .tf-badge .icon {
@@ -2219,7 +2197,53 @@ body.config-onboarding #theme-toggle-config {
     margin-left: 0.15em;
 }
 
+.estado-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    padding: 0.1rem 0.6rem;
+    border-radius: var(--radius);
+    white-space: nowrap;
+}
+
+.estado-badge--en-curso {
+    background: var(--c-blue);
+    color: var(--c-white);
+    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+}
+
+.estado-badge--finalizado {
+    color: var(--c-white);
+}
+
+.estado-badge--finalizado.estado-badge--green {
+    background: var(--c-green);
+}
+
+.estado-badge--finalizado.estado-badge--red {
+    background: var(--c-red);
+}
+
+.estado-badge--finalizado.estado-badge--gold {
+    background: var(--c-gold);
+}
+
 /* ─── KEYFRAMES ──────────────────────────────────────────────────────────────── */
+
+@keyframes estadoBadgeParpadeo {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
 
 @keyframes slideDownFade {
     from {
@@ -2345,6 +2369,26 @@ button.campo-flash {
     animation: campo-flash 500ms ease-in-out 2;
 }
 
+@keyframes calendario-hoy-flash {
+
+    0%,
+    60%,
+    100% {
+        outline-color: var(--text-muted);
+        outline-width: 2px;
+    }
+
+    20%,
+    40% {
+        outline-color: var(--bg-card);
+        outline-width: 4px;
+    }
+}
+
+.calendario-dia.hoy.campo-flash {
+    animation: calendario-hoy-flash 500ms ease-in-out 2;
+}
+
 @keyframes campo-flash-color {
 
     0%,
@@ -2413,7 +2457,7 @@ button.campo-flash-color {
     }
 }
 
-/* ─── DESKTOP (min-width: 1024px) ────────────────────────────────────────────── */
+/* ─── ESCRITORIO (min-width: 1024px) ─────────────────────────────────────────── */
 
 @media (min-width: 1024px) {
     .container {

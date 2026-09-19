@@ -9,7 +9,7 @@
          style-src 'self';
          img-src 'self' data: blob:; 
          font-src 'self' data:; 
-         connect-src 'self' https://api.github.com https://horarios-push.lushibosca.workers.dev https://horarios-push.l-lus.workers.dev; 
+         connect-src 'self' https://api.github.com https://horarios-push.lushibosca.workers.dev
          object-src 'none'; 
          base-uri 'none'; 
          form-action 'none'; 
@@ -612,8 +612,7 @@
             </div>
             <div class="modal-panel-body custom-scroll">
                 <div class="config-onboarding-banner" id="config-onboarding-banner">
-                    <p>Configurá tus horas diarias y días laborales, restaurá tus datos anteriores o tocá el botón de
-                        ayuda para ver las características.</p>
+                    <p>Configurá tus horas diarias y días laborales antes de empezar</p>
                 </div>
                 <div class="modal-config-cols">
 
@@ -701,6 +700,15 @@
                                     <use href="#icon-dot" />
                                 </svg>
                             </button>
+                            <button id="btn-toggle-formato-corto-stats">
+                                <svg class="icon">
+                                    <use href="#icon-replace-swap" />
+                                </svg>
+                                <span>Formato de tiempo corto</span>
+                                <svg class="icon icon-indicator">
+                                    <use href="#icon-dot" />
+                                </svg>
+                            </button>
                         </div>
                         <div class="form-group config-onboarding-hide">
                             <label>Tarjetas y posición</label>
@@ -745,7 +753,7 @@
                         </div>
                     </div>
                     <div>
-                        <div class="config-actions form-group">
+                        <div class="config-actions form-group config-onboarding-hide">
                             <label>Notificaciones</label>
                             <button id="btn-toggle-notification">
                                 <svg class="icon">
@@ -785,7 +793,7 @@
                                 <svg class="icon icon-indicator">
                                     <use href="#icon-dot" />
                                 </svg>
-                            </button>
+                            </button>                            
                         </div>
                         <div class="config-actions">
                             <label>Datos</label>
