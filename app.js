@@ -186,7 +186,7 @@
 
         function fechaLocalISOFull() {
             const d = new Date();
-            return `${d.getFullYear()}-${_pad2(d.getMonth() + 1)}-${_pad2(d.getDate())} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}:${_pad2(d.getSeconds())}`;
+            return `${formatearFechaLocal(d)} ${_pad2(d.getHours())}:${_pad2(d.getMinutes())}:${_pad2(d.getSeconds())}`;
         }
 
         function horaAMinutos(h) {
@@ -196,11 +196,8 @@
         }
 
         function sumarMinutosAHora(horaString, minutosASumar) {
-            let totalMinutos = minutosASumar + horaAMinutos(horaString);
-            let horas = Math.floor(totalMinutos / 60);
-            let mins = Math.floor(totalMinutos % 60);
-            if (horas > 23) { horas = 23; mins = 59; }
-            return _hhmm(horas, mins);
+            const totalMinutos = minutosASumar + horaAMinutos(horaString);
+            return totalMinutos >= 24 * 60 ? '23:59' : minutosAHora(totalMinutos);
         }
 
         function obtenerNombreDia(f) {
@@ -269,9 +266,8 @@
 
         function formatoTituloMes(claveMes) {
             const [año, mes] = claveMes.split('-');
-            const fecha = new Date(año, mes - 1, 1);
-            let nombre = fecha.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
-            return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+            const nombre = nombreMesPorIndice(mes - 1);
+            return nombre.charAt(0).toUpperCase() + nombre.slice(1) + ' ' + año;
         }
 
         function generarRangoFechas(desde, hasta) {
@@ -283,6 +279,10 @@
                 cur.setDate(cur.getDate() + 1);
             }
             return resultado;
+        }
+
+        function segundosAMinutosRedondeado(segundos) {
+            return Math.floor(segundos / 60) + (segundos % 60 >= 30 ? 1 : 0);
         }
 
         function fechaCorta(f, anioCompleto = false) {
@@ -297,7 +297,7 @@
             horaAMinutos, sumarMinutosAHora, descomponerHorasDecimales,
             obtenerNombreDia, nombreDiaPorIndice, nombreMesPorIndice, obtenerLunes, obtenerLunesSemanaISO, obtenerSemanaRangoActual,
             horasATexto, formatoDiferencia, formatoTituloMes, _esCantidadSingular, pluralizar,
-            generarRangoFechas, fechaCorta
+            generarRangoFechas, fechaCorta, segundosAMinutosRedondeado, _pad2
         };
     })();
 
@@ -307,7 +307,7 @@
     const PushReminder = (function () {
         const WORKER_URL = 'https://horarios-push.lushibosca.workers.dev';
         const VAPID_PUBLIC_KEY = 'BMU-iLslFVrTxUKMHRUn8r_CtyCLX41ppVTUgdATAdPYE8ayJ0U_ew6d50CmvghkIdv34fGuXvf-KP5W62rs3ms';
-        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9'; // ojo chinwewencha
+        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9';
         const MARGEN_CRON_MS = 60 * 1000;
 
         function _headersWorker() {
@@ -346,6 +346,25 @@
                     : `sin-storage-${Date.now()}-${Math.random().toString(36).slice(2)}`;
             }
             return _idInstalacionFallback;
+        }
+        
+        let _ownerTokenFallback = null;
+
+        function _generarOwnerToken() {
+            const bytes = new Uint8Array(32);
+            crypto.getRandomValues(bytes);
+            return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        function _ownerToken() {
+            const KEY = 'pushOwnerToken';
+            const existente = StorageHelper.getItem(KEY, null);
+            if (existente && /^[a-f0-9]{64}$/.test(existente)) return existente;
+
+            const nuevo = _generarOwnerToken();
+            if (StorageHelper.setItem(KEY, nuevo)) return nuevo;
+            if (!_ownerTokenFallback) _ownerTokenFallback = _generarOwnerToken();
+            return _ownerTokenFallback;
         }
 
         function _perfilActivo() {
@@ -511,6 +530,7 @@
             try {
                 const res = await _postWorker('/api/schedule', {
                     id: _claveRecordatorio(fechaISO),
+                    ownerToken: _ownerToken(),
                     subscription: sub.toJSON(),
                     targetTime: targetMs,
                     title: 'Horarios',
@@ -554,7 +574,7 @@
                 return;
             }
 
-            _postWorker('/api/cancel', { id: _claveRecordatorio(fechaISO, perfilId) }, true)
+            _postWorker('/api/cancel', { id: _claveRecordatorio(fechaISO, perfilId), ownerToken: _ownerToken() }, true)
                 .catch(err => console.error('No se pudo cancelar el recordatorio:', err));
         }
 
@@ -2138,7 +2158,7 @@
                 S.validarRegistroSeguro(r) && r.fecha > hoy && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)
             ).length;
             if (descartadosFuturos > 0)
-                notify.mostrarToast(`${descartadosFuturos} registro${descartadosFuturos > 1 ? 's' : ''} normal${descartadosFuturos > 1 ? 'es' : ''} con fecha futura omitido${descartadosFuturos > 1 ? 's' : ''}`, 'warning');
+                notify.mostrarToast(`${descartadosFuturos} registro${TimeUtils.pluralizar(descartadosFuturos)} normal${descartadosFuturos > 1 ? 'es' : ''} con fecha futura omitido${TimeUtils.pluralizar(descartadosFuturos)}`, 'warning');
             const normalizados = rawList
                 .filter(r => S.validarRegistroSeguro(r))
                 .filter(r => {
@@ -2312,8 +2332,7 @@
             const segundosTranscurridos = Math.floor(diffMs / 1000);
             if (segundosTranscurridos < 30) { StorageHelper.removeItem(storageKey); return false; }
 
-            let minutosTranscurridos = Math.floor(segundosTranscurridos / 60);
-            if ((segundosTranscurridos % 60) >= 30) minutosTranscurridos += 1;
+            let minutosTranscurridos = TimeUtils.segundosAMinutosRedondeado(segundosTranscurridos);
 
             const tiempoActual = registro.tiempoFuera || '00:00';
             registro.tiempoFuera = TimeUtils.sumarMinutosAHora(tiempoActual, minutosTranscurridos);
@@ -3583,9 +3602,9 @@
         }
 
         function _nombreMesCapitalizado(mesAnio) {
-            const [a, m] = mesAnio.split('-');
-            const nombre = new Date(a, m - 1, 1).toLocaleDateString('es-AR', { month: 'long' });
-            return nombre.charAt(0).toUpperCase() + nombre.slice(1).replace('.', '');
+            const [, m] = mesAnio.split('-');
+            const nombre = TimeUtils.nombreMesPorIndice(m - 1);
+            return nombre.charAt(0).toUpperCase() + nombre.slice(1);
         }
 
         function _cerrarSelectorMeses(idResaltar = null) {
@@ -3680,7 +3699,7 @@
             const anio = _calendarioMes ? _calendarioMes.anio : hoy.getFullYear();
             const mes = _calendarioMes ? _calendarioMes.mes : hoy.getMonth();
             if (titulo) titulo.textContent = `${TimeUtils.nombreMesPorIndice(mes)} ${anio}`;
-            const fechaStr = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const fechaStr = (y, m, d) => `${y}-${TimeUtils._pad2(m + 1)}-${TimeUtils._pad2(d)}`;
             const registrosFiltrados = D.obtenerRegistrosFiltrados();
             const todosLosRegistros = D.registros();
             const regsPorFecha = Object.fromEntries(registrosFiltrados.map(r => [r.fecha, r]));
@@ -3857,7 +3876,10 @@
         }
 
         function _formatearFechaLabelPopup(fecha) {
-            return S.escapeHtml(new Date(fecha + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }));
+            const d = new Date(fecha + 'T12:00:00');
+            const diaSemana = TimeUtils.obtenerNombreDia(fecha).toLowerCase();
+            const mes = TimeUtils.nombreMesPorIndice(d.getMonth());
+            return S.escapeHtml(`${diaSemana}, ${d.getDate()} de ${mes}`);
         }
 
         function _popupCalendario(event, registroId) {
@@ -6801,7 +6823,7 @@
     // ====================================================================
     //                     UI CLOCK-IN CARD MODULE
     // ====================================================================
-    const UITarjetaFichaje = (function (D, UICore) {
+    const UITarjetaFichaje = (function (D) {
         const {
             formatoDiferencia, mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
             _setBtnActivo, _setBtnDisabled, _flashCampo, _flashCampoTipo, registrarSwipe, _animarFadeSwap,
@@ -7876,7 +7898,7 @@
                 actualizarUI(); return;
             }
 
-            const minutos = Math.floor(totalSeg / 60) + (totalSeg % 60 >= 30 ? 1 : 0);
+            const minutos = TimeUtils.segundosAMinutosRedondeado(totalSeg);
             registroHoy.tiempoFuera = sumarMinutosAHora(registroHoy.tiempoFuera || '00:00', minutos);
             const t = D.calcularHoras(registroHoy.entrada, registroHoy.salida, registroHoy.tiempoFuera);
             registroHoy.horas = t?.horas || 0; registroHoy.minutos = t?.minutos || 0; registroHoy.total = t?.total || 0;
@@ -8262,7 +8284,7 @@
             _prepararMostrarFaseAlRenderizar,
             _refrescarFormatoCortoStatsCache,
         };
-    })(DataManagement, UICore);
+    })(DataManagement);
 
     const UILogic = (function (S, D, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje) {
 
@@ -9517,7 +9539,7 @@
         function _getFeriadosDelMes() {
             const hoy = new Date();
             const anioActual = hoy.getFullYear();
-            const mesActual = String(hoy.getMonth() + 1).padStart(2, '0');
+            const mesActual = TimeUtils._pad2(hoy.getMonth() + 1);
             const prefijoMes = `${anioActual}-${mesActual}`;
             const pool = FERIADOS[anioActual] || [];
             return { prefijoMes, feriados: pool.filter(f => f.fecha.startsWith(prefijoMes)) };
@@ -9573,7 +9595,7 @@
     const AvisoPush = (function () {
         'use strict';
 
-        const MAX_AVISOS = 2;
+        const MAX_AVISOS = 3;
 
         async function chequearYAvisar() {
             if (PushReminder.getHabilitado()) return;
@@ -9607,7 +9629,7 @@
     (async () => {
         await BienvenidaModal.chequearYMostrar();
         setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
-        setTimeout(() => AvisoPush.chequearYAvisar(), 5000);
+        setTimeout(() => AvisoPush.chequearYAvisar(), 4000);
     })();
 })();
 
@@ -9850,7 +9872,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260916';
+        const _v = '-v260921';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {
