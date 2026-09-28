@@ -417,7 +417,7 @@
         function setHabilitado(valor) {
             StorageHelper.setItem(STORAGE_KEYS.PUSH_HABILITADO, !!valor, true);
         }
-        const UMBRAL_REGISTROS_ACTIVACION = 15;
+        const UMBRAL_REGISTROS_ACTIVACION = 10;
         function _soportaPush() {
             return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
         }
@@ -9629,7 +9629,7 @@
     (async () => {
         await BienvenidaModal.chequearYMostrar();
         setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
-        setTimeout(() => AvisoPush.chequearYAvisar(), 4000);
+        setTimeout(() => AvisoPush.chequearYAvisar(), 3000);
     })();
 })();
 
@@ -9872,7 +9872,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     (function _bindLayoutConsistency() {
         const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260921';
+        const _v = '-v260926';
         const _full = _t + _v;
         let _el = document.querySelector('.version-text');
         if (!_el) {
