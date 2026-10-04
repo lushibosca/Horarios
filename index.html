@@ -7,9 +7,11 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self';
          script-src 'self'; 
          style-src 'self';
-         img-src 'self' data: blob:; 
-         font-src 'self' data:; 
-         connect-src 'self' https://api.github.com https://horarios-push.lushibosca.workers.dev;
+         img-src 'self'; 
+         font-src 'self'; 
+         connect-src 'self' https://api.github.com https://horarios-push.lushibosca.workers.dev; 
+         worker-src 'self';
+         manifest-src 'self';
          object-src 'none'; 
          base-uri 'none'; 
          form-action 'none'; 
@@ -69,6 +71,10 @@
         <symbol id="icon-clock" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="10" class="icon-line" stroke="currentColor"></circle>
             <polyline points="12 6 12 12 16 14" class="icon-line" stroke="currentColor"></polyline>
+        </symbol>
+        <symbol id="icon-alert-triangle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3 2 20h20zM12 10v4m0 3v.01" />
         </symbol>
         <symbol id="icon-trash" viewBox="0 0 24 24">
             <polyline points="3 6 5 6 21 6" class="icon-line" stroke="currentColor"></polyline>
@@ -154,6 +160,20 @@
             <line x1="16" y1="2" x2="16" y2="6" class="icon-line" stroke="currentColor"></line>
             <line x1="8" y1="2" x2="8" y2="6" class="icon-line" stroke="currentColor"></line>
             <line x1="3" y1="10" x2="21" y2="10" class="icon-line" stroke="currentColor"></line>
+        </symbol>
+        <symbol id="icon-calendar-week" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" class="icon-line" stroke="currentColor"></rect>
+            <line x1="16" y1="2" x2="16" y2="6" class="icon-line" stroke="currentColor"></line>
+            <line x1="8" y1="2" x2="8" y2="6" class="icon-line" stroke="currentColor"></line>
+            <line x1="3" y1="10" x2="21" y2="10" class="icon-line" stroke="currentColor"></line>
+            <line x1="7" y1="15" x2="7.01" y2="15" class="icon-line" stroke="currentColor" stroke-linecap="round">
+            </line>
+            <line x1="10.5" y1="15" x2="10.51" y2="15" class="icon-line" stroke="currentColor" stroke-linecap="round">
+            </line>
+            <line x1="14" y1="15" x2="14.01" y2="15" class="icon-line" stroke="currentColor" stroke-linecap="round">
+            </line>
+            <line x1="17.5" y1="15" x2="17.51" y2="15" class="icon-line" stroke="currentColor" stroke-linecap="round">
+            </line>
         </symbol>
         <symbol id="icon-filter" viewBox="0 0 24 24">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" class="icon-line" stroke="currentColor">
@@ -292,6 +312,10 @@
         <symbol id="icon-dashboard" viewBox="0 0 24 24">
             <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
         </symbol>
+        <symbol id="icon-comment" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" class="icon-line"></path>
+        </symbol>
     </svg>
     <div class="header">
         <h1>Horarios</h1>
@@ -392,7 +416,7 @@
                             </div>
                         </div>
 
-                        <div id="modo-lote" class="fade-out">
+                        <div id="modo-lote">
                             <div class="form-group form-group-pt">
                                 <label for="lote-tipo">Tipo de registro</label>
                                 <div class="input-with-btn">
@@ -617,100 +641,169 @@
                 <div class="modal-config-cols">
 
                     <div>
-                        <div class="form-group">
-                            <label>Horas diarias globales</label>
-                            <div class="input-number-group">
-                                <button id="btn-aplicar-horas-todos" class="btn-increment"
+                        <div class="config-actions form-group">
+                            <label>Jornada laboral</label>
+                            <div class="settings-list">
+                                <div class="settings-list-row">
+                                    <svg class="icon">
+                                        <use href="#icon-clock" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Horas diarias</span>
+                                        <span class="settings-list-desc">Objetivo por jornada</span>
+                                    </span>
+                                    <div class="input-number-group input-number-group--pill">
+                                        <button id="btn-horas-diarias-dec" class="btn-increment" type="button"
+                                            title="Disminuir tiempo">-</button>
+                                        <span id="config-horas-diarias" class="input-number-display"
+                                            data-valor="0">0h</span>
+                                        <button id="btn-horas-diarias-inc" class="btn-increment" type="button"
+                                            title="Incrementar tiempo">+</button>
+                                    </div>
+                                </div>
+                                <div class="settings-list-row settings-list-row--stack">
+                                    <div class="settings-list-row-head">
+                                        <svg class="icon">
+                                            <use href="#icon-calendar-week" />
+                                        </svg>
+                                        <span class="settings-list-text">
+                                            <span>Días laborales</span>
+                                            <span class="settings-list-desc" id="config-total-feedback">Total semanal:
+                                                --hs</span>
+                                        </span>
+                                    </div>
+                                    <div class="week-selector">
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="1">
+                                            <span>Lu</span>
+                                        </label>
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="2">
+                                            <span>Ma</span>
+                                        </label>
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="3">
+                                            <span>Mi</span>
+                                        </label>
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="4">
+                                            <span>Ju</span>
+                                        </label>
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="5">
+                                            <span>Vi</span>
+                                        </label>
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="6">
+                                            <span>Sa</span>
+                                        </label>
+                                        <label class="day-checkbox">
+                                            <input type="checkbox" name="dia-habil" value="0">
+                                            <span>Do</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <button id="btn-historial-dias-habiles" type="button" class="config-onboarding-hide"
+                                    title="Ver historial de días laborales">
+                                    <svg class="icon">
+                                        <use href="#icon-list" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Historial de días laborales</span>
+                                        <span class="settings-list-desc">Tramos y fechas de vigencia</span>
+                                    </span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
+                                    </svg>
+                                </button>
+                                <button id="btn-aplicar-horas-todos" type="button" class="config-onboarding-hide"
                                     title="Aplicar estas horas diarias a todos los registros anteriores">
                                     <svg class="icon">
                                         <use href="#icon-aplicar-horas" />
                                     </svg>
-                                </button>
-                                <span id="config-horas-diarias" class="input-number-display" data-valor="0">0h</span>
-                                <button id="btn-horas-diarias-inc" class="btn-increment"
-                                    title="Incrementar tiempo">+</button>
-                                <button id="btn-horas-diarias-dec" class="btn-increment"
-                                    title="Disminuir tiempo">-</button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Días laborales</label>
-                            <div class="week-selector">
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="1">
-                                    <span>Lu</span>
-                                </label>
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="2">
-                                    <span>Ma</span>
-                                </label>
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="3">
-                                    <span>Mi</span>
-                                </label>
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="4">
-                                    <span>Ju</span>
-                                </label>
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="5">
-                                    <span>Vi</span>
-                                </label>
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="6">
-                                    <span>Sa</span>
-                                </label>
-                                <label class="day-checkbox">
-                                    <input type="checkbox" name="dia-habil" value="0"> <span>Do</span>
-                                </label>
-                            </div>
-                            <div class="config-total-feedback-row">
-                                <div id="config-total-feedback" class="config-hint-text">(Total semanal: --hs)</div>
-                                <button id="btn-historial-dias-habiles" class="btn-historial-dias" type="button"
-                                    title="Ver historial de días laborales">
-                                    <svg class="icon">
-                                        <use href="#icon-list" />
+                                    <span class="settings-list-text">
+                                        <span>Aplicar horas a registros</span>
+                                        <span class="settings-list-desc">Usa las horas diarias actuales</span>
+                                    </span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
                                     </svg>
                                 </button>
                             </div>
                         </div>
                         <div class="config-actions form-group config-onboarding-hide">
                             <label>Interfaz</label>
-                            <button id="btn-toggle-fondo">
-                                <svg class="icon">
-                                    <use href="#icon-landscape" />
-                                </svg>
-                                <span id="hint-fondo-label">Golden Gate</span>
-                            </button>
-                            <button id="btn-toggle-hover-popup">
-                                <svg class="icon">
-                                    <use href="#icon-calendar-simple" />
-                                </svg>
-                                <span>Popup hover calendario (PC)</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
-                            <button id="btn-toggle-persistir-tarjetas">
-                                <svg class="icon">
-                                    <use href="#icon-dashboard" />
-                                </svg>
-                                <span>Recordar estado de tarjetas</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
-                            <button id="btn-toggle-formato-corto-stats">
-                                <svg class="icon">
-                                    <use href="#icon-replace-swap" />
-                                </svg>
-                                <span>Formato de tiempo corto</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
+                            <div class="settings-list">
+                                <button id="btn-toggle-fondo">
+                                    <svg class="icon">
+                                        <use href="#icon-landscape" />
+                                    </svg>
+                                    <span>Fondo</span>
+                                    <span id="hint-fondo-label">Golden Gate</span>
+                                </button>
+                                <button id="btn-toggle-hover-popup">
+                                    <svg class="icon">
+                                        <use href="#icon-calendar-simple" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Auto popup calendario (PC)</span>
+                                        <span class="settings-list-desc">Muestra el popup del día al pasar el
+                                            mouse por encima en el calendario</span>
+                                    </span>
+                                    <span class="toggle-switch" aria-hidden="true"></span>
+                                </button>
+                                <button id="btn-toggle-persistir-tarjetas">
+                                    <svg class="icon">
+                                        <use href="#icon-dashboard" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Recordar estado de tarjetas</span>
+                                        <span class="settings-list-desc">Mantiene expandidas o colapsadas las
+                                            tarjetas entre sesiones</span>
+                                    </span>
+                                    <span class="toggle-switch" aria-hidden="true"></span>
+                                </button>
+                                <button id="btn-toggle-formato-corto-stats">
+                                    <svg class="icon">
+                                        <use href="#icon-replace-swap" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Formato de tiempo corto</span>
+                                        <span class="settings-list-desc">Muestra las horas abreviadas (5h 9m) en
+                                            vez de completas</span>
+                                    </span>
+                                    <span class="toggle-switch" aria-hidden="true"></span>
+                                </button>
+                                <button id="btn-toggle-animaciones">
+                                    <svg class="icon">
+                                        <use href="#icon-eye" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Reducir animaciones</span>
+                                        <span class="settings-list-desc">Auto sigue la configuración del
+                                            dispositivo</span>
+                                    </span>
+                                    <span id="hint-animaciones-label">Auto</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="form-group config-onboarding-hide">
+                        <div class="config-actions form-group config-onboarding-hide">
+                            <label>Notificaciones</label>
+                            <div class="settings-list">
+                                <button id="btn-toggle-notification">
+                                    <svg class="icon">
+                                        <use href="#icon-bell" />
+                                    </svg>
+                                    <span>Configurar notificaciones</span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="form-group config-actions config-onboarding-hide">
                             <label>Tarjetas y posición</label>
                             <div id="lista-orden-cards">
                                 <div class="orden-card-item" id="orden-item-registrar">
@@ -720,9 +813,7 @@
                                             <use href="#icon-save" />
                                         </svg>
                                         <span>Fichar</span>
-                                        <svg class="icon icon-indicator">
-                                            <use href="#icon-dot" />
-                                        </svg>
+                                        <span class="toggle-switch" aria-hidden="true"></span>
                                     </button>
                                 </div>
                                 <div class="orden-card-item" id="orden-item-estadisticas">
@@ -732,9 +823,7 @@
                                             <use href="#icon-stats" />
                                         </svg>
                                         <span>Estadísticas</span>
-                                        <svg class="icon icon-indicator">
-                                            <use href="#icon-dot" />
-                                        </svg>
+                                        <span class="toggle-switch" aria-hidden="true"></span>
                                     </button>
                                 </div>
                                 <div class="orden-card-item" id="orden-item-historico">
@@ -744,95 +833,89 @@
                                             <use href="#icon-list" />
                                         </svg>
                                         <span>Registros</span>
-                                        <svg class="icon icon-indicator">
-                                            <use href="#icon-dot" />
-                                        </svg>
+                                        <span class="toggle-switch" aria-hidden="true"></span>
                                     </button>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div>
-                        <div class="config-actions form-group config-onboarding-hide">
-                            <label>Notificaciones</label>
-                            <button id="btn-toggle-notification">
-                                <svg class="icon">
-                                    <use href="#icon-bell" />
-                                </svg>
-                                <span>Configurar notificaciones</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-chevron-right" />
-                                </svg>
-                            </button>
-                        </div>
                         <div class="config-actions form-group config-onboarding-hide">
                             <label>Estadísticas</label>
-                            <button id="btn-toggle-ignorar-tf">
-                                <svg class="icon">
-                                    <use href="#icon-exit" />
-                                </svg>
-                                <span>No descontar tiempo fuera</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
-                            <button id="btn-toggle-logica-cubierto">
-                                <svg class="icon">
-                                    <use href="#icon-shield-off" />
-                                </svg>
-                                <span>No cubrir con banco de horas</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>
-                            <button id="btn-toggle-objetivo-registro">
-                                <svg class="icon">
-                                    <use href="#icon-clock" />
-                                </svg>
-                                <span>Objetivo diario global</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-dot" />
-                                </svg>
-                            </button>                            
+                            <div class="settings-list">
+                                <button id="btn-toggle-ignorar-tf">
+                                    <svg class="icon">
+                                        <use href="#icon-exit" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>No descontar tiempo fuera</span>
+                                        <span class="settings-list-desc">Las salidas registradas no se descuentan del
+                                            total de horas trabajadas</span>
+                                    </span>
+                                    <span class="toggle-switch" aria-hidden="true"></span>
+                                </button>
+                                <button id="btn-toggle-logica-cubierto">
+                                    <svg class="icon">
+                                        <use href="#icon-shield-off" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>No cubrir con banco de horas</span>
+                                        <span class="settings-list-desc">El banco de horas no compensa
+                                            automáticamente lo que falta para cumplir el objetivo</span>
+                                    </span>
+                                    <span class="toggle-switch" aria-hidden="true"></span>
+                                </button>
+                                <button id="btn-toggle-objetivo-registro">
+                                    <svg class="icon">
+                                        <use href="#icon-clock" />
+                                    </svg>
+                                    <span class="settings-list-text">
+                                        <span>Objetivo diario global</span>
+                                        <span class="settings-list-desc">Aplica el mismo objetivo de horas a
+                                            todos los registros, en vez de definirlo por día</span>
+                                    </span>
+                                    <span class="toggle-switch" aria-hidden="true"></span>
+                                </button>
+                            </div>
                         </div>
                         <div class="config-actions">
                             <label>Datos</label>
-                            <button class="btn-gist">
-                                <svg class="icon">
-                                    <use href="#icon-gist" />
-                                </svg>
-                                <span>GitHub Gist</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-chevron-right" />
-                                </svg>
-                            </button>
-                            <button class="btn-backup">
-                                <svg class="icon">
-                                    <use href="#icon-upload" />
-                                </svg>
-                                <span>Restaurar</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-chevron-right" />
-                                </svg>
-                            </button>
-                            <button class="btn-export config-onboarding-hide">
-                                <svg class="icon">
-                                    <use href="#icon-download" />
-                                </svg>
-                                <span>Respaldar</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-chevron-right" />
-                                </svg>
-                            </button>
-                            <button class="btn-delete config-onboarding-hide">
-                                <svg class="icon">
-                                    <use href="#icon-trash" />
-                                </svg>
-                                <span>Restablecer</span>
-                                <svg class="icon icon-indicator">
-                                    <use href="#icon-chevron-right" />
-                                </svg>
-                            </button>
+                            <div class="settings-list">
+                                <button class="btn-gist">
+                                    <svg class="icon">
+                                        <use href="#icon-gist" />
+                                    </svg>
+                                    <span>GitHub Gist</span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
+                                    </svg>
+                                </button>
+                                <button class="btn-backup">
+                                    <svg class="icon">
+                                        <use href="#icon-upload" />
+                                    </svg>
+                                    <span>Restaurar</span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
+                                    </svg>
+                                </button>
+                                <button class="btn-export config-onboarding-hide">
+                                    <svg class="icon">
+                                        <use href="#icon-download" />
+                                    </svg>
+                                    <span>Respaldar</span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
+                                    </svg>
+                                </button>
+                                <button class="btn-delete config-onboarding-hide">
+                                    <svg class="icon">
+                                        <use href="#icon-trash" />
+                                    </svg>
+                                    <span>Restablecer</span>
+                                    <svg class="icon icon-indicator">
+                                        <use href="#icon-chevron-right" />
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -890,6 +973,10 @@
                             Estadísticas</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-registros">-
                             Registros</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-especiales">- Registros
+                            especiales</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-credito">- Salida
+                            temprana</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-remoto">- Remoto</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-compensatorio">-
                             Compensatorio</button>
@@ -897,10 +984,16 @@
                             Notificaciones</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-perfiles">-
                             Perfiles</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-ajustes">-
+                            Ajustes</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-datos">- Dónde se guardan
                             tus datos</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-respaldo">- Backup y
-                            sincronización</button>
+                            restauración</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-gist">- GitHub
+                            Gist</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-instalar">- Instalar la
+                            app</button>
                     </nav>
 
                     <div class="ayuda-secciones">
@@ -914,8 +1007,12 @@
                                 registros existentes.</p>
                             <p>- Crear informes mensuales o anuales en detalle.</p>
                             <p>- Ver un histórico de los registros en una lista o calendario.</p>
+                            <p>- Recibir una notificación cuando se cumpla tu horario.</p>
+                            <p>- Sumar los feriados del mes (Argentina) con una confirmación.</p>
                             <p>- Crear distintos perfiles (de usuario o laborales).</p>
+                            <p>- Personalizar la interfaz con temas, fondos y el orden de las tarjetas.</p>
                             <p>- Crear backups locales o sincronizar con token de GitHub Gist.</p>
+                            <p>- Instalarla como app en tu dispositivo.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-fichar">
@@ -926,7 +1023,8 @@
                             <p>Desplegando la flecha del formulario (a la derecha), se extiende la tarjeta donde vas a
                                 poder personalizar un registro eligiendo la fecha, entrada o salida.</p>
                             <p>Tocando el botón al costado derecho de la fecha se accede al modo de registro por lotes o
-                                especiales, donde podés registrar feriados, vacaciones, etc.</p>
+                                especiales, donde podés registrar feriados, vacaciones, etc. También podés deslizar el
+                                formulario hacia los costados para alternar entre ambos modos.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-tf">
@@ -935,14 +1033,18 @@
                                 actual) sirve para registrar el tiempo fuera del establecimiento; al tocarlo comienza el
                                 temporizador y al tocarlo nuevamente consolida y guarda lo transcurrido en el registro
                                 actual. Se puede usar varias veces, sumando el TF existente.</p>
+                            <p>Si preferís que no reste de tus horas trabajadas, activá <strong>No descontar tiempo
+                                    fuera</strong> en Ajustes → Estadísticas.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-estadisticas">
                             <h4>Estadísticas</h4>
                             <p>Consultá tus horas trabajadas, promedios, regularidad y banco de horas, por semana, mes o
-                                año.
-                                Tocando cada dato aparece una explicación de qué significa y cómo se calcula. Desde acá
-                                también podés generar un reporte descargable del período elegido.</p>
+                                año. Tocando cada dato aparece una explicación de qué significa y cómo se calcula. Desde
+                                acá también podés generar un reporte descargable del período elegido.</p>
+                            <p>Tocando o deslizando la tarjeta superior alternás entre la vista del día y la de la
+                                semana, y deslizando el panel de estadísticas cambiás de período. La forma de calcular
+                                algunas métricas se ajusta en Ajustes → Estadísticas.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-registros">
@@ -950,6 +1052,29 @@
                             <p>En esta tarjeta están todos tus registros, en vista de lista o en calendario. Podés
                                 filtrarlos por fecha o tipo, deshacer y rehacer cambios (también con Ctrl+Z / Ctrl+Y) y
                                 tocar cualquiera para editarlo o borrarlo.</p>
+                            <p>En el calendario podés deslizar para cambiar de mes y, en PC, activar <strong>Auto popup
+                                    calendario</strong> (Ajustes → Interfaz) para ver el resumen de un día con solo
+                                pasar el mouse por encima.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-especiales">
+                            <h4>Registros especiales</h4>
+                            <p>Además de las jornadas normales, desde el modo de registro por lotes podés cargar días
+                                especiales, en un día o en un rango de fechas: <strong>Feriado, Licencia, Vacaciones,
+                                    Asueto, Enfermedad, Paro, Remoto, Capacitación y Compensatorio</strong>. Remoto y
+                                Compensatorio tienen un comportamiento propio, que se explica más abajo.</p>
+                            <p>Al abrir la app, si hay feriados de Argentina del mes que todavía no registraste, te
+                                pregunta si querés agregarlos como Feriado.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-credito">
+                            <h4>Asueto | Salida temprana</h4>
+                            <p>En el editor de un registro, el botón al costado de la fecha activa <strong>Asueto |
+                                    Salida temprana</strong>: si trabajaste menos que tu objetivo del día, la diferencia
+                                se suma como crédito al registro y la jornada cuenta como cumplida, sin generar déficit.
+                            </p>
+                            <p>Esos registros se marcan con la etiqueta "Salida temprana" y se usan para los casos de
+                                fumigación, asueto a mitad de jornada, etc.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-remoto">
@@ -971,27 +1096,27 @@
                             <p>También podés elegir vos mismo el día a compensar, en el campo "Fecha compensada" del
                                 editor (con el botón de al lado podés pegar la sugerencia automática o limpiar el
                                 campo). Una referencia elegida a mano no tiene el límite de 14 días, y tiene
-                                <strong>prioridad</strong> sobre las asignaciones automáticas.
-                            </p>
+                                <strong>prioridad</strong> sobre las asignaciones automáticas.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-notificaciones">
                             <h4>Notificaciones</h4>
-                            <p>Desde Ajustes → Notificaciones podés activar una notificación push para avisarte cuando
-                                se cumpla el objetivo del día.</p>
-                            <p><strong>Notificar horario cumplido:</strong> Es el interruptor para habilitar las
-                                alertas. Si al
-                                activarlo ya había un registro en curso, se programa la notificación para ese fichaje.
-                            </p>
+                            <p>Cuando cargás más de 15 registros normales, la app te avisa que podés habilitar las
+                                notificaciones de salida (siempre que tu navegador las soporte y no las hayas
+                                bloqueado). El aviso aparece al abrir la app, hasta 3 veces. Podés habilitarlas desde
+                                Ajustes → Notificaciones o tocando el aviso; ahí también podés ajustarlas.</p>
+                            <p><strong>Notificar horario cumplido:</strong> Es el interruptor de las alertas. La primera
+                                vez que se programa una, el navegador te pide permiso, y es necesario aceptarlo para
+                                recibirlas. Si al activarlo ya había un registro en curso, se programa la notificación
+                                para ese fichaje.</p>
                             <p><strong>Incluir banco de horas:</strong> La notificación se programa en función de la
                                 salida estimada con el banco de horas, ya sea por horas extra o descuentos.</p>
                             <p><strong>Solo el último día hábil:</strong> Es una subopción de la anterior. Si está
                                 activa, el banco de horas se considera únicamente para el último día hábil de la semana,
                                 teniendo en cuenta los registros especiales.</p>
                             <p>El campo <strong>¿Cuándo?</strong> define con cuántos minutos de anticipación a la hora
-                                de
-                                salida calculada llegará la notificación. Por defecto, se usa la hora de salida exacta.
-                            </p>
+                                de salida calculada llegará la notificación. Por defecto, se usa la hora de salida
+                                exacta.</p>
                             <p>Las notificaciones dependen de que el navegador o dispositivo tenga los permisos
                                 concedidos y de que haya conexión a internet. Recordá que el modo de ahorro de energía
                                 puede retrasarlas y la cuota de Cloudflare puede limitarlas.</p>
@@ -999,24 +1124,101 @@
 
                         <section class="ayuda-seccion" id="ayuda-sec-perfiles">
                             <h4>Perfiles</h4>
-                            <p>Podés tener varios perfiles (por ejemplo, distintos trabajos) con registros, objetivos y
-                                ajustes totalmente independientes entre sí. Se cambia de perfil desde el botón situado
-                                en el borde superior derecho de la app.</p>
+                            <p>Podés tener hasta 9 perfiles (por ejemplo, distintos trabajos), cada uno con sus propios
+                                registros, objetivos, notificaciones, opciones de estadísticas, fondo y orden de
+                                tarjetas. Se cambia de perfil desde el botón situado en el borde superior derecho de la
+                                app: tocá el que quieras usar y queda marcado como <strong>Activo</strong>.</p>
+                            <p>Para crear uno nuevo, escribí el nombre en "Agregar perfil" y tocá el botón de al lado.
+                                Con el lápiz de cada perfil podés renombrarlo o eliminarlo.</p>
+                            <p>El tema, el formato de tiempo corto, el popup del calendario, recordar el estado de las
+                                tarjetas y el token de GitHub son comunes a todos los perfiles.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-ajustes">
+                            <h4>Ajustes</h4>
+                            <p>Se abren desde Perfiles → Ajustes.</p>
+                            <p><strong>Horas diarias:</strong> tu objetivo global por jornada. La fila <em>Aplicar a
+                                    registros anteriores</em> aplica ese valor a todos los registros existentes.</p>
+                            <p><strong>Días laborales:</strong> los días de la semana que trabajás, con el total
+                                semanal. <em>Historial de días laborales</em> permite ver y editar los tramos, es decir,
+                                desde qué fecha rige cada combinación de días.</p>
+                            <p><strong>Interfaz:</strong> fondo de la tarjeta principal, Auto popup calendario (PC),
+                                Recordar estado de tarjetas (mantiene expandidas o colapsadas las tarjetas entre
+                                sesiones) y Formato de tiempo corto (5h 9m en vez de horas completas).</p>
+                            <p><strong>Tarjetas y posición:</strong> mostrá u ocultá Fichar, Estadísticas y Registros, y
+                                arrastralas para cambiar el orden.</p>
+                            <p><strong>Estadísticas:</strong> "No descontar tiempo fuera" (las salidas no restan del
+                                total), "No cubrir con banco de horas" (el banco no compensa automáticamente lo que
+                                falta para el objetivo) y "Objetivo diario global" (aplica el mismo objetivo a todos los
+                                registros en vez de definirlo por día).</p>
+                            <p><strong>Tema:</strong> el botón de tema (en Perfiles y en Ajustes) recorre claro, oscuro,
+                                rosa, verde, azul, lila y crema.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-datos">
                             <h4>Dónde se guardan tus datos</h4>
                             <p>Todo se guarda localmente en tu dispositivo, en el almacenamiento del navegador
-                                (localStorage). Si borrás el historial del navegador, los datos se perderán.</p>
+                                (localStorage). Si borrás el historial del navegador, los datos se perderán; por eso
+                                conviene hacer backups o usar GitHub Gist.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-respaldo">
-                            <h4>Backup y sincronización</h4>
-                            <p>Desde Perfiles → Ajustes → Respaldar podés exportar un archivo con todos tus registros,
-                                o usar "Restaurar" para importar un backup en este u otro dispositivo.</p>
-                            <p>Si preferís no hacerlo a mano, el menú de GitHub Gist te permite sincronizar
-                                automáticamente entre dispositivos creando un token con tu cuenta de GitHub (por
-                                seguridad, usá solamente el scope "gist").</p>
+                            <h4>Backup y restauración</h4>
+                            <p>Desde Perfiles → Ajustes → Respaldar exportás un archivo con los datos del perfil activo.
+                                Podés elegir entre <strong>Todo el perfil</strong>, <strong>Mes actual</strong> o
+                                <strong>Rango personalizado</strong> (con fechas desde y hasta).</p>
+                            <p>Con <strong>Restaurar</strong> importás un backup en este u otro dispositivo: elegís el
+                                archivo y decidís si querés <strong>Combinar</strong> (une el archivo con tus datos
+                                locales) o <strong>Reemplazar</strong> (sustituye tus datos locales).</p>
+                            <p><strong>Restablecer</strong> elimina los registros del perfil activo y devuelve su
+                                configuración a los valores por defecto, sin afectar a los demás perfiles. Antes te pide
+                                confirmación.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-gist">
+                            <h4>GitHub Gist</h4>
+                            <p>Desde Ajustes → Datos → GitHub Gist podés guardar los datos de tu perfil en un Gist
+                                secreto de tu cuenta (no aparece en listados, pero cualquiera que tenga el enlace puede
+                                verlo) y usarlos entre dispositivos. Necesitás un token de GitHub: el botón junto al
+                                campo abre la página para crearlo ya con el único permiso necesario (<em>gist</em>). Si
+                                dejás vacío el Gist ID, la primera vez que subas se crea uno nuevo.</p>
+                            <p><strong>Estado:</strong> arriba del modal ves si estás <em>Sin configurar</em>, con
+                                <em>Falta el Gist ID</em> o <em>Conectado</em>, y la fecha de la última sincronización.
+                                Con solo el token ya podés subir; para bajar y para la sincronización automática hace
+                                falta también el Gist ID.</p>
+                            <p><strong>Subir y Bajar:</strong> <em>Subir</em> reemplaza el contenido del Gist con los
+                                registros y la configuración del perfil activo (horas diarias, días laborales e
+                                historial). <em>Bajar</em> abre el <em>Resumen de datos</em>, donde ves cuántos
+                                registros cambian, elegís entre Combinar y Reemplazar y confirmás con Aplicar. Si el
+                                archivo del Gist fue alterado, la app te lo avisa antes de continuar.</p>
+                            <p><strong>Combinar y Reemplazar:</strong> <em>Combinar</em> agrega los días que solo están
+                                en el Gist y completa la salida o el tiempo fuera que falten en tus registros locales,
+                                sin tocar tu configuración. <em>Reemplazar</em> deja exactamente los registros del Gist
+                                y aplica también sus horas diarias y días laborales; si tenés registros locales que no
+                                están en el Gist, se eliminan (el resumen te avisa cuántos). Ambas se pueden deshacer.
+                            </p>
+                            <p><strong>Sincronización automática:</strong> al tocarla alterna entre <em>Sin
+                                    automatizar</em> (solo manual), <em>Restaurar</em> (baja tus datos de Gist al abrir
+                                la app) y <em>Respaldar</em> (los sube al abrir la app). Solo ocurre al abrir la app,
+                                dentro de la franja horaria y sin superar el límite por hora.</p>
+                            <p><strong>Al bajar datos:</strong> se habilita solo con <em>Restaurar</em> y define qué
+                                hace la bajada automática: <em>Combinar</em> o <em>Reemplazar</em> (por defecto),
+                                aplicado directamente, sin mostrar el resumen. Con el botón Bajar siempre elegís vos.
+                            </p>
+                            <p><strong>Límites y horario:</strong> con la sincronización automática activa, podés fijar
+                                cuántas bajadas (o subidas, según el modo) se permiten por hora (0 = sin límite; por
+                                defecto, 2 bajadas o 1 subida) y la franja horaria (Desde / Hasta, puede cruzar la
+                                medianoche) en la que se ejecuta. Por defecto es de 21:00 a 00:00.</p>
+                            <p><strong>Por perfil:</strong> el token y el límite por hora son comunes a todos los
+                                perfiles; el Gist ID, el modo automático, el comportamiento al bajar y la franja horaria
+                                son de cada perfil. Los cambios de conexión, modo, límites y franja se guardan con el
+                                botón <strong>Guardar</strong> (Subir y Bajar guardan antes el token y el Gist ID).</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-instalar">
+                            <h4>Instalar la app</h4>
+                            <p>Si tu navegador lo permite, aparece el botón "Instalar aplicación" en la parte superior
+                                para agregar la app a tu dispositivo y abrirla como cualquier otra.</p>
                         </section>
                     </div>
                 </div>
@@ -1048,83 +1250,151 @@
                 </h3>
             </div>
             <div class="modal-panel-body custom-scroll">
-                <div class="form-group">
-                    <label for="gist-token">Personal Access Token</label>
-                    <div class="input-with-btn">
-                        <input type="password" id="gist-token" placeholder="ghp_xxxxxxxxxxxx" maxlength="256"
-                            autocomplete="off" />
-                        <button class="time-btn" id="btn-toggle-token" title="Mostrar/ocultar token">
-                            <svg class="icon">
-                                <use href="#icon-eye" />
-                            </svg>
-                        </button>
-                        <button class="time-btn" id="btn-crear-token" title="Crear token en GitHub">
-                            <svg class="icon">
-                                <use href="#icon-plus" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="gist-id">Gist ID</label>
-                    <div class="input-with-btn">
-                        <input type="text" id="gist-id" placeholder="Dejar vacío para crear uno nuevo" maxlength="40"
-                            autocomplete="off" />
-                        <button class="time-btn" id="btn-gist-abrir" title="Abrir en GitHub">
-                            <svg class="icon">
-                                <use href="#icon-external-link" />
-                            </svg>
-                        </button>
+                <div class="gist-estado" id="gist-estado">
+                    <svg class="icon">
+                        <use href="#icon-cloud" />
+                    </svg>
+                    <div>
+                        <div class="gist-estado-titulo" id="gist-estado-titulo">Sin configurar</div>
+                        <div class="settings-list-desc" id="gist-ultima-sync">Sin sincronizar</div>
                     </div>
                 </div>
 
                 <div class="config-actions">
-                    <label>Acciones</label>
-                    <div class="flex-row">
-                        <button class="btn-export flex-1" id="btn-gist-subir">
+                    <label>Conexión</label>
+                    <div class="settings-list">
+                        <button id="btn-gist-panel-conexion" class="gist-panel-toggle" aria-expanded="false"
+                            aria-controls="gist-panel-conexion">
                             <svg class="icon">
-                                <use href="#icon-cloud-upload" />
-                            </svg> Subir
+                                <use href="#icon-gist" />
+                            </svg>
+                            <span class="settings-list-text">
+                                <span>Token y Gist ID</span>
+                                <span class="settings-list-desc" id="gist-conexion-resumen">Sin configurar</span>
+                            </span>
+                            <svg class="icon icon-indicator">
+                                <use href="#icon-chevron-right" />
+                            </svg>
                         </button>
-                        <button class="btn-backup flex-1" id="btn-gist-bajar">
-                            <svg class="icon">
-                                <use href="#icon-cloud-download" />
-                            </svg> Bajar
-                        </button>
+                        <div class="gist-panel collapsible" id="gist-panel-conexion">
+                            <div class="collapsible-inner">
+                                <div class="gist-panel-contenido">
+                                    <div class="form-group">
+                                        <label for="gist-token">Personal Access Token</label>
+                                        <div class="input-with-btn">
+                                            <input type="password" id="gist-token" placeholder="ghp_xxxxxxxxxxxx"
+                                                maxlength="256" autocomplete="off" />
+                                            <button class="time-btn" id="btn-toggle-token"
+                                                title="Mostrar/ocultar token">
+                                                <svg class="icon">
+                                                    <use href="#icon-eye" />
+                                                </svg>
+                                            </button>
+                                            <button class="time-btn" id="btn-crear-token" title="Crear token en GitHub">
+                                                <svg class="icon">
+                                                    <use href="#icon-plus" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="gist-id">Gist ID</label>
+                                        <div class="input-with-btn">
+                                            <input type="text" id="gist-id"
+                                                placeholder="Dejar vacío para crear uno nuevo" maxlength="40"
+                                                autocomplete="off" />
+                                            <button class="time-btn" id="btn-gist-abrir" title="Abrir en GitHub">
+                                                <svg class="icon">
+                                                    <use href="#icon-external-link" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="form-group form-group-mt-half">
+
+                <div class="config-actions">
                     <label>Automatización</label>
-                    <div class="flex-row">
-                        <button id="btn-toggle-gist-backup" class="flex-1">
-                            <span id="label-gist-backup">Sin automatizar</span>
-                            <span id="hint-gist-backup">—</span>
+                    <div class="settings-list">
+                        <button id="btn-toggle-gist-backup">
+                            <svg class="icon">
+                                <use href="#icon-cloud" />
+                            </svg>
+                            <span class="settings-list-text">
+                                <span>Sincronización automática</span>
+                                <span class="settings-list-desc" id="hint-gist-backup"></span>
+                                <span class="gist-valor" id="label-gist-backup">Sin automatizar</span>
+                            </span>
                         </button>
                         <button id="btn-toggle-gist-merge">
                             <svg class="icon" id="icon-gist-merge">
                                 <use href="#icon-replace-swap" />
                             </svg>
-                            <span id="hint-gist-merge">Reemplazar</span>
+                            <span class="settings-list-text">
+                                <span>Al bajar datos</span>
+                                <span class="settings-list-desc" id="desc-gist-merge"></span>
+                                <span class="gist-valor" id="hint-gist-merge">Reemplazar</span>
+                            </span>
                         </button>
-                    </div>
-                    <div id="gist-limite-sync">
-                        <div class="form-group">
-                            <label id="gist-limite-label">Límite por hora</label>
-                            <div class="input-number-group input-number-group--embed">
-                                <span id="gist-limite-valor" class="input-number-display">0</span>
-                                <button class="btn-increment">+</button>
-                                <button class="btn-increment">-</button>
+                        <button id="btn-gist-panel-limites" class="gist-panel-toggle" aria-expanded="false"
+                            aria-controls="gist-panel-limites">
+                            <svg class="icon">
+                                <use href="#icon-clock" />
+                            </svg>
+                            <span class="settings-list-text">
+                                <span>Límites y horario</span>
+                                <span class="settings-list-desc" id="gist-limites-resumen">—</span>
+                            </span>
+                            <svg class="icon icon-indicator">
+                                <use href="#icon-chevron-right" />
+                            </svg>
+                        </button>
+                        <div class="gist-panel collapsible" id="gist-panel-limites">
+                            <div class="collapsible-inner">
+                                <div class="gist-panel-contenido">
+                                    <div id="gist-limite-sync">
+                                        <div class="form-group">
+                                            <label id="gist-limite-label">Límite por hora</label>
+                                            <div class="input-number-group input-number-group--embed">
+                                                <button id="btn-gist-limite-dec" class="btn-increment" type="button"
+                                                    title="Disminuir límite">-</button>
+                                                <span id="gist-limite-valor" class="input-number-display">0</span>
+                                                <button id="btn-gist-limite-inc" class="btn-increment" type="button"
+                                                    title="Incrementar límite">+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div id="gist-rango-horario">
+                                        <label>Desde</label>
+                                        <input type="text" id="gist-rango-desde" inputmode="numeric" maxlength="5"
+                                            aria-label="Desde" />
+                                        <label>Hasta</label>
+                                        <input type="text" id="gist-rango-hasta" inputmode="numeric" maxlength="5"
+                                            aria-label="Hasta" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div id="gist-rango-horario">
-                        <label>Desde</label>
-                        <input type="text" id="gist-rango-desde" inputmode="numeric" maxlength="5" aria-label="Desde" />
-                        <label>Hasta</label>
-                        <input type="text" id="gist-rango-hasta" inputmode="numeric" maxlength="5" aria-label="Hasta" />
-                    </div>
                 </div>
-                <div class="config-hint-text" id="gist-ultima-sync">Sin sincronizar</div>
+
+                <div class="gist-acciones">
+                    <button id="btn-gist-subir">
+                        <svg class="icon">
+                            <use href="#icon-cloud-upload" />
+                        </svg>
+                        <span>Subir</span>
+                    </button>
+                    <button id="btn-gist-bajar">
+                        <svg class="icon">
+                            <use href="#icon-cloud-download" />
+                        </svg>
+                        <span>Bajar</span>
+                    </button>
+                </div>
             </div>
             <div class="modal-panel-footer">
                 <div class="btn-group">
@@ -1148,12 +1418,15 @@
     <div class="modal" id="modal-gist-merge" role="dialog" aria-modal="true" aria-labelledby="modal-gist-merge-titulo">
         <div class="modal-content">
             <div class="modal-panel-header">
-                <h3 id="modal-gist-merge-titulo">
-                    <span class="modal-title-block">
+                <h3 id="modal-gist-merge-titulo" class="gist-merge-titulo">
+                    <span class="gist-merge-badge">
                         <svg class="icon">
                             <use href="#icon-cloud-download" />
                         </svg>
-                        Resumen de datos
+                    </span>
+                    <span class="gist-merge-titulo-txt">
+                        <span>Resumen de datos</span>
+                        <small>Elegí cómo aplicar los datos</small>
                     </span>
                 </h3>
             </div>
@@ -1162,20 +1435,12 @@
             </div>
             <div class="modal-panel-footer">
                 <div class="btn-group">
-                    <button class="btn-backup" id="btn-gist-merge-combinar">
+                    <button class="btn-edit" id="btn-gist-merge-aplicar">
                         <svg class="icon">
-                            <use href="#icon-combine" />
+                            <use href="#icon-check" />
                         </svg>
-                        Combinar
+                        Aplicar
                     </button>
-                    <button class="btn-export" id="btn-gist-merge-reemplazar">
-                        <svg class="icon">
-                            <use href="#icon-replace-swap" />
-                        </svg>
-                        Reemplazar
-                    </button>
-                </div>
-                <div class="btn-group">
                     <button class="btn-cancel" id="btn-gist-merge-cancelar">
                         <svg class="icon">
                             <use href="#icon-cancelar" />
@@ -1267,11 +1532,11 @@
                     <div class="form-group">
                         <label>Objetivo</label>
                         <div class="input-number-group input-number-group--embed">
+                            <button type="button" class="btn-increment" id="btn-edit-objetivo-dec"
+                                title="Disminuir objetivo">-</button>
                             <span id="edit-objetivo" class="input-number-display" data-valor="0">0h</span>
                             <button type="button" class="btn-increment" id="btn-edit-objetivo-inc"
                                 title="Incrementar objetivo">+</button>
-                            <button type="button" class="btn-increment" id="btn-edit-objetivo-dec"
-                                title="Disminuir objetivo">-</button>
                         </div>
                     </div>
                 </div>
@@ -1405,7 +1670,7 @@
                     Secciones del reporte
                 </span>
             </h3>
-            <div class="config-actions" id="reporte-secciones-lista"></div>
+            <div class="config-actions settings-list" id="reporte-secciones-lista"></div>
             <div class="btn-group">
                 <button class="btn-export" id="btn-confirmar-reporte">
                     <svg class="icon">
@@ -1528,36 +1793,47 @@
                 </span>
             </h3>
             <div class="form-group">
-                <button id="btn-toggle-push-habilitado">
-                    <svg class="icon">
-                        <use href="#icon-bell" />
-                    </svg>
-                    <span>Notificar horario cumplido</span>
-                    <svg class="icon icon-indicator">
-                        <use href="#icon-dot" />
-                    </svg>
-                </button>
+                <div class="settings-list">
+                    <button id="btn-toggle-push-habilitado">
+                        <svg class="icon">
+                            <use href="#icon-bell" />
+                        </svg>
+                        <span class="settings-list-text">
+                            <span>Notificar horario cumplido</span>
+                            <span class="settings-list-desc">Te avisa cuando llega la hora de terminar tu jornada con
+                                una notificación</span>
+                        </span>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </button>
+                </div>
             </div>
             <div class="config-actions form-group ">
                 <label>Banco de horas</label>
-                <button id="btn-toggle-push-buffer">
-                    <svg class="icon">
-                        <use href="#icon-shield" />
-                    </svg>
-                    <span>Incluir banco de horas</span>
-                    <svg class="icon icon-indicator">
-                        <use href="#icon-dot" />
-                    </svg>
-                </button>
-                <button id="btn-toggle-push-buffer-ultimo-dia">
-                    <svg class="icon">
-                        <use href="#icon-shield" />
-                    </svg>
-                    <span>Solo el último día hábil</span>
-                    <svg class="icon icon-indicator">
-                        <use href="#icon-dot" />
-                    </svg>
-                </button>
+                <div class="settings-list">
+                    <button id="btn-toggle-push-buffer">
+                        <svg class="icon">
+                            <use href="#icon-shield" />
+                        </svg>
+                        <span class="settings-list-text">
+                            <span>Incluir banco de horas</span>
+                            <span class="settings-list-desc">Ajusta el aviso según las horas que debés o tenés a favor
+                                en la semana</span>
+                        </span>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </button>
+                    <button id="btn-toggle-push-buffer-ultimo-dia">
+                        <svg class="icon">
+                            <use href="#icon-shield" />
+                        </svg>
+                        <span class="settings-list-text">
+                            <span>Solo el último día hábil</span>
+                            <span class="settings-list-desc">Aplica el ajuste anterior únicamente el último día hábil de
+                                la
+                                semana, no todos los días</span>
+                        </span>
+                        <span class="toggle-switch" aria-hidden="true"></span>
+                    </button>
+                </div>
             </div>
             <div class="form-group">
                 <label>¿Cuándo?</label>

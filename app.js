@@ -12,6 +12,7 @@
         VISTA_ACTUAL: 'vistaActual',
         MODO_ESTADISTICAS: 'modoEstadisticas',
         HOVER_POPUP: 'hoverPopupCalendario',
+        REDUCIR_ANIMACIONES: 'reducirAnimaciones',
         FORMATO_CORTO_STATS: 'formatoCortoStats',
         DIAS_HABILES: 'diasHabiles',
         HISTORIAL_DIAS_HABILES: 'historialDiasHabiles',
@@ -37,7 +38,7 @@
         PUSH_BUFFER_SOLO_ULTIMO_DIA: 'pushBufferSoloUltimoDia',
         PUSH_HABILITADO: 'pushHabilitado',
         PUSH_INFO_ACTIVA: 'pushInfoActiva',
-        PUSH_AVISO_COUNT: 'pushAvisoNuevaFuncionCount',
+        PUSH_AVISOS_RESTANTES: 'pushAvisosRestantes',
 
         BREAK_TIME: (perfilId) => `breakStartTime_${perfilId}`,
         GIST_LIMITE: (tipo) => `gistSyncLimite_${tipo}`,
@@ -53,6 +54,65 @@
     const EPS_HORAS = 1e-6;
     const horasGte = (valor, objetivo) => (valor - objetivo) > -EPS_HORAS;
     const horasEq = (valor, objetivo) => Math.abs(valor - objetivo) < EPS_HORAS;
+
+    // ====================================================================
+    // COLAPSABLES — shared helper
+    // ====================================================================
+    function setColapsable(el, abierto, { animar = true } = {}) {
+        if (!el) return;
+        if (animar) {
+            el.classList.toggle('expanded', abierto);
+            return;
+        }
+        el.classList.add('sin-transicion');
+        el.classList.toggle('expanded', abierto);
+        void el.offsetHeight;
+        el.classList.remove('sin-transicion');
+    }
+
+    // ====================================================================
+    // MOTION
+    // ====================================================================
+    const Motion = (function () {
+        const MODOS = ['auto', 'on', 'off'];
+        const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+        let modo = null;
+        let iniciado = false;
+
+        function _modo() {
+            if (modo === null) {
+                const guardado = StorageHelper.getItem(STORAGE_KEYS.REDUCIR_ANIMACIONES, 'auto');
+                modo = MODOS.includes(guardado) ? guardado : 'auto';
+            }
+            return modo;
+        }
+        function reducido() {
+            const m = _modo();
+            return m === 'on' || (m === 'auto' && mq.matches);
+        }
+        function _aplicar() {
+            document.documentElement.setAttribute('data-motion', reducido() ? 'reduce' : 'full');
+        }
+        function init() {
+            if (iniciado) return;
+            iniciado = true;
+            mq.addEventListener?.('change', _aplicar);
+            _aplicar();
+        }
+        function setModo(nuevo) {
+            if (!MODOS.includes(nuevo)) return;
+            modo = nuevo;
+            StorageHelper.setItem(STORAGE_KEYS.REDUCIR_ANIMACIONES, nuevo);
+            _aplicar();
+        }
+        function siguienteModo() {
+            setModo(MODOS[(MODOS.indexOf(_modo()) + 1) % MODOS.length]);
+        }
+        return {
+            init, reducido, setModo, siguienteModo, modo: _modo,
+            scrollBehavior: () => (reducido() ? 'auto' : 'smooth')
+        };
+    })();
 
     // ====================================================================
     // PWA INSTALLER MODULE
@@ -79,9 +139,7 @@
             window.addEventListener('appinstalled', () => {
                 if (btnInstall) btnInstall.style.display = 'none';
                 deferredPrompt = null;
-                if (window.UILogic) {
-                    UILogic.mostrarToast('¡App instalada con éxito!', 'success');
-                }
+                UICore.mostrarToast('¡App instalada con éxito!', 'success');
             });
         }
 
@@ -93,7 +151,32 @@
             deferredPrompt = null;
         }
 
+        function bindEventos() {
+            $('btn-install')?.addEventListener('click', () => instalarApp());
+        }
+
+        function registrarServiceWorker() {
+            if (!('serviceWorker' in navigator)) return;
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('SW registrado:', registration.scope);
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    UICore.mostrarToast('Se actualizará la versión al recargar', 'info');
+                                }
+                            });
+                        });
+                    })
+                    .catch(err => console.error('❌ Error SW:', err));
+            });
+        }
+
         return {
+            bindEventos,
+            registrarServiceWorker,
             init,
             instalarApp
         };
@@ -291,7 +374,36 @@
             return `${d}/${m}/${anioCompleto ? y : y.slice(2)}`;
         }
 
+        function esFechaHabil(fecha, diasHabiles) {
+            const diaSemana = parsearFechaLocal(fecha).getDay();
+            if (Array.isArray(diasHabiles)) return diasHabiles.includes(diaSemana);
+            return diaSemana === 0 ? (diasHabiles === 7) : (diaSemana <= diasHabiles);
+        }
+
+        function esDiaAnterior(fecha, anterior) {
+            const d = parsearFechaLocal(fecha);
+            d.setDate(d.getDate() - 1);
+            return formatearFechaLocal(d) === anterior;
+        }
+
+        function agruparMesesPorAnio(mesesOrdenados) {
+            const map = new Map();
+            mesesOrdenados.forEach(mesAnio => {
+                const anio = mesAnio.substring(0, 4);
+                if (!map.has(anio)) map.set(anio, []);
+                map.get(anio).push(mesAnio);
+            });
+            return map;
+        }
+
+        function nombreMesCapitalizado(mesAnio) {
+            const [, m] = mesAnio.split('-');
+            const nombre = nombreMesPorIndice(m - 1);
+            return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+        }
+
         return {
+            esFechaHabil, esDiaAnterior, agruparMesesPorAnio, nombreMesCapitalizado,
             validarFecha, validarHora, normalizarMinutosSueltos, parsearFechaLocal, formatearFechaLocal,
             obtenerFechaHoy, obtenerHoraActual, minutosAHora, fechaLocalISOFull,
             horaAMinutos, sumarMinutosAHora, descomponerHorasDecimales,
@@ -307,7 +419,7 @@
     const PushReminder = (function () {
         const WORKER_URL = 'https://horarios-push.lushibosca.workers.dev';
         const VAPID_PUBLIC_KEY = 'BMU-iLslFVrTxUKMHRUn8r_CtyCLX41ppVTUgdATAdPYE8ayJ0U_ew6d50CmvghkIdv34fGuXvf-KP5W62rs3ms';
-        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9';
+        const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9'; // que mira bobo, anda paya
         const MARGEN_CRON_MS = 60 * 1000;
 
         function _headersWorker() {
@@ -417,16 +529,29 @@
         function setHabilitado(valor) {
             StorageHelper.setItem(STORAGE_KEYS.PUSH_HABILITADO, !!valor, true);
         }
-        const UMBRAL_REGISTROS_ACTIVACION = 10;
+        const UMBRAL_REGISTROS_ACTIVACION = 15;
+        const AVISOS_INICIALES = 3;
         function _soportaPush() {
             return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
         }
         function puedeHabilitarse() {
             if (!_soportaPush()) return false;
             if (Notification.permission === 'denied') return false;
-            const registros = window.DataManagement?.registros?.() || [];
+            const registros = DataManagement.registros() || [];
             const regulares = registros.filter(r => !TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida));
             return regulares.length > UMBRAL_REGISTROS_ACTIVACION;
+        }
+        function _getAvisosRestantes() {
+            return StorageHelper.getNumber(STORAGE_KEYS.PUSH_AVISOS_RESTANTES, AVISOS_INICIALES, true);
+        }
+        // Hay que avisar si el usuario nunca eligió (activar/desactivar), se cumplen las condiciones
+        // y todavía quedan avisos del contador (arranca en AVISOS_INICIALES, uno por recarga).
+        function avisoPendiente() {
+            const hayEleccion = [true, false].some(porPerfil => StorageHelper.getItem(STORAGE_KEYS.PUSH_HABILITADO, null, porPerfil) !== null);
+            return !hayEleccion && puedeHabilitarse() && _getAvisosRestantes() > 0;
+        }
+        function consumirAviso() {
+            StorageHelper.setItem(STORAGE_KEYS.PUSH_AVISOS_RESTANTES, Math.max(0, _getAvisosRestantes() - 1), true);
         }
 
         function _guardarInfoActiva(fechaISO, targetTimeMs) {
@@ -585,8 +710,7 @@
                 STORAGE_KEYS.PUSH_ANTICIPACION_MIN,
                 STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL,
                 STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA,
-                STORAGE_KEYS.PUSH_INFO_ACTIVA,
-                STORAGE_KEYS.PUSH_AVISO_COUNT
+                STORAGE_KEYS.PUSH_INFO_ACTIVA
             ].forEach(k => {
                 StorageHelper.removeItem(k, true);
                 StorageHelper.removeItem(k, false);
@@ -596,7 +720,7 @@
         return {
             programarFinDeJornada, cancelarFinDeJornada, limpiarNotificacionVisible,
             getAnticipacionMin, setAnticipacionMin, setBufferSoloUltimoDia,
-            getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado, puedeHabilitarse,
+            getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado, puedeHabilitarse, avisoPendiente, consumirAviso,
             getBufferSoloUltimoDia, calcularTarget: _calcularTarget,
             targetProgramadoParaHoy: () => obtenerInfoActiva()?.targetTimeMs ?? null,
             restablecer,
@@ -805,7 +929,7 @@
     })();
 
     // ====================================================================
-    // THEME MANAGER (themes: light, dark, pink, green, blue)
+    // THEME MANAGER MODULE
     // ====================================================================
     const ThemeManager = (function () {
         const TEMAS = ['light', 'dark', 'pink', 'green', 'blue', 'lilac', 'crema'];
@@ -852,7 +976,6 @@
         function inicializar() {
             cargarPerfiles();
             actualizarSelector();
-            actualizarNombrePerfil();
             _inicializado = true;
         }
 
@@ -875,15 +998,6 @@
             const savedPerfiles = StorageHelper.setItem(STORAGE_KEYS.PERFILES, perfiles);
             const savedActivo = StorageHelper.setItem(STORAGE_KEYS.PERFIL_ACTIVO, perfilActual);
             return savedPerfiles && savedActivo;
-        }
-
-        function actualizarNombrePerfil() {
-            const nombreInput = document.getElementById('nombre-perfil-actual');
-            if (nombreInput && perfiles[perfilActual]) nombreInput.value = perfiles[perfilActual].nombre;
-            const btnEliminar = document.getElementById('btn-eliminar-perfil-modal');
-            if (btnEliminar) {
-                btnEliminar.disabled = (perfilActual === 'default');
-            }
         }
 
         function guardarDatosPerfilActual() {
@@ -973,6 +1087,83 @@
         let _enAlternanciaHaciaAdelante = false;
         let _enAlternanciaHaciaAtras = false;
 
+        let _ultimoTrigger = null;
+        let _ultimoClickCoords = null;
+        const _origenesModal = {};
+        const _triggerInfoPorModal = {};
+
+        window.addEventListener('pointerdown', (event) => {
+            if (event.target.classList.contains('modal')) return;
+            _ultimoClickCoords = { x: event.clientX, y: event.clientY };
+            _ultimoTrigger = event.target.closest('button, [role="button"], a, .card, .registro-item, .chip, tr, td, [data-modal], .btn-action, .icon-btn') || event.target;
+        }, true);
+
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                const active = document.activeElement;
+                if (active && active !== document.body && !active.classList.contains('modal')) {
+                    _ultimoTrigger = active;
+                    const r = active.getBoundingClientRect();
+                    _ultimoClickCoords = { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+                }
+            }
+        }, true);
+
+        function _calcularOrigen(triggerEl, coords, content) {
+            let origenX = window.innerWidth / 2;
+            let origenY = window.innerHeight / 2;
+
+            if (triggerEl && document.body.contains(triggerEl)) {
+                const tr = triggerEl.getBoundingClientRect();
+                if (tr.width > 0 || tr.height > 0) {
+                    origenX = tr.left + tr.width / 2;
+                    origenY = tr.top + tr.height / 2;
+                } else if (coords && (coords.x !== undefined)) {
+                    origenX = coords.x;
+                    origenY = coords.y;
+                }
+            } else if (coords && (coords.x !== undefined)) {
+                origenX = coords.x;
+                origenY = coords.y;
+            }
+
+            const w = content.offsetWidth || 450;
+            const h = content.offsetHeight || 350;
+            const left = (window.innerWidth - w) / 2;
+            const top = (window.innerHeight - h) / 2;
+
+            const relX = Math.round(origenX - left);
+            const relY = Math.round(origenY - top);
+            return `${relX}px ${relY}px`;
+        }
+
+        function _aplicarOrigenAnimacion(modal, modalId) {
+            const content = modal.querySelector('.modal-content');
+            if (!content) return;
+
+            if (_enAlternanciaHaciaAtras && _origenesModal[modalId]) {
+                content.style.transformOrigin = _origenesModal[modalId];
+                return;
+            }
+
+            const originStr = _calcularOrigen(_ultimoTrigger, _ultimoClickCoords, content);
+            content.style.transformOrigin = originStr;
+            _origenesModal[modalId] = originStr;
+            _triggerInfoPorModal[modalId] = { trigger: _ultimoTrigger, coords: _ultimoClickCoords };
+        }
+
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('.modal.show').forEach(modal => {
+                const content = modal.querySelector('.modal-content');
+                const info = _triggerInfoPorModal[modal.id];
+                if (content && info) {
+                    const origen = _calcularOrigen(info.trigger, info.coords, content);
+                    content.style.transformOrigin = origen;
+                    _origenesModal[modal.id] = origen;
+                }
+            });
+        }, { passive: true });
+
         function _getAccionVolver(modalId) {
             return _accionesVolver[modalId] || null;
         }
@@ -1021,6 +1212,9 @@
             const modal = document.getElementById(modalId);
             if (!modal) return;
 
+            if (callback) callback();
+
+            _aplicarOrigenAnimacion(modal, modalId);
             modal.classList.add('show');
             document.body.classList.add('modal-open');
 
@@ -1032,13 +1226,16 @@
                 modal.addEventListener('mousedown', _handleOverlayMousedown);
                 modal.addEventListener('click', handleOutsideClick);
             }, 100);
-
-            if (callback) callback();
         }
 
         function cerrar(modalId, callback = null) {
             const modal = document.getElementById(modalId);
             if (!modal) return;
+
+            const content = modal.querySelector('.modal-content');
+            if (content && _origenesModal[modalId]) {
+                content.style.transformOrigin = _origenesModal[modalId];
+            }
 
             const estabaAbierto = modal.classList.contains('show');
             modal.classList.remove('show');
@@ -1056,6 +1253,13 @@
             }
 
             if (callback) callback();
+
+            setTimeout(() => {
+                if (!modal.classList.contains('show')) {
+                    delete _origenesModal[modalId];
+                    delete _triggerInfoPorModal[modalId];
+                }
+            }, 350);
         }
 
         function alternar(modalIdCerrar, modalIdAbrir, callbackCerrar = null, callbackAbrir = null) {
@@ -1080,12 +1284,20 @@
 
         function cerrarTodos() {
             document.querySelectorAll('.modal.show').forEach(modal => {
+                const content = modal.querySelector('.modal-content');
+                if (content && _origenesModal[modal.id]) {
+                    content.style.transformOrigin = _origenesModal[modal.id];
+                }
                 modal.classList.remove('show');
                 modal.removeEventListener('mousedown', _handleOverlayMousedown);
                 modal.removeEventListener('click', handleOutsideClick);
             });
             Object.keys(_padres).forEach(k => delete _padres[k]);
             document.body.classList.remove('modal-open');
+            setTimeout(() => {
+                Object.keys(_origenesModal).forEach(k => delete _origenesModal[k]);
+                Object.keys(_triggerInfoPorModal).forEach(k => delete _triggerInfoPorModal[k]);
+            }, 350);
         }
 
         function confirmar(texto, labelOk = 'Confirmar', icono = '#icon-trash', opciones = {}) {
@@ -1403,8 +1615,55 @@
             return tipo ? { entrada: tipo.codigo, salida: tipo.codigo } : null;
         }
 
+        function agruparConsecutivos(registros) {
+            if (!registros || registros.length === 0) return [];
+            const idTipo = (r) => obtenerTipoPorCodigo(r.entrada, r.salida)?.id ?? null;
+
+            const resultado = [];
+            let i = 0;
+            while (i < registros.length) {
+                const actual = registros[i];
+                const tipoActual = idTipo(actual);
+                if (tipoActual === null) {
+                    resultado.push({ tipo: 'individual', registros: [actual] });
+                    i++; continue;
+                }
+
+                const grupo = [actual];
+                let j = i + 1;
+                while (j < registros.length) {
+                    const siguiente = registros[j];
+                    if (idTipo(siguiente) !== tipoActual) break;
+                    if (!TimeUtils.esDiaAnterior(grupo[grupo.length - 1].fecha, siguiente.fecha)) break;
+                    grupo.push(siguiente);
+                    j++;
+                }
+
+                resultado.push(grupo.length > 1
+                    ? { tipo: 'grupo', subtipo: tipoActual, registros: grupo }
+                    : { tipo: 'individual', registros: grupo }
+                );
+                i = j;
+            }
+            return resultado;
+        }
+
+        const notaDeGrupo = (grupo) => grupo.registros.find(r => r.notas)?.notas || '';
+
+        function mapaNotasPorRegistro(registros) {
+            const mapa = new Map();
+            agruparConsecutivos(registros).forEach(g => {
+                const notaGrupo = g.tipo === 'grupo' ? notaDeGrupo(g) : '';
+                g.registros.forEach(r => { if (r.notas || notaGrupo) mapa.set(r.id, r.notas || notaGrupo); });
+            });
+            return mapa;
+        }
+
         return {
             TIPOS,
+            agruparConsecutivos,
+            notaDeGrupo,
+            mapaNotasPorRegistro,
             esRegistroEspecial,
             obtenerTipoPorCodigo,
             obtenerTipoPorId,
@@ -1431,11 +1690,14 @@
             cerrarImportar: () => { },
             descargarJSON: () => { },
             flashCampoTipo: () => { },
+            forzarVista: (vista, fn) => fn(),
             iniciarTimerAutoCierreBotones: () => { },
             limpiarError: () => { },
             mostrarError: () => { },
             mostrarToast: () => { },
             obtenerNombrePerfilSafe: () => '',
+            prepararMostrarFaseAlRenderizar: () => { },
+            refrescarConfigSiVisible: () => { },
             resetearBoton: () => { },
             restaurarBotonGuardarEdicion: () => { },
             setBloqueoEdicion: () => { },
@@ -1618,13 +1880,13 @@
 
         async function _guardarConCicloSiHoy(idOrIds, esHoy, fase = null) {
             const ejecutar = async () => {
-                if (esHoy && fase) UILogic._prepararMostrarFaseAlRenderizar(fase);
+                if (esHoy && fase) notify.prepararMostrarFaseAlRenderizar(fase);
                 const ok = await guardarYActualizar(idOrIds);
-                if (!ok && esHoy && fase) UILogic._prepararMostrarFaseAlRenderizar(null);
+                if (!ok && esHoy && fase) notify.prepararMostrarFaseAlRenderizar(null);
                 return ok;
             };
             return esHoy && vistaActual === 'semana'
-                ? UILogic._forzarVista('diaria', ejecutar)
+                ? notify.forzarVista('diaria', ejecutar)
                 : ejecutar();
         }
 
@@ -1717,7 +1979,11 @@
             const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
             HistoryManager.saveState(registros, `salida ${s} (${TimeUtils.fechaCorta(reg.fecha)})`);
             const saved = await _guardarConCicloSiHoy(reg.id, esHoy, 'salida');
-            if (!saved) return;
+            if (!saved) {
+                notify.resetearBoton(btn);
+                notify.flashCampoTipo('error', 'btn-agregar');
+                return;
+            }
             PushReminder.cancelarFinDeJornada(reg.fecha);
             if (!usaHoraActual) {
                 notify.aplicarFeedbackCampos([
@@ -1734,7 +2000,7 @@
 
         function _sincronizarPushHoy() {
             const hoy = TimeUtils.obtenerFechaHoy();
-            const esDiaHabil = UILogic._esFechaHabil(hoy, diasHabilesEnFecha(hoy));
+            const esDiaHabil = TimeUtils.esFechaHabil(hoy, diasHabilesEnFecha(hoy));
             const abierto = esDiaHabil && registros.find(r => r.fecha === hoy && r.entrada && !r.salida);
             const habilitado = PushReminder.getHabilitado();
             const nuevoTarget = (habilitado && abierto)
@@ -1759,7 +2025,7 @@
             const { fin } = TimeUtils.obtenerSemanaRangoActual();
             let fecha = fin;
             for (let i = 0; i < 7; i++) {
-                if (UILogic._esFechaHabil(fecha, diasHabilesEnFecha(fecha))) {
+                if (TimeUtils.esFechaHabil(fecha, diasHabilesEnFecha(fecha))) {
                     const reg = registros.find(r => r.fecha === fecha);
                     const esEspecial = reg && TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
                     if (!esEspecial) return fecha;
@@ -1788,8 +2054,12 @@
             const detalleAccion = e && s ? `entrada ${e} y salida ${s}` : e ? `entrada ${e}` : `salida ${s}`;
             HistoryManager.saveState(registros, `${detalleAccion} (${TimeUtils.fechaCorta(f)})`);
             const saved = await _guardarConCicloSiHoy(nuevo.id, esHoy, 'entrada');
-            if (!saved) return;
-            if (esHoy && !s && UILogic._esFechaHabil(f, diasHabilesEnFecha(f))) {
+            if (!saved) {
+                notify.resetearBoton(btn);
+                notify.flashCampoTipo('error', 'btn-agregar');
+                return;
+            }
+            if (esHoy && !s && TimeUtils.esFechaHabil(f, diasHabilesEnFecha(f))) {
                 const bufferSemanal = _bufferSemanalParaPush(f);
                 PushReminder.programarFinDeJornada(nuevo.fecha, nuevo.entrada, nuevo.objetivoHoras, bufferSemanal);
             }
@@ -1912,13 +2182,7 @@
             const elRef = $('edit-referencia-compensatorio');
             if (elRef) {
                 const esCompensatorio = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida)?.id === 'compensatorio';
-                const grupoRef = $('grupo-referencia-compensatorio');
-                if (grupoRef) {
-                    grupoRef.classList.add('sin-transicion');
-                    grupoRef.classList.toggle('expanded', esCompensatorio);
-                    void grupoRef.offsetHeight;
-                    grupoRef.classList.remove('sin-transicion');
-                }
+                setColapsable($('grupo-referencia-compensatorio'), esCompensatorio, { animar: false });
                 elRef.value = esCompensatorio ? (r.referenciaCompensatorio || '') : '';
             }
 
@@ -2318,7 +2582,7 @@
                 notify.mostrarToast(mensajeExito, 'success');
                 notify.cerrarImportar();
                 $('file-import').value = '';
-                UILogic.refrescarConfigSiVisible?.();
+                notify.refrescarConfigSiVisible();
             }
         }
 
@@ -2738,6 +3002,120 @@
     })(SecurityAndUtils);
 
     // ====================================================================
+    // SALDO SEMANAL MODULE — (pool de horas)
+    // ====================================================================
+    const SaldoSemanal = (function (D) {
+        function logicaCubiertoActiva() {
+            return !StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false, true);
+        }
+
+        function calcularPoolSemana(lunes, hasta, asignacionesPrecalculadas = null) {
+            const lunesDate = TimeUtils.parsearFechaLocal(lunes);
+            lunesDate.setDate(lunesDate.getDate() + 6);
+            const domingo = TimeUtils.formatearFechaLocal(lunesDate);
+            const limite = domingo < hasta ? domingo : hasta;
+
+            const registrosSemana = D.registros().filter(r => r.fecha >= lunes && r.fecha <= limite);
+            const registrosMap = new Map(registrosSemana.map(r => [r.fecha, r]));
+
+            const EPS = 1e-6;
+            const pendientes = [];
+            let pool = 0, poolGenerado = 0, poolUsado = 0;
+
+            for (const isoDate of TimeUtils.generarRangoFechas(lunes, limite)) {
+                const r = registrosMap.get(isoDate);
+                const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
+                const esRemoto = esEspecial && D.esTipoRemoto(r);
+                let deltaBruto = 0;
+                let montoCompensado = 0;
+                if (esRemoto) {
+                    deltaBruto = 0;
+                } else if (r && !esEspecial && r.salida) {
+                    const objetivo = TimeUtils.esFechaHabil(isoDate, D.diasHabilesEnFecha(isoDate)) ? D.objetivoDeRegistro(r) : 0;
+                    deltaBruto = r.total - objetivo;
+                    if (deltaBruto > EPS) montoCompensado = D.montoCompensadoDeReferencia(r, asignacionesPrecalculadas);
+                }
+                const deltaDisponible = deltaBruto - montoCompensado;
+
+                if (deltaBruto > EPS) poolGenerado += deltaBruto;
+                if (montoCompensado > EPS) poolUsado += montoCompensado;
+
+                if (deltaDisponible > EPS) pool += deltaDisponible;
+                else if (deltaDisponible < -EPS) pendientes.push({ fecha: isoDate, restante: -deltaDisponible });
+
+                for (const deuda of pendientes) {
+                    if (pool <= EPS) break;
+                    if (deuda.restante <= EPS) continue;
+                    const pago = Math.min(pool, deuda.restante);
+                    deuda.restante -= pago;
+                    pool -= pago;
+                    poolUsado += pago;
+                }
+            }
+
+            return { pendientes, poolGenerado, poolUsado };
+        }
+
+        function cubiertoPorSaldo(fecha, asignacionesPrecalculadas = null) {
+            if (!logicaCubiertoActiva()) return false;
+            const lunes = TimeUtils.obtenerLunesSemanaISO(fecha);
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const { pendientes } = calcularPoolSemana(lunes, hoy, asignacionesPrecalculadas);
+            const EPS = 1e-6;
+            const deuda = pendientes.find(d => d.fecha === fecha);
+            return deuda ? deuda.restante <= EPS : false;
+        }
+
+        function calcularAprovechamiento(desde, hasta, asignacionesPrecalculadas = null) {
+            if (!logicaCubiertoActiva()) return null;
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const topeReal = hasta < hoy ? hasta : hoy;
+            if (desde > topeReal) return null;
+
+            const asignaciones = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
+            let lunes = TimeUtils.obtenerLunesSemanaISO(desde);
+            let poolGenerado = 0, poolUsado = 0;
+
+            while (lunes <= topeReal) {
+                const r = calcularPoolSemana(lunes, topeReal, asignaciones);
+                poolGenerado += r.poolGenerado;
+                poolUsado += r.poolUsado;
+                const siguienteLunes = TimeUtils.parsearFechaLocal(lunes);
+                siguienteLunes.setDate(siguienteLunes.getDate() + 7);
+                lunes = TimeUtils.formatearFechaLocal(siguienteLunes);
+            }
+
+            if (poolGenerado <= 1e-6) return null;
+            return {
+                porcentaje: Math.round((poolUsado / poolGenerado) * 1000) / 10,
+                horas: poolUsado
+            };
+        }
+
+        function estadoDeRegistro(r, asignaciones = null) {
+            const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+            if (tipo) {
+                return {
+                    estado: 'especial', tipo, diffText: '', fechaCompensado: null,
+                    fechaCompensada: tipo.id === 'compensatorio' ? D.fechaCompensadaPorRegistro(r, asignaciones) : null
+                };
+            }
+            const base = { tipo: null, diffText: '', fechaCompensada: null, fechaCompensado: D.fechaCompensadoDeRegistro(r, asignaciones) };
+            if (r.entrada && !r.salida) return { ...base, estado: 'en-curso' };
+            if (!r.entrada) return { ...base, estado: 'sin-datos' };
+            const objetivo = D.objetivoDeRegistro(r);
+            const total = r.total || 0;
+            if (!(objetivo > 0 && TimeUtils.esFechaHabil(r.fecha, D.diasHabilesEnFecha(r.fecha)))) {
+                return { ...base, estado: 'neutro' };
+            }
+            const estado = horasGte(total, objetivo) ? 'cumplido' : (cubiertoPorSaldo(r.fecha, asignaciones) ? 'cubierto' : 'incompleto');
+            return { ...base, estado, diffText: TimeUtils.formatoDiferencia(total, objetivo) };
+        }
+
+        return { logicaCubiertoActiva, cubiertoPorSaldo, calcularAprovechamiento, estadoDeRegistro };
+    })(DataManagement);
+
+    // ====================================================================
     //                     UI CORE MODULE (generic UI utilities)
     // ====================================================================
     const UICore = (function (S, D) {
@@ -2771,7 +3149,7 @@
             return TimeUtils.formatoDiferencia(tiempoTotal, objetivo);
         }
 
-        function registrarSwipe(el, callback, { minX = 50, maxY = 80, ignoreInputs = false } = {}) {
+        function registrarSwipe(el, callback, { minX = 50, maxY = 80 } = {}) {
             if (!el || el.dataset.swipeInit) return;
             el.dataset.swipeInit = '1';
             let _x = null, _y = null;
@@ -2779,7 +3157,6 @@
 
             el.addEventListener('touchstart', e => {
                 if (e.touches.length !== 1) return;
-                if (ignoreInputs && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
                 _x = e.touches[0].clientX;
                 _y = e.touches[0].clientY;
                 _direccionBloqueada = null;
@@ -2830,18 +3207,34 @@
 
         function _crearPressHold(accionFn) {
             let timeout = null, intervalo = null;
-            return {
-                iniciar(arg) {
-                    accionFn(arg);
-                    timeout = setTimeout(() => {
-                        intervalo = setInterval(() => accionFn(arg), 100);
-                    }, 500);
-                },
-                detener() {
-                    if (timeout) { clearTimeout(timeout); timeout = null; }
-                    if (intervalo) { clearInterval(intervalo); intervalo = null; }
-                }
+            const iniciar = (arg) => {
+                accionFn(arg);
+                timeout = setTimeout(() => {
+                    intervalo = setInterval(() => accionFn(arg), 100);
+                }, 500);
             };
+            const detener = () => {
+                if (timeout) { clearTimeout(timeout); timeout = null; }
+                if (intervalo) { clearInterval(intervalo); intervalo = null; }
+            };
+            const vincular = (btn, arg) => {
+                const start = (e) => {
+                    if (btn.disabled) return;
+                    if (e.type === 'touchstart') e.preventDefault();
+                    iniciar(arg);
+                };
+                const stop = (e) => {
+                    if (e && e.type === 'touchend') e.preventDefault();
+                    detener();
+                };
+                btn.addEventListener('mousedown', start);
+                btn.addEventListener('touchstart', start, { passive: false });
+                btn.addEventListener('mouseup', stop);
+                btn.addEventListener('mouseleave', stop);
+                btn.addEventListener('touchend', stop, { passive: false });
+                btn.addEventListener('touchcancel', stop);
+            };
+            return { iniciar, detener, vincular };
         }
 
         function _actualizarOffsetsStickyMes() {
@@ -2874,7 +3267,11 @@
         }
 
         function descargarJSON(data, nombreArchivo) {
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            descargarArchivo(JSON.stringify(data, null, 2), nombreArchivo, 'application/json');
+        }
+
+        function descargarArchivo(contenido, nombreArchivo, mime) {
+            const blob = new Blob([contenido], { type: mime });
             const url = URL.createObjectURL(blob);
             const a = Object.assign(document.createElement('a'), { href: url, download: nombreArchivo });
             document.body.appendChild(a);
@@ -2921,7 +3318,7 @@
                 toastTimeout = setTimeout(() => {
                     toast.classList.remove('show');
                     toastTimeout = null;
-                    setTimeout(() => _procesarToastQueue(), 350);
+                    setTimeout(() => _procesarToastQueue(), DUR_ANIM() + 50);
                 }, duracionFinal);
             }, 10);
         }
@@ -2931,7 +3328,7 @@
             const toast = $('toast');
             if (!toast || !toast.classList.contains('show')) return;
             toast.classList.remove('show');
-            setTimeout(() => _procesarToastQueue(), 350);
+            setTimeout(() => _procesarToastQueue(), DUR_ANIM() + 50);
         }
 
         function _habilitarCierreToast() {
@@ -3011,7 +3408,7 @@
             const dur = duracion ?? DUR_ANIM();
 
             els.forEach(_finalizarMutacionPendiente);
-            if (els.length === 0) { return Promise.resolve(fn()); }
+            if (els.length === 0 || Motion.reducido()) { return Promise.resolve(fn()); }
 
             const fantasmasMap = [];
             els.forEach(el => {
@@ -3050,12 +3447,51 @@
             });
         }
 
+        const _valorAnimEstado = new WeakMap();
+
+        function _finalizarValorPendiente(el) {
+            const est = _valorAnimEstado.get(el);
+            if (!est) return;
+            clearTimeout(est.timeout);
+            est.anims.forEach(a => a.cancel());
+            _valorAnimEstado.delete(el);
+            if (el.querySelector(':scope > .valor-roll')) el.textContent = est.texto;
+        }
+
+        function _animarValor(el, texto, dir = 0) {
+            if (!el) return;
+            texto = String(texto);
+            const previo = _valorAnimEstado.get(el);
+            const actual = previo ? previo.texto : el.textContent;
+            _finalizarValorPendiente(el);
+            if (actual === texto) { if (el.textContent !== texto) el.textContent = texto; return; }
+
+            const dur = _getCSSdur('--dur-valor');
+            const sinMovimiento = Motion.reducido();
+            if (!dir || sinMovimiento || !dur || !el.offsetParent) { el.textContent = texto; return; }
+
+            const mk = t => { const s = document.createElement('span'); s.className = 'valor-roll-item'; s.textContent = t; return s; };
+            const saliente = mk(actual), entrante = mk(texto);
+            const roll = document.createElement('span');
+            roll.className = 'valor-roll';
+            roll.append(saliente, entrante);
+            el.replaceChildren(roll);
+
+            const opts = { duration: dur, easing: 'ease-out', fill: 'both' };
+            const sgn = dir > 0 ? 1 : -1;
+            const anims = [
+                saliente.animate([{ transform: 'translateY(0)', opacity: 1 }, { transform: `translateY(${-70 * sgn}%)`, opacity: 0 }], opts),
+                entrante.animate([{ transform: `translateY(${70 * sgn}%)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], opts)
+            ];
+            _valorAnimEstado.set(el, { texto, anims, timeout: setTimeout(() => _finalizarValorPendiente(el), dur) });
+        }
+
         function _animarFadeSwap(el, fn) {
             if (!el) { return Promise.resolve(fn()); }
             return _animarMutacion(el, fn);
         }
 
-        function _crearToggleConfig({ getVal, setVal, btnId, mensajeOn, mensajeOff, onAfterToggle, puedeActivar }) {
+        function _crearToggleConfig({ getVal, setVal, btnId, onAfterToggle, puedeActivar }) {
             function actualizarEstado() {
                 const val = getVal();
                 _setBtnActivo(btnId, val);
@@ -3069,7 +3505,6 @@
                 }
                 setVal(nuevo);
                 actualizarEstado();
-                mostrarToast(nuevo ? mensajeOn : mensajeOff, 'info', 4000);
                 onAfterToggle?.(nuevo);
             }
             return { toggle, actualizarEstado };
@@ -3128,6 +3563,7 @@
             const rect = el.getBoundingClientRect();
             const margin = 8;
             requestAnimationFrame(() => {
+                if (!popup.isConnected || popup.classList.contains('closing')) return;
                 const pw = popup.offsetWidth, ph = popup.offsetHeight;
                 let top = rect.bottom + 12;
                 let left = rect.left + (rect.width / 2) - (pw / 2);
@@ -3137,24 +3573,47 @@
                 if (top < margin) top = margin;
                 popup.style.top = `${top}px`;
                 popup.style.left = `${left}px`;
+
+                const triggerCenterX = rect.left + rect.width / 2;
+                const triggerCenterY = rect.top + rect.height / 2;
+                const originX = Math.round(triggerCenterX - left);
+                const originY = Math.round(triggerCenterY - top);
+                popup.style.transformOrigin = `${originX}px ${originY}px`;
+
                 popup.style.visibility = '';
-                setTimeout(() => popup.classList.add('listo'), 350);
+                requestAnimationFrame(() => {
+                    if (!popup.isConnected || popup.classList.contains('closing')) return;
+                    popup.classList.add('show');
+                    setTimeout(() => {
+                        if (!popup.classList.contains('closing')) popup.classList.add('listo');
+                    }, 280);
+                });
             });
         }
 
         function _registrarCierrePopup(popup, selectorTrigger, esMismoTrigger, alCerrar) {
+            let cerrado = false;
             const cerrar = () => {
-                popup.remove();
-                if (alCerrar) alCerrar();
+                if (cerrado) return;
+                cerrado = true;
+                popup.classList.remove('show');
+                popup.classList.remove('listo');
+                popup.classList.add('closing');
                 document.removeEventListener('click', onClick, true);
                 document.removeEventListener('scroll', cerrar, true);
+                setTimeout(() => {
+                    popup.remove();
+                    if (alCerrar) alCerrar(popup);
+                }, 200);
             };
+            popup._cerrar = cerrar;
             const onClick = (e) => {
                 const trigger = e.target.closest(selectorTrigger);
                 if (trigger && esMismoTrigger(trigger)) return;
                 if (!popup.contains(e.target)) cerrar();
             };
             setTimeout(() => {
+                if (cerrado) return;
                 document.addEventListener('click', onClick, { capture: true, passive: true });
                 document.addEventListener('scroll', cerrar, { capture: true, passive: true });
             }, 10);
@@ -3215,8 +3674,22 @@
             success: 'var(--c-green)', error: 'var(--c-red)', warning: 'var(--c-red)', info: 'var(--c-blue)'
         };
 
+        function _vibrarFichar(tipo) {
+            if (!('vibrate' in navigator)) return;
+            try {
+                if (tipo === 'success') {
+                    navigator.vibrate(40);
+                } else {
+                    navigator.vibrate([50, 60, 50]);
+                }
+            } catch (_) { }
+        }
+
         function _flashCampoTipo(tipo, ...ids) {
             _flashCampoConClase('campo-flash-color', ids, _COLOR_TOAST_POR_TIPO[tipo] || 'var(--text-main)');
+            if (ids.includes('btn-agregar')) {
+                _vibrarFichar(tipo);
+            }
         }
 
         const _slideAnimEstado = new WeakMap();
@@ -3241,6 +3714,7 @@
             if (!el) { mutarFn(); return; }
 
             _finalizarSlidePendiente(el);
+            if (Motion.reducido()) { mutarFn(); return; }
 
             const rectViejo = el.getBoundingClientRect();
             const anchoViejo = rectViejo.width;
@@ -3292,7 +3766,39 @@
             _slideAnimEstado.set(el, { timeout, wrapper });
         }
 
+        function aplicarFeedbackCampos(campos, texto = '✓ Agregado', claseColor = 'label-feedback--green') {
+            const activos = campos
+                .filter(c => c.mostrar)
+                .map(c => {
+                    const input = document.getElementById(c.id);
+                    const label = input?.closest('.form-group')?.querySelector('label');
+                    const textoOriginal = label ? label.textContent : c.fallback;
+                    return { label, textoOriginal };
+                });
+
+            const labels = activos.filter(a => a.label).map(a => a.label);
+
+            _animarMutacion(labels, () => {
+                activos.forEach(({ label }) => {
+                    if (!label) return;
+                    label.textContent = texto;
+                    label.classList.add(claseColor);
+                });
+            });
+
+            setTimeout(() => {
+                _animarMutacion(labels, () => {
+                    activos.forEach(({ label, textoOriginal }) => {
+                        if (!label) return;
+                        label.textContent = textoOriginal;
+                        label.classList.remove(claseColor);
+                    });
+                });
+            }, 2000);
+        }
+
         return {
+            aplicarFeedbackCampos,
             formatoDiferencia,
             registrarSwipe,
             debounce,
@@ -3303,6 +3809,7 @@
             limpiarError,
             obtenerNombrePerfilSafe,
             descargarJSON,
+            descargarArchivo,
             mostrarToast,
             _cerrarToastActual,
             _habilitarCierreToast,
@@ -3329,7 +3836,8 @@
             _animarSlideElemento,
             toggleSeccionGen,
             _animarFadeSwap,
-            _animarMutacion
+            _animarMutacion,
+            _animarValor
         };
     })(SecurityAndUtils, DataManagement);
 
@@ -3337,7 +3845,7 @@
     //                     UI PROFILES MODULE
     // ====================================================================
     const UIPerfiles = (function (S, UICore) {
-        const { mostrarToast } = UICore;
+        const { mostrarToast, setIconoBtn } = UICore;
 
         let perfilEnEdicion = null;
 
@@ -3377,18 +3885,28 @@
 
                 const countText = `${p.totalRegistros} registro${TimeUtils.pluralizar(p.totalRegistros)}`;
                 const infoSection = Object.assign(document.createElement('div'), { className: 'btn-perfil-info' });
-                infoSection.appendChild(Object.assign(document.createElement('div'), { className: 'btn-perfil-nombre', textContent: p.nombre }));
-                const badge = Object.assign(document.createElement('div'), {
-                    className: 'btn-perfil-badge',
-                    textContent: p.esActual ? `${countText} · Activo` : countText
-                });
-                infoSection.appendChild(badge);
+                const nombreEl = Object.assign(document.createElement('div'), { className: 'btn-perfil-nombre' });
+                nombreEl.appendChild(Object.assign(document.createElement('span'), {
+                    className: 'btn-perfil-nombre-texto',
+                    textContent: p.nombre
+                }));
+                if (p.esActual) {
+                    nombreEl.appendChild(Object.assign(document.createElement('span'), {
+                        className: 'btn-perfil-estado',
+                        textContent: 'Activo'
+                    }));
+                }
+                infoSection.appendChild(nombreEl);
+                infoSection.appendChild(Object.assign(document.createElement('div'), {
+                    className: 'btn-perfil-detalle',
+                    textContent: countText
+                }));
 
                 const editBtn = Object.assign(document.createElement('button'), {
                     className: 'btn-perfil-edit',
                     innerHTML: '<svg class="icon"><use href="#icon-edit"/></svg>',
                     title: 'Editar perfil',
-                    onclick: (e) => { e.stopPropagation(); UILogic.abrirEditorPerfil(p.id); }
+                    onclick: (e) => { e.stopPropagation(); abrirEditorPerfil(p.id); }
                 });
 
                 container.onclick = () => { if (!p.esActual) window.PerfilManager.cambiarPerfil(p.id); };
@@ -3424,10 +3942,7 @@
                     && !document.documentElement.getAttribute('data-theme');
                 const toggleBtnModal = document.getElementById('theme-toggle-modal');
 
-                if (toggleBtnModal) {
-                    const icon = toggleBtnModal.querySelector('use');
-                    icon.setAttribute('href', esClaro ? '#icon-moon' : '#icon-sun');
-                }
+                if (toggleBtnModal) setIconoBtn(toggleBtnModal, esClaro ? '#icon-moon' : '#icon-sun');
             });
         }
 
@@ -3459,7 +3974,7 @@
             renderizarListaPerfiles(true);
             requestAnimationFrame(() => {
                 const ultimo = document.getElementById('lista-perfiles-botones')?.lastElementChild;
-                if (ultimo) { ultimo.classList.add('add-perfil'); ultimo.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+                if (ultimo) { ultimo.classList.add('add-perfil'); ultimo.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'nearest' }); }
             });
         }
 
@@ -3535,7 +4050,7 @@
         function _limpiarClavesPerfil(pid) {
             ['breakStartTime', STORAGE_KEYS.HISTORY, STORAGE_KEYS.FONDO_CARD, STORAGE_KEYS.IGNORAR_TF, STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO,
                 'cardVisible_registrar', 'cardVisible_estadisticas', 'cardVisible_historico', STORAGE_KEYS.ORDEN_CARDS,
-                STORAGE_KEYS.PUSH_HABILITADO, STORAGE_KEYS.PUSH_ANTICIPACION_MIN, STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, STORAGE_KEYS.PUSH_INFO_ACTIVA, STORAGE_KEYS.PUSH_AVISO_COUNT
+                STORAGE_KEYS.PUSH_HABILITADO, STORAGE_KEYS.PUSH_ANTICIPACION_MIN, STORAGE_KEYS.PUSH_USAR_BUFFER_SEMANAL, STORAGE_KEYS.PUSH_BUFFER_SOLO_ULTIMO_DIA, STORAGE_KEYS.PUSH_INFO_ACTIVA, STORAGE_KEYS.PUSH_AVISOS_RESTANTES
             ].forEach(k => StorageHelper.removeItem(`${k}_${pid}`));
         }
 
@@ -3572,7 +4087,20 @@
             }
         }
 
+        function bindEventos() {
+            document.querySelector('.header-profile-btn')?.addEventListener('click', () => abrirSelectorPerfiles());
+
+            document.querySelector('#modal-selector-perfiles .btn-cancel')?.addEventListener('click', () => cerrarSelectorPerfiles());
+            $('btn-crear-perfil')?.addEventListener('click', () => crearPerfilDesdeSelector());
+
+            document.querySelector('#modal-editar-perfil .btn-edit')?.addEventListener('click', () => guardarEdicionPerfil());
+            $('btn-eliminar-perfil-editor')?.addEventListener('click', () => eliminarPerfilDesdeEditor());
+            document.querySelector('#modal-editar-perfil .btn-cancel')?.addEventListener('click', () => cerrarEditorPerfil());
+
+        }
+
         return {
+            bindEventos,
             renderizarListaPerfiles,
             abrirSelectorPerfiles,
             crearPerfilDesdeSelector,
@@ -3590,22 +4118,6 @@
     // ====================================================================
     const UICalendario = (function (S, D, UICore) {
         const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia, _flashElemento, DUR_CALENDARIO } = UICore;
-
-        function _agruparMesesPorAnio(mesesOrdenados) {
-            const map = new Map();
-            mesesOrdenados.forEach(mesAnio => {
-                const anio = mesAnio.substring(0, 4);
-                if (!map.has(anio)) map.set(anio, []);
-                map.get(anio).push(mesAnio);
-            });
-            return map;
-        }
-
-        function _nombreMesCapitalizado(mesAnio) {
-            const [, m] = mesAnio.split('-');
-            const nombre = TimeUtils.nombreMesPorIndice(m - 1);
-            return nombre.charAt(0).toUpperCase() + nombre.slice(1);
-        }
 
         function _cerrarSelectorMeses(idResaltar = null) {
             const grid = document.getElementById('calendario-grid');
@@ -3641,7 +4153,7 @@
                 const anioActual = _calendarioMes ? _calendarioMes.anio : hoy.getFullYear();
                 const mesActual = _calendarioMes ? _calendarioMes.mes : hoy.getMonth();
 
-                _agruparMesesPorAnio(mesesOrdenados).forEach((meses, anioStr) => {
+                TimeUtils.agruparMesesPorAnio(mesesOrdenados).forEach((meses, anioStr) => {
                     const separador = Object.assign(document.createElement('div'), {
                         className: 'selector-meses-anio-header',
                         textContent: anioStr
@@ -3653,7 +4165,7 @@
                         const anio = parseInt(aStr), mes = parseInt(mesStr) - 1;
                         const btn = Object.assign(document.createElement('button'), {
                             className: 'btn-mes-calendario',
-                            textContent: _nombreMesCapitalizado(mesAnio)
+                            textContent: TimeUtils.nombreMesCapitalizado(mesAnio)
                         });
                         if (anio === anioActual && mes === mesActual) btn.classList.add('activo');
                         btn.onclick = (e) => { e.stopPropagation(); _calendarioMes = { anio, mes }; _cerrarSelectorMeses(); };
@@ -3706,17 +4218,18 @@
             const todosRegsPorFecha = Object.fromEntries(todosLosRegistros.map(r => [r.fecha, r]));
             const filtroActivo = registrosFiltrados.length !== todosLosRegistros.length;
             const asignacionesCompensatorio = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
+            const claveMes = `${anio}-${TimeUtils._pad2(mes + 1)}`;
+            const notasDelMes = TiposRegistro.mapaNotasPorRegistro(todosLosRegistros.filter(r => r.fecha.startsWith(claveMes)));
             const claseDelDia = (fecha) => {
                 const r = regsPorFecha[fecha];
                 if (!r && filtroActivo && todosRegsPorFecha[fecha]) return 'dia-filtrado';
                 if (!r) return 'dia-sin-registro';
-                if (TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
-                    const tipo = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-                    return `dia-especial-${tipo ? tipo.color : 'purple'}`;
-                }
-                if (r.entrada && !r.salida) return 'dia-en-curso';
-                if (!UILogic._esFechaHabil(fecha, D.diasHabilesEnFecha(fecha)) || horasGte(r.total, D.objetivoDeRegistro(r))) return 'dia-normal';
-                return UILogic._cubiertoPorSaldo(fecha, asignacionesCompensatorio) ? 'dia-cubierto' : 'dia-incompleto';
+                const { estado, tipo } = SaldoSemanal.estadoDeRegistro(r, asignacionesCompensatorio);
+                if (estado === 'especial') return `dia-especial-${tipo.color}`;
+                if (estado === 'en-curso') return 'dia-en-curso';
+                if (estado === 'cubierto') return 'dia-cubierto';
+                if (estado === 'incompleto' || estado === 'sin-datos') return 'dia-incompleto';
+                return 'dia-normal';
             };
 
             const diasNombre = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
@@ -3754,18 +4267,19 @@
                     cell.addEventListener('animationend', () => cell.classList.remove('nuevo-registro-animacion'), { once: true });
                 }
                 if (reg) clases += ' cursor-pointer';
+                if (reg && notasDelMes.has(reg.id)) clases += ' tiene-comentario';
                 cell.className = clases;
                 cell.textContent = dia;
 
                 if (reg) {
                     cell.dataset.regId = reg.id;
-                    cell.addEventListener('click', (e) => UILogic._onclickCalendarioDia(e, reg.id));
-                    cell.addEventListener('mouseenter', (e) => UILogic._popupCalendarioHover(e, reg.id));
-                    cell.addEventListener('mouseleave', (e) => UILogic._cerrarPopupCalendarioHover(e));
+                    cell.addEventListener('click', (e) => _onclickCalendarioDia(e, reg.id, asignacionesCompensatorio));
+                    cell.addEventListener('mouseenter', (e) => _popupCalendarioHover(e, reg.id, asignacionesCompensatorio));
+                    cell.addEventListener('mouseleave', (e) => _cerrarPopupCalendarioHover(e));
                 } else if (clase === 'dia-sin-registro') {
                     cell.classList.add('cursor-pointer');
                     cell.dataset.fecha = fecha;
-                    cell.addEventListener('click', (e) => UILogic._popupCalendarioDiaSinRegistro(e, fecha));
+                    cell.addEventListener('click', (e) => _popupCalendarioDiaSinRegistro(e, fecha));
                 }
 
                 frag.appendChild(cell);
@@ -3781,7 +4295,7 @@
 
         function toggleVistaHistorico() {
             _vistaHistoricoCalendario = !_vistaHistoricoCalendario;
-            try { StorageHelper.setItem(STORAGE_KEYS.VISTA_HISTORICO_CAL, _vistaHistoricoCalendario); } catch (e) { }
+            StorageHelper.setItem(STORAGE_KEYS.VISTA_HISTORICO_CAL, _vistaHistoricoCalendario);
 
             const lista = document.getElementById('lista-registros');
             const cal = document.getElementById('vista-calendario-historico');
@@ -3814,65 +4328,53 @@
 
         let _popupCalendarioEl = null;
 
-        function _buildInfoHtmlRegistro(reg) {
-            const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
-            const esEspecial = TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
-            if (esEspecial) {
-                const tipoConfig = TiposRegistro.obtenerTipoPorCodigo(reg.entrada, reg.salida);
-                const emoji = S.escapeHtml(tipoConfig?.emoji ?? '');
-                const label = tipoConfig ? S.escapeHtml(tipoConfig.label) : S.escapeHtml(reg.entrada);
-                const colorSafe = /^[a-z]+$/.test(tipoConfig?.color || '') ? tipoConfig.color : 'purple';
-                let fechaCompensadaHtml = '';
-                if (tipoConfig?.id === 'compensatorio') {
-                    const fechaCompensada = D.fechaCompensadaPorRegistro(reg, asignacionesCompensatorio);
-                    if (fechaCompensada) {
-                        fechaCompensadaHtml = ` <span class="cal-popup-badge cal-popup-badge--${colorSafe}">${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensada))}</span>`;
-                    }
-                }
+        function _buildInfoHtmlRegistro(reg, asignaciones = null) {
+            const est = SaldoSemanal.estadoDeRegistro(reg, asignaciones || D.calcularAsignacionesCompensatorio());
+            if (est.estado === 'especial') {
+                const { tipo } = est;
+                const emoji = S.escapeHtml(tipo.emoji ?? '');
+                const label = S.escapeHtml(tipo.label);
+                const colorSafe = /^[a-z]+$/.test(tipo.color || '') ? tipo.color : 'purple';
+                const fechaCompensadaHtml = est.fechaCompensada
+                    ? ` <span class="cal-popup-badge cal-popup-badge--${colorSafe}">${S.escapeHtml(TimeUtils.fechaCorta(est.fechaCompensada))}</span>`
+                    : '';
                 return `<span class="cal-popup-badge cal-popup-badge--${colorSafe}">${emoji} ${label}</span>${fechaCompensadaHtml}`;
             }
-            if (reg.entrada && !reg.salida) {
+            if (est.estado === 'en-curso') {
                 const esHoy = reg.fecha === TimeUtils.obtenerFechaHoy();
                 return `<div class="cal-popup-info cal-popup-info--blue">${esHoy ? 'En curso' : 'Incompleto'}</div>
                     <div class="cal-popup-3l">Entrada: ${S.escapeHtml(reg.entrada)}</div>`;
             }
-            const totalHoras = reg.total || 0;
-            const totalStr = TimeUtils.horasATexto(totalHoras, 'short');
             let tfStr = '';
             if (reg.tiempoFuera && reg.tiempoFuera !== '00:00') {
                 tfStr = `${TimeUtils.horasATexto(TimeUtils.horaAMinutos(reg.tiempoFuera) / 60, 'short')} fuera`;
             }
-            let totalConDiff = totalStr, diffClase = '', cubiertoLineaHtml = '', compensadoLineaHtml = '';
-            const objetivoReg = D.objetivoDeRegistro(reg);
-            if (objetivoReg > 0 && UILogic._esFechaHabil(reg.fecha, D.diasHabilesEnFecha(reg.fecha))) {
-                const diffText = formatoDiferencia(totalHoras, objetivoReg);
-                if (horasGte(totalHoras, objetivoReg)) {
-                    diffClase = 'cal-popup-info--green';
-                    if (diffText) totalConDiff += ` (${diffText})`;
-                } else if (UILogic._cubiertoPorSaldo(reg.fecha, asignacionesCompensatorio)) {
-                    diffClase = 'cal-popup-info--gold';
-                    if (diffText) totalConDiff += ` (${diffText})`;
-                    cubiertoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--gold">Cubierto</span>`;
-                } else {
-                    diffClase = 'cal-popup-info--red';
-                    if (diffText) totalConDiff += ` (${diffText})`;
-                }
-            }
-            const fechaCompensado = D.fechaCompensadoDeRegistro(reg, asignacionesCompensatorio);
-            if (fechaCompensado) {
-                compensadoLineaHtml = `<span class="cal-popup-badge cal-popup-badge--purple">→ ${S.escapeHtml(TimeUtils.fechaCorta(fechaCompensado))}</span>`;
-            }
+            const diffClase = { cumplido: 'cal-popup-info--green', cubierto: 'cal-popup-info--gold', incompleto: 'cal-popup-info--red' }[est.estado] || '';
+            const totalConDiff = TimeUtils.horasATexto(reg.total || 0, 'short') + (est.diffText ? ` (${est.diffText})` : '');
+            const cubiertoLineaHtml = est.estado === 'cubierto' ? `<span class="cal-popup-badge cal-popup-badge--gold">Cubierto</span>` : '';
+            const compensadoLineaHtml = est.fechaCompensado
+                ? `<span class="cal-popup-badge cal-popup-badge--purple">→ ${S.escapeHtml(TimeUtils.fechaCorta(est.fechaCompensado))}</span>`
+                : '';
             return `<div class="cal-popup-info${diffClase ? ' ' + diffClase : ''}">${totalConDiff}</div>
                 ${cubiertoLineaHtml}
                 ${compensadoLineaHtml}
                 <div class="cal-popup-3l">${S.escapeHtml(reg.entrada)} → ${S.escapeHtml(reg.salida)}</div>
-                ${tfStr ? `<div class="cal-popup-3l">${S.escapeHtml(tfStr)}</div>` : ''}`;
+                ${tfStr ? _cajaPopupHtml('#icon-exit', tfStr) : ''}`;
         }
 
         function _cerrarPopupCalendario() {
             if (!_popupCalendarioEl) return;
-            _popupCalendarioEl.remove();
+            const el = _popupCalendarioEl;
             _popupCalendarioEl = null;
+            if (el._cerrar) el._cerrar();
+            else el.remove();
+        }
+
+        function _cajaPopupHtml(icono, texto) {
+            return `<div class="cal-popup-caja">
+                <svg class="icon cal-popup-caja-icono"><use href="${icono}"/></svg>
+                <span class="cal-popup-caja-texto">${S.escapeHtml(texto)}</span>
+            </div>`;
         }
 
         function _formatearFechaLabelPopup(fecha) {
@@ -3882,7 +4384,7 @@
             return S.escapeHtml(`${diaSemana}, ${d.getDate()} de ${mes}`);
         }
 
-        function _popupCalendario(event, registroId) {
+        function _popupCalendario(event, registroId, asignaciones = null) {
             event.stopPropagation();
 
             _cerrarPopupCalendario();
@@ -3892,26 +4394,27 @@
 
             const claveMes = reg.fecha.substring(0, 7);
             const registrosDelMes = D.registros().filter(r => r.fecha.substring(0, 7) === claveMes);
-            const grupos = UILogic.agruparRegistrosConsecutivos(registrosDelMes);
+            const grupos = TiposRegistro.agruparConsecutivos(registrosDelMes);
             const grupoDelRegistro = grupos.find(g => g.tipo === 'grupo' && g.registros.some(r => r.id === registroId));
 
             const fechaLabel = _formatearFechaLabelPopup(reg.fecha);
-            const infoHtml = _buildInfoHtmlRegistro(reg);
+            const infoHtml = _buildInfoHtmlRegistro(reg, asignaciones);
+            const notasTexto = reg.notas || (grupoDelRegistro && TiposRegistro.notaDeGrupo(grupoDelRegistro));
+            const comentarioHtml = notasTexto ? _cajaPopupHtml('#icon-comment', notasTexto) : '';
             const btnGrupoHtml = grupoDelRegistro ? `
                 <button class="cal-popup-btn-edit" id="_cal-popup-btn-grupo">
                     <svg class="icon"><use href="#icon-grid-group"/></svg>
                     Editar grupo
                 </button>` : '';
 
-            if (grupoDelRegistro) window._calPopupGrupo = grupoDelRegistro;
-
-            const popup = _crearPopupFlotante({
+            const { popup, cerrar } = _crearPopupFlotante({
                 className: 'cal-popup',
                 id: '_cal-popup',
                 dataset: { registroId: reg.id },
                 html: `
                 <div class="cal-popup-fecha">${fechaLabel}</div>
                 ${infoHtml}
+                ${comentarioHtml}
                 <button class="cal-popup-btn-edit" id="_cal-popup-btn-edit">
                     <svg class="icon"><use href="#icon-edit"/></svg>
                     Editar
@@ -3920,17 +4423,17 @@
                 event,
                 selectorTrigger: '.calendario-dia',
                 esMismoTrigger: dia => dia.dataset.regId === reg.id,
-                alCerrar: () => { _popupCalendarioEl = null; }
-            }).popup;
+                alCerrar: (p) => { if (_popupCalendarioEl === p) _popupCalendarioEl = null; }
+            });
             _popupCalendarioEl = popup;
 
             popup.querySelector('#_cal-popup-btn-edit')?.addEventListener('click', () => {
+                cerrar();
                 DataManagement.editarRegistro(reg.id);
-                document.getElementById('_cal-popup')?.remove();
             });
             popup.querySelector('#_cal-popup-btn-grupo')?.addEventListener('click', () => {
-                DataManagement.editarGrupo(window._calPopupGrupo);
-                document.getElementById('_cal-popup')?.remove();
+                cerrar();
+                DataManagement.editarGrupo(grupoDelRegistro);
             });
 
             popup.addEventListener('mouseenter', () => clearTimeout(_popupCalendarioHoverTimer));
@@ -3977,15 +4480,15 @@
                 event,
                 selectorTrigger: '.calendario-dia',
                 esMismoTrigger: dia => dia.dataset.fecha === fecha,
-                alCerrar: () => { _popupCalendarioEl = null; }
+                alCerrar: (p) => { if (_popupCalendarioEl === p) _popupCalendarioEl = null; }
             });
             _popupCalendarioEl = popup;
 
-            popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrar(); UILogic._irAFicharConFecha(fecha, false); });
-            popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrar(); UILogic._irAFicharConFecha(fecha, true); });
+            popup.querySelector('#_cal-popup-btn-normal')?.addEventListener('click', () => { cerrar(); UITarjetaFichaje._irAFicharConFecha(fecha, false); });
+            popup.querySelector('#_cal-popup-btn-especial')?.addEventListener('click', () => { cerrar(); UITarjetaFichaje._irAFicharConFecha(fecha, true); });
         }
 
-        function _popupCalendarioHover(event, registroId) {
+        function _popupCalendarioHover(event, registroId, asignaciones = null) {
             if (event.sourceCapabilities && event.sourceCapabilities.firesTouchEvents) return;
             if (!window.matchMedia('(hover: hover)').matches) return;
             const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
@@ -3995,11 +4498,11 @@
             clearTimeout(_popupCalendarioHoverTimer);
             _popupCalendarioHoverTimer = setTimeout(() => {
                 _popupCalendarioEsHover = true;
-                _popupCalendario(event, registroId);
+                _popupCalendario(event, registroId, asignaciones);
             }, 150);
         }
 
-        function _onclickCalendarioDia(event, registroId) {
+        function _onclickCalendarioDia(event, registroId, asignaciones = null) {
             const esDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
             const stored = StorageHelper.getItem(STORAGE_KEYS.HOVER_POPUP, null);
             const hoverActivo = esDesktop && stored === 'true';
@@ -4013,7 +4516,7 @@
                     _cerrarPopupCalendario();
                     return;
                 }
-                _popupCalendario(event, registroId);
+                _popupCalendario(event, registroId, asignaciones);
             }
         }
 
@@ -4064,7 +4567,20 @@
             setTimeout(_flashDiaHoyCalendario, DUR_CALENDARIO() + 20);
         }
 
+        function bindEventos() {
+            $('calendario-titulo-mes')?.addEventListener('click', () => abrirSelectorMesesCalendario());
+            document.querySelector('.btn-hoy-calendario')?.addEventListener('click', () => irHoyCalendario());
+            const navBotones = $('calendario-nav-botones');
+            if (navBotones) {
+                const navBtns = navBotones.querySelectorAll('button:not(.btn-hoy-calendario)');
+                if (navBtns[0]) navBtns[0].addEventListener('click', () => navegarCalendario(-1));
+                if (navBtns[1]) navBtns[1].addEventListener('click', () => navegarCalendario(1));
+            }
+
+        }
+
         return {
+            bindEventos,
             abrirSelectorMesesCalendario,
             _cerrarSelectorMeses,
             _activarVistaCalendarioHistorico,
@@ -4077,8 +4593,6 @@
             _cerrarPopupCalendarioHover,
             navegarCalendario,
             irHoyCalendario,
-            _agruparMesesPorAnio,
-            _nombreMesCapitalizado,
             getVistaHistoricoCalendario: () => _vistaHistoricoCalendario,
             setVistaHistoricoCalendario: (v) => { _vistaHistoricoCalendario = v; }
         };
@@ -4267,7 +4781,7 @@
     const UIGistYRespaldo = (function (S, D, GistSync, UICore) {
         const {
             mostrarToast, _setBtnDisabled, _setBtnActivo, _flashCampo, _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre,
-            descargarJSON, obtenerNombrePerfilSafe, _posicionarPopup, _registrarCierrePopup
+            descargarJSON, obtenerNombrePerfilSafe, _posicionarPopup, _registrarCierrePopup, setIconoBtn, _animarValor
         } = UICore;
 
         let _modalAbiertoDesdeLista = false;
@@ -4276,7 +4790,7 @@
             const btn = $(id);
             if (!btn) return;
             btn.lastChild.textContent = desdeLista ? ' Cerrar' : ' Volver';
-            btn.querySelector('use').setAttribute('href', desdeLista ? '#icon-cancelar' : '#icon-undo');
+            setIconoBtn(btn, desdeLista ? '#icon-cancelar' : '#icon-undo');
         }
 
         function _cerrarModalConfigHija(modalId) {
@@ -4323,8 +4837,7 @@
                 const tipoSelect = document.getElementById('tipo-exportacion');
                 if (tipoSelect) tipoSelect.value = 'todo';
 
-                const camposRango = document.getElementById('campos-rango-exportar');
-                if (camposRango) camposRango.classList.remove('expanded');
+                setColapsable(document.getElementById('campos-rango-exportar'), false, { animar: false });
 
                 document.getElementById('export-fecha-desde').value = '';
                 document.getElementById('export-fecha-hasta').value = '';
@@ -4339,9 +4852,7 @@
 
         function toggleCamposRangoExport() {
             const tipo = document.getElementById('tipo-exportacion').value;
-            const camposRango = document.getElementById('campos-rango-exportar');
-
-            camposRango.classList.toggle('expanded', tipo === 'rango');
+            setColapsable(document.getElementById('campos-rango-exportar'), tipo === 'rango');
         }
 
         async function ejecutarExportacion() {
@@ -4453,6 +4964,42 @@
 
             const estadoBackup = _gistEstadoAutoSyncActual();
             _setBtnDisabled('btn-toggle-gist-merge', !(ambosCompletos && estadoBackup === 1));
+
+            const estadoEl = document.getElementById('gist-estado');
+            const tituloEl = document.getElementById('gist-estado-titulo');
+            const conexionEl = document.getElementById('gist-conexion-resumen');
+            estadoEl?.classList.toggle('gist-estado--off', !ambosCompletos);
+            if (tituloEl) tituloEl.textContent = ambosCompletos ? 'Conectado' : soloToken ? 'Falta el Gist ID' : 'Sin configurar';
+            if (conexionEl) {
+                conexionEl.textContent = ambosCompletos
+                    ? `Configurado · ${gistId.slice(0, 6)}…${gistId.slice(-4)}`
+                    : soloToken ? 'Token cargado · falta el Gist ID' : 'Ingresá tu token para empezar';
+            }
+            _actualizarResumenLimites();
+        }
+
+        function _actualizarResumenLimites() {
+            const el = document.getElementById('gist-limites-resumen');
+            if (!el) return;
+            const tipo = _tipoSyncActual();
+            if (!tipo) { el.textContent = 'Desactivado'; return; }
+            const limite = _gistLimitesTemp ? _gistLimitesTemp[tipo] : GistSync.getSyncLimite(tipo);
+            const desde = document.getElementById('gist-rango-desde')?.value || '--:--';
+            const hasta = document.getElementById('gist-rango-hasta')?.value || '--:--';
+            el.textContent = `${limite === 0 ? 'Sin límite' : `${limite} por hora`} · ${desde} – ${hasta}`;
+        }
+
+        function _gistSetPanel(btnId, abierto, animar = true) {
+            const btn = document.getElementById(btnId);
+            const panel = document.getElementById(btn?.getAttribute('aria-controls') || '');
+            if (!btn || !panel) return;
+            btn.setAttribute('aria-expanded', String(abierto));
+            setColapsable(panel, abierto, { animar });
+        }
+
+        function toggleGistPanel(btnId) {
+            const btn = document.getElementById(btnId);
+            _gistSetPanel(btnId, btn?.getAttribute('aria-expanded') !== 'true');
         }
 
         function abrirModalGist() {
@@ -4478,6 +5025,9 @@
                 actualizarBotonGistBackup();
                 actualizarBotonGistMerge();
                 actualizarEstadoBotonesGist();
+                const _gistCompleto = GistSync.getToken() && (GistSync.getGistId() || '').length > 10;
+                _gistSetPanel('btn-gist-panel-limites', false, false);
+                _gistSetPanel('btn-gist-panel-conexion', !_gistCompleto, false);
             });
             _gistLimitesTemp = null;
             _actualizarCampoLimite();
@@ -4532,27 +5082,25 @@
             btnRestaurar.parentNode.replaceChild(newRestaurar, btnRestaurar);
 
             const autoCierre = () => {
-                if (window.UILogic && window.UILogic.iniciarTimerAutoCierreBotones) {
-                    window.UILogic.iniciarTimerAutoCierreBotones();
-                }
+                UIHistorico.iniciarTimerAutoCierreBotones();
             };
 
             if (tieneGist) {
                 newRespaldar.title = 'Subir a Gist';
                 newRespaldar.addEventListener('click', () => { autoCierre(); gistSubir(); });
-                newRespaldar.querySelector('use').setAttribute('href', '#icon-cloud-upload');
+                setIconoBtn(newRespaldar, '#icon-cloud-upload');
 
                 newRestaurar.title = 'Bajar de Gist';
                 newRestaurar.addEventListener('click', () => { autoCierre(); gistBajar(); });
-                newRestaurar.querySelector('use').setAttribute('href', '#icon-cloud-download');
+                setIconoBtn(newRestaurar, '#icon-cloud-download');
             } else {
                 newRespaldar.title = 'Respaldar';
                 newRespaldar.addEventListener('click', () => { autoCierre(); mostrarExportar(true); });
-                newRespaldar.querySelector('use').setAttribute('href', '#icon-download');
+                setIconoBtn(newRespaldar, '#icon-download');
 
                 newRestaurar.title = 'Restaurar';
                 newRestaurar.addEventListener('click', () => { autoCierre(); mostrarImportar(true); });
-                newRestaurar.querySelector('use').setAttribute('href', '#icon-upload');
+                setIconoBtn(newRestaurar, '#icon-upload');
             }
         }
 
@@ -4687,8 +5235,8 @@
             HistoryManager.saveState(D.registros(), modo === 'replace' ? 'reemplazar con Gist' : 'combinar con Gist');
 
             await D.guardarYActualizar();
-            UILogic.actualizarUI();
-            UILogic.refrescarConfigSiVisible?.();
+            UITarjetaFichaje.actualizarUI();
+            UIConfig.refrescarConfigSiVisible();
 
             if (!modoAutomatico) _gistMergeCerrarOVolver();
             const lastSyncEl = document.getElementById('gist-ultima-sync');
@@ -4714,10 +5262,12 @@
 
         function actualizarBotonGistMerge() {
             const hint = document.getElementById('hint-gist-merge');
-            const iconEl = document.getElementById('icon-gist-merge')?.querySelector('use');
+            const iconEl = document.getElementById('icon-gist-merge');
             const esMerge = GistSync.getMergeBehavior() === 'merge';
             if (hint) hint.textContent = esMerge ? 'Combinar' : 'Reemplazar';
-            if (iconEl) iconEl.setAttribute('href', esMerge ? '#icon-combine' : '#icon-replace-swap');
+            const desc = document.getElementById('desc-gist-merge');
+            if (desc) desc.textContent = esMerge ? ' · une Gist con tus datos locales' : ' · sustituye tus datos locales';
+            if (iconEl) setIconoBtn(iconEl, esMerge ? '#icon-combine' : '#icon-replace-swap');
         }
 
         function toggleGistBackup() {
@@ -4737,9 +5287,9 @@
             if (!btn) return;
 
             const configs = [
-                { texto: 'Sin automatizar', hint: '', activo: false },
-                { texto: 'Restaurar', hint: '', activo: true },
-                { texto: 'Respaldar', hint: '', activo: true }
+                { texto: 'Sin automatizar', hint: ' · solo sincronizás de forma manual', activo: false },
+                { texto: 'Restaurar', hint: ' · baja tus datos de Gist al abrir la app', activo: true },
+                { texto: 'Respaldar', hint: ' · sube tus datos a Gist al abrir la app', activo: true }
             ];
             const c = configs[estado];
             _setBtnActivo(btn.id, c.activo);
@@ -4772,33 +5322,34 @@
             return estado === 1 ? 'bajar' : estado === 2 ? 'subir' : null;
         }
 
-        function _actualizarCampoLimite() {
+        function _actualizarCampoLimite(dir = 0) {
             const tipo = _tipoSyncActual();
             const contenedor = document.getElementById('gist-limite-sync');
             if (!contenedor) return;
             if (!tipo) {
                 contenedor.classList.add('disabled');
+                _actualizarResumenLimites();
                 return;
             }
             const limite = _gistLimitesTemp ? _gistLimitesTemp[tipo] : GistSync.getSyncLimite(tipo);
             const input = document.getElementById('gist-limite-valor');
             const label = document.getElementById('gist-limite-label');
-            if (input) input.textContent = limite;
+            if (input) _animarValor(input, limite, dir);
             if (label) label.textContent = tipo === 'bajar' ? 'Límite bajadas por hora (0 = sin límite)' : 'Límite subidas por hora (0 = sin límite)';
             contenedor.classList.remove('disabled');
+            _actualizarResumenLimites();
         }
 
         function cambiarLimiteSync(delta) {
             const tipo = _tipoSyncActual();
             if (!tipo) return;
             if (!_gistLimitesTemp) _gistLimitesTemp = { bajar: GistSync.getSyncLimite('bajar'), subir: GistSync.getSyncLimite('subir') };
-            _gistLimitesTemp[tipo] = Math.max(0, Math.min(99, _gistLimitesTemp[tipo] + delta));
-            _actualizarCampoLimite();
+            const previo = _gistLimitesTemp[tipo];
+            _gistLimitesTemp[tipo] = Math.max(0, Math.min(99, previo + delta));
+            _actualizarCampoLimite(Math.sign(_gistLimitesTemp[tipo] - previo));
         }
 
-        const _pressHoldLimite = _crearPressHold(delta => cambiarLimiteSync(delta));
-        function iniciarCambioLimite(delta) { _pressHoldLimite.iniciar(delta); }
-        function detenerCambioLimite() { _pressHoldLimite.detener(); }
+        const pressHoldLimite = _crearPressHold(delta => cambiarLimiteSync(delta));
 
         async function _gistConSpinner(btnId, mensajeError, accion) {
             const btn = document.getElementById(btnId);
@@ -4881,53 +5432,141 @@
             return cambios;
         }
 
-        function _buildResumenMerge(resumenEl, { soloEnGist, enAmbos, soloLocal, complementarios }, registrosNormalizados, configCambios) {
-            resumenEl.innerHTML = '';
-            const _mkSvg = (id) => {
-                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-                svg.setAttribute('class', 'icon');
-                const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-                use.setAttribute('href', id);
-                svg.appendChild(use);
-                return svg;
-            };
-            const _mkStrong = (text, cls) => Object.assign(document.createElement('strong'), { className: cls || '', textContent: String(text) });
-            const _mkRow = (...nodes) => {
-                const d = document.createElement('div');
-                nodes.forEach(n => d.appendChild(typeof n === 'string' ? document.createTextNode(n) : n));
-                return d;
-            };
+        const _mkEl = (tag, cls, texto) => {
+            const e = document.createElement(tag);
+            if (cls) e.className = cls;
+            if (texto != null) e.textContent = String(texto);
+            return e;
+        };
 
-            const bloqueFilas = document.createElement('div');
-            bloqueFilas.appendChild(_mkRow(_mkSvg('#icon-cloud'), ` En Gist `, _mkStrong(soloEnGist.length, 'text-green'), ` registro${TimeUtils.pluralizar(soloEnGist.length)} nuevo${TimeUtils.pluralizar(soloEnGist.length)}`));
-            const filaAmbos = _mkRow(_mkSvg('#icon-combine'), ` En ambos `, _mkStrong(enAmbos.length), ` registro${TimeUtils.pluralizar(enAmbos.length)} (por fecha`);
-            if (complementarios.length > 0) {
-                filaAmbos.appendChild(document.createTextNode(', '));
-                filaAmbos.appendChild(_mkStrong(complementarios.length, 'text-blue'));
-                filaAmbos.appendChild(document.createTextNode(' para completar'));
-            }
-            filaAmbos.appendChild(document.createTextNode(')'));
-            bloqueFilas.appendChild(filaAmbos);
-            bloqueFilas.appendChild(_mkRow(_mkSvg('#icon-save'), ` Local `, _mkStrong(soloLocal.length), ` registro${TimeUtils.pluralizar(soloLocal.length)} no subido${TimeUtils.pluralizar(soloLocal.length)}`));
-            resumenEl.appendChild(bloqueFilas);
+        const _mkColapsable = (contenido) => {
+            const wrap = _mkEl('div', 'collapsible');
+            const inner = _mkEl('div', 'collapsible-inner');
+            inner.appendChild(contenido);
+            wrap.appendChild(inner);
+            return wrap;
+        };
 
-            const configEl = Object.assign(document.createElement('div'), {
-                id: '_gist-config-cambios',
-                textContent: configCambios.length > 0 ? `⚙ Reemplazar cambiará: ${configCambios.join(', ')}` : '⚙ Sin cambios de configuración'
+        function _crearSelectorModoMerge(onCambio) {
+            const el = _mkEl('div', 'btn-group');
+            el.setAttribute('role', 'group');
+            el.setAttribute('aria-label', 'Cómo aplicar los datos del Gist');
+            const btns = [['merge', '#icon-combine', 'Combinar'], ['replace', '#icon-replace-swap', 'Reemplazar']].map(([modo, icono, texto]) => {
+                const btn = _mkEl('button');
+                btn.type = 'button';
+                btn.dataset.modo = modo;
+                btn.innerHTML = `<svg class="icon"><use href="${icono}" /></svg>`;
+                btn.appendChild(document.createTextNode(texto));
+                btn.addEventListener('click', () => onCambio(modo));
+                el.appendChild(btn);
+                return btn;
             });
-            resumenEl.appendChild(configEl);
+            return {
+                el,
+                pintar(modo) {
+                    btns.forEach(b => {
+                        const activo = b.dataset.modo === modo;
+                        b.classList.toggle('btn-activo', activo);
+                        b.setAttribute('aria-pressed', String(activo));
+                    });
+                }
+            };
+        }
 
-            const footer = document.createElement('div');
-            footer.className = 'gist-resumen-footer';
-            let txtCombinar = `: agrega ${soloEnGist.length} nuevo(s)`;
-            if (complementarios.length > 0) txtCombinar += `, completa ${complementarios.length} registro(s)`;
-            txtCombinar += ', mantiene los locales';
-            footer.appendChild(_mkStrong('Combinar'));
-            footer.appendChild(document.createTextNode(txtCombinar));
-            footer.appendChild(document.createElement('br'));
-            footer.appendChild(_mkStrong('Reemplazar'));
-            footer.appendChild(document.createTextNode(`: usa los ${registrosNormalizados.length} registros del Gist`));
-            resumenEl.appendChild(footer);
+        function _crearTarjetaResultadoMerge({ nLocal, nGist, nNuevos, nComp }, configCambios) {
+            const el = _mkEl('div', 'gist-res');
+            const fila = (label, valorEl, conBorde) => {
+                const f = _mkEl('div', 'gist-res-fila' + (conBorde ? ' con-borde' : ''));
+                f.append(_mkEl('span', 'gist-res-label', label), valorEl);
+                return f;
+            };
+
+            const antesEl = _mkEl('em');
+            const despuesEl = _mkEl('span');
+            const deltaEl = _mkEl('span');
+            const valorReg = _mkEl('span', 'gist-res-valor');
+            valorReg.append(antesEl, despuesEl, deltaEl);
+            el.appendChild(fila('Registros', valorReg, false));
+
+            let wrapComp = null;
+            if (nComp > 0) {
+                const valorComp = _mkEl('span', 'gist-res-valor');
+                valorComp.append(_mkEl('span', null, nComp), _mkEl('span', 'gist-delta is-info', 'datos faltantes'));
+                wrapComp = _mkColapsable(fila('Se completan', valorComp, true));
+                el.appendChild(wrapComp);
+            }
+
+            let cfgValor = null;
+            if (configCambios.length > 0) {
+                cfgValor = _mkEl('span', 'gist-res-valor');
+                el.appendChild(fila('Configuración', cfgValor, true));
+            }
+
+            return {
+                el,
+                pintar(esMerge, animar) {
+                    const despues = esMerge ? nLocal + nNuevos : nGist;
+                    const delta = despues - nLocal;
+                    antesEl.textContent = `${nLocal} →`;
+                    despuesEl.textContent = String(despues);
+                    deltaEl.className = 'gist-delta' + (delta > 0 ? ' is-mas' : delta < 0 ? ' is-menos' : '');
+                    deltaEl.textContent = delta > 0 ? `+${delta}` : delta < 0 ? String(delta) : 'sin cambios';
+                    cfgValor?.replaceChildren(esMerge ? _mkEl('em', null, 'sin cambios') : document.createTextNode(configCambios.join(', ')));
+                    setColapsable(wrapComp, esMerge, { animar });
+                }
+            };
+        }
+
+        function _crearAlertaReemplazoMerge(nSoloLocal) {
+            if (nSoloLocal === 0) return null;
+            const alerta = _mkEl('div', 'gist-alerta');
+            alerta.innerHTML = '<svg class="icon"><use href="#icon-alert-triangle" /></svg>';
+            const txt = _mkEl('span');
+            txt.append(
+                'Se eliminan ',
+                _mkEl('strong', null, `${nSoloLocal} ${nSoloLocal === 1 ? 'registro local' : 'registros locales'}`),
+                ` que no ${nSoloLocal === 1 ? 'está' : 'están'} en el Gist.`
+            );
+            alerta.appendChild(txt);
+            const el = _mkColapsable(alerta);
+            el.classList.add('gist-alerta-wrap');
+            return { el, pintar: (esMerge, animar) => setColapsable(el, !esMerge, { animar }) };
+        }
+
+        function _buildResumenMerge(resumenEl, { soloEnGist, enAmbos, soloLocal, complementarios }, registrosNormalizados, configCambios) {
+            const cantidades = {
+                nLocal: enAmbos.length + soloLocal.length,
+                nGist: registrosNormalizados.length,
+                nNuevos: soloEnGist.length,
+                nComp: complementarios.length
+            };
+            resumenEl.innerHTML = '';
+            resumenEl.dataset.modo = 'merge';
+
+            const selector = _crearSelectorModoMerge(modo => {
+                if (resumenEl.dataset.modo === modo) return;
+                resumenEl.dataset.modo = modo;
+                pintar(true);
+            });
+            const tarjeta = _crearTarjetaResultadoMerge(cantidades, configCambios);
+            const alerta = _crearAlertaReemplazoMerge(soloLocal.length);
+            resumenEl.append(selector.el, tarjeta.el);
+            if (alerta) resumenEl.appendChild(alerta.el);
+
+            function pintar(animar) {
+                const modo = resumenEl.dataset.modo;
+                const esMerge = modo === 'merge';
+                selector.pintar(modo);
+                tarjeta.pintar(esMerge, animar);
+                alerta?.pintar(esMerge, animar);
+
+                const btnAplicar = document.getElementById('btn-gist-merge-aplicar');
+                if (btnAplicar) {
+                    btnAplicar.classList.toggle('btn-edit', esMerge);
+                    btnAplicar.classList.toggle('btn-delete', !esMerge);
+                }
+            }
+            pintar(false);
         }
 
         async function gistBajar(modoAutomatico = false) {
@@ -4953,7 +5592,49 @@
             });
         }
 
+        function bindEventos() {
+            document.querySelector('.config-actions .btn-gist')?.addEventListener('click', () => abrirModalGist());
+            document.querySelector('.config-actions .btn-backup')?.addEventListener('click', () => mostrarImportar());
+            document.querySelector('.config-actions .btn-export')?.addEventListener('click', () => mostrarExportar());
+            $('gist-token')?.addEventListener('input', () => actualizarEstadoBotonesGist());
+            $('gist-id')?.addEventListener('input', () => actualizarEstadoBotonesGist());
+            $('btn-toggle-token')?.addEventListener('click', () => toggleVerToken());
+            $('btn-crear-token')?.addEventListener('click', () => window.open('https://github.com/settings/tokens/new?description=Horarios+sync&scopes=gist', '_blank', 'noopener,noreferrer'));
+            $('btn-gist-abrir')?.addEventListener('click', () => abrirGistEnBrowser());
+            $('btn-gist-subir')?.addEventListener('click', () => gistSubir());
+            $('btn-gist-bajar')?.addEventListener('click', () => gistBajar());
+            $('btn-toggle-gist-backup')?.addEventListener('click', () => toggleGistBackup());
+            $('btn-toggle-gist-merge')?.addEventListener('click', () => toggleGistMerge());
+            document.querySelectorAll('.gist-panel-toggle').forEach(b => b.addEventListener('click', () => toggleGistPanel(b.id)));
+            const inputLimite = $('gist-limite-valor');
+            if (inputLimite) {
+                const btnDec = $('btn-gist-limite-dec') || inputLimite.closest('.input-number-group')?.querySelectorAll('.btn-increment')?.[0];
+                const btnInc = $('btn-gist-limite-inc') || inputLimite.closest('.input-number-group')?.querySelectorAll('.btn-increment')?.[1];
+                if (btnDec) pressHoldLimite.vincular(btnDec, -1);
+                if (btnInc) pressHoldLimite.vincular(btnInc, 1);
+            }
+
+            $('btn-gist-guardar')?.addEventListener('click', () => guardarConfigGist());
+            $('btn-gist-volver')?.addEventListener('click', () => cerrarModalGist());
+
+            $('btn-gist-merge-aplicar')?.addEventListener('click', () => gistMergeAplicar($('gist-merge-resumen')?.dataset.modo === 'replace' ? 'replace' : 'merge'));
+            $('btn-gist-merge-cancelar')?.addEventListener('click', () => gistMergeCancelar());
+
+            $('btn-seleccionar-archivo')?.addEventListener('click', () => $('file-import').click());
+            $('btn-combinar')?.addEventListener('click', () => DataManagement.importarDatos('merge'));
+            $('btn-reemplazar')?.addEventListener('click', () => DataManagement.importarDatos('replace'));
+            $('btn-volver-importar')?.addEventListener('click', () => cerrarImportar());
+
+            document.querySelector('#modal-exportar .btn-export')?.addEventListener('click', () => ejecutarExportacion());
+            $('btn-volver-exportar')?.addEventListener('click', () => cerrarExportar());
+
+
+
+            ['gist-rango-desde', 'gist-rango-hasta'].forEach(id => $(id)?.addEventListener('input', () => _actualizarResumenLimites()));
+        }
+
         return {
+            bindEventos,
             mostrarImportar,
             cerrarImportar,
             mostrarExportar,
@@ -4961,6 +5642,8 @@
             ejecutarExportacion,
             toggleCamposRangoExport,
             actualizarEstadoBotonesGist,
+            actualizarResumenLimites: _actualizarResumenLimites,
+            toggleGistPanel,
             actualizarBotonesHistorico,
             abrirModalGist,
             cerrarModalGist,
@@ -4972,8 +5655,7 @@
             toggleGistBackup,
             toggleGistMerge,
             cambiarLimiteSync,
-            iniciarCambioLimite,
-            detenerCambioLimite,
+            pressHoldLimite,
             gistSubir,
             gistBajar
         };
@@ -4985,7 +5667,7 @@
     const UIHistorico = (function (S, D, UICore) {
         const {
             formatoDiferencia, mostrarToast, _setBtnActivo, debounce,
-            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante
+            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, setIconoBtn
         } = UICore;
 
         let edicionBloqueada = true;
@@ -5020,72 +5702,43 @@
             return grupos;
         }
 
-        function obtenerTipoRegistro(registro) {
-            if (!registro) return null;
-
-            const tipo = TiposRegistro.obtenerTipoPorCodigo(registro.entrada, registro.salida);
-            return tipo ? tipo.id : null;
-        }
-
-        function esFechaConsecutiva(fechaActual, fechaSiguiente) {
-            const actual = TimeUtils.parsearFechaLocal(fechaActual);
-            const siguiente = TimeUtils.parsearFechaLocal(fechaSiguiente);
-            actual.setDate(actual.getDate() - 1);
-            return TimeUtils.formatearFechaLocal(actual) === fechaSiguiente;
-        }
-
-        function agruparRegistrosConsecutivos(registros) {
-            if (!registros || registros.length === 0) return [];
-
-            const resultado = [];
-            let i = 0;
-
-            while (i < registros.length) {
-                const registroActual = registros[i];
-                const tipoActual = obtenerTipoRegistro(registroActual);
-
-                if (tipoActual === null) {
-                    resultado.push({ tipo: 'individual', registros: [registroActual] });
-                    i++; continue;
-                }
-
-                const grupo = [registroActual];
-                let j = i + 1;
-                while (j < registros.length) {
-                    const siguiente = registros[j];
-                    if (obtenerTipoRegistro(siguiente) !== tipoActual) break;
-                    if (!esFechaConsecutiva(grupo[grupo.length - 1].fecha, siguiente.fecha)) break;
-                    grupo.push(siguiente);
-                    j++;
-                }
-
-                resultado.push(grupo.length > 1
-                    ? { tipo: 'grupo', subtipo: tipoActual, registros: grupo }
-                    : { tipo: 'individual', registros: grupo }
-                );
-                i = j;
-            }
-
-            return resultado;
-        }
-
-        function _crearChevron() {
+        function _crearIconoSvg(href, clase) {
             const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            svg.setAttribute('class', 'icon chevron-mes chevron-mes-icon');
+            svg.setAttribute('class', `icon ${clase}`);
             svg.setAttribute('viewBox', '0 0 24 24');
             const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-            use.setAttribute('href', '#icon-chevron-down');
+            use.setAttribute('href', href);
             svg.appendChild(use);
             return svg;
         }
 
-        function _crearInfoRegistro({ fechaText, horasText, totalText, totalClase = '', badgesExtra = [] }) {
+        const _crearChevron = () => _crearIconoSvg('#icon-chevron-down', 'chevron-mes chevron-mes-icon');
+
+        function _crearInfoRegistro({ fechaText, horasText, totalText, totalClase = '', badgesExtra = [], comentarioText = '' }) {
             const info = document.createElement('div');
             info.className = 'registro-info';
 
             const fechaEl = document.createElement('div');
             fechaEl.className = 'registro-fecha';
-            fechaEl.textContent = fechaText;
+
+            const fechaTextoEl = document.createElement('span');
+            fechaTextoEl.className = 'registro-fecha-texto';
+            fechaTextoEl.textContent = fechaText;
+            fechaEl.appendChild(fechaTextoEl);
+
+            if (comentarioText) {
+                const comEl = document.createElement('span');
+                comEl.className = 'registro-comentario';
+                comEl.title = `Comentario: ${comentarioText}`;
+
+                const txt = document.createElement('span');
+                txt.className = 'registro-comentario-texto';
+                txt.textContent = comentarioText;
+
+                comEl.appendChild(_crearIconoSvg('#icon-comment', 'icon-comentario'));
+                comEl.appendChild(txt);
+                fechaEl.appendChild(comEl);
+            }
 
             const horasEl = document.createElement('div');
             horasEl.className = 'registro-horas';
@@ -5125,7 +5778,8 @@
             item.dataset.registroId = r.id;
             item.dataset.accion = 'editar-registro';
 
-            const tipoEspecial = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+            const est = SaldoSemanal.estadoDeRegistro(r, asignacionesCompensatorio);
+            const tipoEspecial = est.tipo;
 
             const etiqueta = tipoEspecial ? ` ${tipoEspecial.emoji} (${tipoEspecial.label})` : '';
             const fechaText = `${TimeUtils.obtenerNombreDia(r.fecha)} ${r.fecha.substring(8)}${etiqueta}`;
@@ -5140,59 +5794,45 @@
                 ? tipoEspecial.descripcion
                 : `${r.entrada || '-'} → ${r.salida || '-'}${tfText}${crText}`;
 
-            let totalText = 'Incompleto';
-            let totalClase = '';
-            let esCubierto = false;
-
+            let totalText, totalClase = '';
             if (tipoEspecial) {
                 totalText = 'Justificado';
                 totalClase = `${tipoEspecial.color}-text`;
-            } else if (r.entrada && r.salida) {
-                totalText = TimeUtils.horasATexto(r.total, 'short');
-                const objetivoReg = D.objetivoDeRegistro(r);
-                if (objetivoReg > 0 && UILogic._esFechaHabil(r.fecha, D.diasHabilesEnFecha(r.fecha))) {
-                    const diffText = formatoDiferencia(r.total, objetivoReg);
-                    if (horasGte(r.total, objetivoReg)) {
-                        totalClase = 'green-text';
-                        if (diffText) totalText += ` (${diffText})`;
-                    } else if (UILogic._cubiertoPorSaldo(r.fecha, asignacionesCompensatorio)) {
-                        totalClase = 'gold-text';
-                        if (diffText) totalText += ` (${diffText})`;
-                        esCubierto = true;
-                    } else {
-                        totalClase = 'red-text';
-                        if (diffText) totalText += ` (${diffText})`;
-                    }
-                }
-            } else if (r.entrada && !r.salida) {
+            } else if (est.estado === 'en-curso') {
                 totalText = r.fecha === hoy ? 'En curso . . .' : 'Incompleto';
                 totalClase = 'blue-text';
-            } else {
+            } else if (est.estado === 'sin-datos') {
                 totalText = 'Sin datos';
+            } else {
+                totalText = TimeUtils.horasATexto(r.total, 'short') + (est.diffText ? ` (${est.diffText})` : '');
+                totalClase = { cumplido: 'green-text', cubierto: 'gold-text', incompleto: 'red-text', neutro: 'neutro-text' }[est.estado] || '';
             }
 
             const badgesExtra = [];
-            if (esCubierto) badgesExtra.push({ texto: 'Cubierto', clase: 'gold-text' });
+            if (est.estado === 'cubierto') badgesExtra.push({ texto: 'Cubierto', clase: 'gold-text' });
             if (tipoEspecial?.id === 'compensatorio') {
-                const fechaCompensada = D.fechaCompensadaPorRegistro(r, asignacionesCompensatorio);
-                if (fechaCompensada) {
-                    badgesExtra.push({ texto: TimeUtils.fechaCorta(fechaCompensada), clase: `${tipoEspecial.color}-text` });
-                } else {
-                    badgesExtra.push({ texto: '⚠ Sin referencia', clase: 'red-text' });
-                }
+                badgesExtra.push(est.fechaCompensada
+                    ? { texto: TimeUtils.fechaCorta(est.fechaCompensada), clase: `${tipoEspecial.color}-text` }
+                    : { texto: '⚠ Sin referencia', clase: 'red-text' });
             }
-            if (!tipoEspecial) {
-                const fechaCompensado = D.fechaCompensadoDeRegistro(r, asignacionesCompensatorio);
-                if (fechaCompensado) badgesExtra.push({ texto: `→ ${TimeUtils.fechaCorta(fechaCompensado)}`, clase: 'purple-text' });
-            }
+            if (est.fechaCompensado) badgesExtra.push({ texto: `→ ${TimeUtils.fechaCorta(est.fechaCompensado)}`, clase: 'purple-text' });
 
-            item.appendChild(_crearInfoRegistro({ fechaText, horasText, totalText, totalClase, badgesExtra }));
+            item.appendChild(_crearInfoRegistro({
+                fechaText,
+                horasText,
+                totalText,
+                totalClase,
+                badgesExtra,
+                comentarioText: r.notas
+            }));
 
             return item;
         }
 
+        const _guardarExpandido = (storageKeyFn, id, abierto) => StorageHelper.setItem(storageKeyFn(id), String(abierto));
+
         function crearContenedorMes(claveMes, registrosDelMes, idNuevo, mesHoy, hoy, asignacionesCompensatorio = null) {
-            const grupos = agruparRegistrosConsecutivos(registrosDelMes);
+            const grupos = TiposRegistro.agruparConsecutivos(registrosDelMes);
 
             const contenedorMesActual = document.createElement('div');
             contenedorMesActual.className = 'registro-mes-container';
@@ -5260,7 +5900,7 @@
                     className: 'btn-backup empty-state__btn-restaurar',
                     innerHTML: '<svg class="icon"><use href="#icon-upload" /></svg> Restaurar desde archivo'
                 });
-                btn.addEventListener('click', () => UILogic.mostrarImportar(true));
+                btn.addEventListener('click', () => UIGistYRespaldo.mostrarImportar(true));
                 emptyDiv.appendChild(msg);
                 emptyDiv.appendChild(btn);
             } else {
@@ -5282,8 +5922,7 @@
             const detalle = Object.assign(document.createElement('div'), { className: 'registro-mes-detalle collapsible' });
             const innerAnio = Object.assign(document.createElement('div'), { className: 'detalle-inner' });
             detalle.appendChild(innerAnio);
-            let expandido = false;
-            try { expandido = StorageHelper.getItem(STORAGE_KEYS.ANIO_EXPANDIDO(anio)) === 'true'; } catch (e) { }
+            const expandido = StorageHelper.getBoolean(STORAGE_KEYS.ANIO_EXPANDIDO(anio));
             if (expandido) { detalle.classList.add('expanded'); chevron.classList.add('rotated'); }
 
             mesesDelAnio.forEach((registrosDelMes, claveMes) =>
@@ -5308,7 +5947,7 @@
                 if (det === preferido.det) return;
                 det.classList.remove('expanded');
                 header.querySelector('.chevron-mes')?.classList.remove('rotated');
-                try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'false'); } catch (e) { }
+                _guardarExpandido(STORAGE_KEYS.MES_EXPANDIDO, header.dataset.mesId, false);
             });
         }
 
@@ -5393,7 +6032,14 @@
                 }
             }
 
-            header.appendChild(_crearInfoRegistro({ fechaText, horasText, totalText: 'Justificado', totalClase: colorClase, badgesExtra }));
+            header.appendChild(_crearInfoRegistro({
+                fechaText,
+                horasText,
+                totalText: 'Justificado',
+                totalClase: colorClase,
+                badgesExtra,
+                comentarioText: TiposRegistro.notaDeGrupo(grupo)
+            }));
 
             header.dataset.accion = 'editar-grupo';
             header.dataset.grupoData = JSON.stringify({
@@ -5407,7 +6053,7 @@
 
 
         function cerrarEdicion() {
-            window.UILogic?.detenerCambioObjetivoEdicion();
+            UIConfig.pressHoldObjetivoEdicion.detener();
             ModalManager.cerrar('modal-editar', () => {
                 D.setEditandoId(null);
                 document.dispatchEvent(new Event('scroll'));
@@ -5418,8 +6064,7 @@
         function _setBloqueoEdicionGenerico(bloqueado, { btnLockId, inputIds, modalId, excluirBotones }) {
             const btnLock = $(btnLockId);
             if (btnLock) {
-                const icon = btnLock.querySelector('use');
-                icon.setAttribute('href', bloqueado ? '#icon-lock' : '#icon-lock-open');
+                setIconoBtn(btnLock, bloqueado ? '#icon-lock' : '#icon-lock-open');
                 btnLock.title = bloqueado ? "Desbloquear edición" : "Bloquear edición";
                 btnLock.classList.toggle('bloqueado', bloqueado);
             }
@@ -5453,7 +6098,7 @@
             [$('btn-edit-objetivo-inc'), $('btn-edit-objetivo-dec')].forEach(btn => {
                 if (btn) btn.disabled = objetivoDeshabilitado;
             });
-            if (objetivoDeshabilitado) window.UILogic?.detenerCambioObjetivoEdicion();
+            if (objetivoDeshabilitado) UIConfig.pressHoldObjetivoEdicion.detener();
             if (elObjetivo) elObjetivo.classList.toggle('input-number-inerte', objetivoDeshabilitado);
             verificarBloqueoCredito();
         }
@@ -5482,8 +6127,7 @@
             const elRef = document.getElementById('edit-referencia-compensatorio');
             if (elRef) {
                 const esCompensatorio = tipoEspecial?.id === 'compensatorio';
-                const grupoRef = document.getElementById('grupo-referencia-compensatorio');
-                if (grupoRef) grupoRef.classList.toggle('expanded', esCompensatorio);
+                setColapsable(document.getElementById('grupo-referencia-compensatorio'), esCompensatorio);
                 if (!esCompensatorio) elRef.value = '';
             }
 
@@ -5527,7 +6171,7 @@
                 const anioId = headerAnio.dataset.anioId;
                 const abierto = detalleAnio.classList.toggle('expanded');
                 if (chevronAnio) chevronAnio.classList.toggle('rotated', abierto);
-                try { StorageHelper.setItem(STORAGE_KEYS.ANIO_EXPANDIDO(anioId), String(abierto)); } catch (e) { }
+                _guardarExpandido(STORAGE_KEYS.ANIO_EXPANDIDO, anioId, abierto);
             });
         }
 
@@ -5541,7 +6185,7 @@
                 const r1 = registros.length > 1 ? registros[1].getBoundingClientRect() : null;
                 const cortado0 = r0.top < margenHeader || r0.bottom > alturaVentana;
                 const cortado1 = r1 && (r1.top < margenHeader || r1.bottom > alturaVentana);
-                if (cortado0 || cortado1) contenedor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (cortado0 || cortado1) contenedor.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'start' });
             }, 310);
         }
 
@@ -5558,7 +6202,7 @@
                 if (detalle.classList.contains('expanded')) {
                     detalle.classList.remove('expanded');
                     chevronIcon.classList.remove('rotated');
-                    try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'false'); } catch (e) { }
+                    _guardarExpandido(STORAGE_KEYS.MES_EXPANDIDO, header.dataset.mesId, false);
                     return;
                 }
 
@@ -5576,9 +6220,7 @@
                     const oHeader = oc?.querySelector('.registro-mes-header');
                     if (och) och.classList.remove('rotated');
                     const id = oHeader?.dataset[datasetKey];
-                    if (id) {
-                        try { StorageHelper.setItem(storageKeyFn(id), 'false'); } catch (e) { }
-                    }
+                    if (id) _guardarExpandido(storageKeyFn, id, false);
                 };
 
                 otrosMesesAbiertos.forEach(otro => {
@@ -5589,7 +6231,7 @@
                 const _abrirDetalle = () => {
                     detalle.classList.add('expanded');
                     chevronIcon.classList.add('rotated');
-                    try { StorageHelper.setItem(STORAGE_KEYS.MES_EXPANDIDO(header.dataset.mesId), 'true'); } catch (e) { }
+                    _guardarExpandido(STORAGE_KEYS.MES_EXPANDIDO, header.dataset.mesId, true);
                     _scrollAlExpandir(contenedor, detalle);
                 };
 
@@ -5639,10 +6281,16 @@
             const btnFiltro = document.getElementById('btn-filtro');
             if (!btnFiltro) return;
 
-            if (_popupFiltrosEl) { _popupFiltrosEl.remove(); _popupFiltrosEl = null; return; }
+            if (_popupFiltrosEl) {
+                const el = _popupFiltrosEl;
+                _popupFiltrosEl = null;
+                if (el._cerrar) el._cerrar();
+                else el.remove();
+                return;
+            }
 
             const tipos = TiposRegistro.obtenerTodosLosTipos();
-            const opcionesTipo = tipos.map(t => `<option value="${t.id}">${t.emoji} ${t.labelPlural}</option>`).join('');
+            const opcionesTipo = tipos.map(t => `<option value="${S.escapeHtml(t.id)}">${S.escapeHtml(t.emoji)} ${S.escapeHtml(t.labelPlural)}</option>`).join('');
 
             const popup = _crearPopupFlotante({
                 className: 'filtro-popup',
@@ -5671,7 +6319,7 @@
                 event: event && event.currentTarget ? event : { currentTarget: btnFiltro },
                 selectorTrigger: '#btn-filtro',
                 esMismoTrigger: () => true,
-                alCerrar: () => { _popupFiltrosEl = null; }
+                alCerrar: (p) => { if (_popupFiltrosEl === p) _popupFiltrosEl = null; }
             }).popup;
             _popupFiltrosEl = popup;
 
@@ -5689,7 +6337,12 @@
         }
 
         function cerrarFiltros() {
-            if (_popupFiltrosEl) { _popupFiltrosEl.remove(); _popupFiltrosEl = null; }
+            if (_popupFiltrosEl) {
+                const el = _popupFiltrosEl;
+                _popupFiltrosEl = null;
+                if (el._cerrar) el._cerrar();
+                else el.remove();
+            }
         }
 
         function _setIconHistorico(icon, estado) {
@@ -5714,7 +6367,7 @@
                     _setIconHistorico(icon, 'meses');
                     StorageHelper.setItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'meses');
                     tiempoExpansionBotones = null;
-                    UILogic._activarVistaCalendarioHistorico();
+                    UICalendario._activarVistaCalendarioHistorico();
 
                 } else if (!conBotones) {
                     botones.classList.add('expanded');
@@ -5829,8 +6482,32 @@
             });
         }
 
+        function bindEventos() {
+            document.querySelector('#card-historico .card-header-clickable')?.addEventListener('click', () => toggleHistorico());
+            $('btn-vista-calendario')?.addEventListener('click', () => {
+                iniciarTimerAutoCierreBotones();
+                UICalendario.toggleVistaHistorico();
+            });
+            $('btn-filtro')?.addEventListener('click', (e) => mostrarFiltros(e));
+            $('btn-undo')?.addEventListener('click', () => D.undoAction());
+            $('btn-redo')?.addEventListener('click', () => D.redoAction());
+
+            $('btn-toggle-credito')?.addEventListener('click', () => toggleCredito());
+            $('btn-lock-toggle')?.addEventListener('click', () => toggleBloqueoEdicion());
+            $('btn-edit-referencia-compensatorio')?.addEventListener('click', () => DataManagement.pegarReferenciaAutomatica());
+            document.querySelector('#modal-editar .btn-edit')?.addEventListener('click', () => DataManagement.guardarEdicion());
+            document.querySelector('#modal-editar .btn-delete')?.addEventListener('click', () => DataManagement.eliminarRegistroActual());
+            document.querySelector('#modal-editar .btn-cancel')?.addEventListener('click', () => cerrarEdicion());
+
+            $('btn-lock-grupo-toggle')?.addEventListener('click', () => toggleBloqueoEdicionGrupo());
+            document.querySelector('#modal-editar-grupo .btn-edit')?.addEventListener('click', () => DataManagement.guardarEdicionGrupo());
+            document.querySelector('#modal-editar-grupo .btn-delete')?.addEventListener('click', () => DataManagement.eliminarGrupoActual());
+            document.querySelector('#modal-editar-grupo .btn-cancel')?.addEventListener('click', () => cerrarEdicionGrupo());
+
+        }
+
         return {
-            agruparRegistrosConsecutivos,
+            bindEventos,
             actualizarListaRegistros,
             cerrarEdicion,
             setBloqueoEdicion,
@@ -5861,7 +6538,7 @@
         const {
             mostrarToast, _poblarSelect,
             _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante,
-            toggleSeccionGen, registrarSwipe, _animarFadeSwap
+            toggleSeccionGen, registrarSwipe, _animarFadeSwap, descargarArchivo
         } = UICore;
 
         let modoEstadisticas = 'mensual';
@@ -5964,7 +6641,7 @@
                 ? D.calcularBufferPeriodo(opciones.desde, opciones.hasta, true, 0, asignacionesCompensatorio)
                 : null;
             const aprovechamientoSaldo = hayPeriodo
-                ? UILogic.calcularAprovechamientoSaldo(opciones.desde, opciones.hasta, asignacionesCompensatorio)
+                ? SaldoSemanal.calcularAprovechamiento(opciones.desde, opciones.hasta, asignacionesCompensatorio)
                 : null;
 
             return {
@@ -6145,7 +6822,7 @@
         function poblarSelectorSemanas() {
             const semanas = _obtenerSemanas();
             const lunesISO = TimeUtils.formatearFechaLocal(TimeUtils.obtenerLunes());
-            _poblarSelect('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana, UILogic._agruparMesesPorAnio);
+            _poblarSelect('select-semana-stats', semanas, _formatearSemana, lunesISO, actualizarEstadisticasSemana, TimeUtils.agruparMesesPorAnio);
         }
 
         function calcularEstadisticasSemana(lunesISO) {
@@ -6177,7 +6854,12 @@
         function cambiarAnioStats() { _cambiarPeriodoStats('select-anio-stats', actualizarEstadisticasAnio); }
 
         function togglePeriodoStats(direccion = 1) {
-            if (_popupStatEl) { _popupStatEl.remove(); _popupStatEl = null; }
+            if (_popupStatEl) {
+                const el = _popupStatEl;
+                _popupStatEl = null;
+                if (el._cerrar) el._cerrar();
+                else el.remove();
+            }
             const selectMes = $('select-mes-stats');
             const selectAnio = $('select-anio-stats');
             const label = $('label-periodo-toggle');
@@ -6186,7 +6868,7 @@
             const orden = ['mensual', 'anual', 'semanal'];
             const idx = orden.indexOf(modoEstadisticas);
             modoEstadisticas = orden[(idx + direccion + orden.length) % orden.length];
-            try { StorageHelper.setItem(STORAGE_KEYS.MODO_ESTADISTICAS, modoEstadisticas); } catch (e) { }
+            StorageHelper.setItem(STORAGE_KEYS.MODO_ESTADISTICAS, modoEstadisticas);
 
             _animarSlideElemento(document.getElementById('stats-inner'), direccion, () => {
                 selectMes.classList.add('hidden');
@@ -6211,7 +6893,7 @@
         function poblarSelectorMeses() {
             const meses = [...new Set(D.registros().map(r => r.fecha.substring(0, 7)))].sort().reverse();
             const mesActual = TimeUtils.formatearFechaLocal(new Date()).slice(0, 7);
-            _poblarSelect('select-mes-stats', meses, UILogic._nombreMesCapitalizado, mesActual, actualizarEstadisticas, UILogic._agruparMesesPorAnio);
+            _poblarSelect('select-mes-stats', meses, TimeUtils.nombreMesCapitalizado, mesActual, actualizarEstadisticas, TimeUtils.agruparMesesPorAnio);
         }
 
         function _sumarHorasEfectivas(regs) {
@@ -6608,13 +7290,7 @@
 </html>`;
 
             try {
-                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = Object.assign(document.createElement('a'), { href: url, download: nombreArchivo });
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                descargarArchivo(html, nombreArchivo, 'text/html;charset=utf-8');
                 mostrarToast(esAnual ? 'Reporte anual generado' : 'Reporte generado', 'success');
             } catch (e) {
                 console.error('Error generando reporte:', e);
@@ -6640,7 +7316,7 @@
                 <button type="button" class="btn-seccion-reporte btn-activo" data-seccion="${sec.id}">
                     <svg class="icon"><use href="${sec.icono}" /></svg>
                     <span>${S.escapeHtml(sec.label)}</span>
-                    <svg class="icon icon-indicator"><use href="#icon-dot" /></svg>
+                    <span class="toggle-switch" aria-hidden="true"></span>
                 </button>`).join('');
         }
 
@@ -6688,7 +7364,12 @@
 
         function _popupStat(event, statId) {
             event.stopPropagation();
-            if (_popupStatEl) { _popupStatEl.remove(); _popupStatEl = null; }
+            if (_popupStatEl) {
+                const el = _popupStatEl;
+                _popupStatEl = null;
+                if (el._cerrar) el._cerrar();
+                else el.remove();
+            }
 
             let info = DESCRIPCIONES_STATS[statId];
             if (statId === 'stat-saldo' && info) {
@@ -6750,7 +7431,7 @@
                 event,
                 selectorTrigger: '.stat-item',
                 esMismoTrigger: item => item.dataset.statId === statId,
-                alCerrar: () => { _popupStatEl = null; }
+                alCerrar: (p) => { if (_popupStatEl === p) _popupStatEl = null; }
             }).popup;
             _popupStatEl = popup;
         }
@@ -6760,8 +7441,10 @@
             const valueEl = item.querySelector('.stat-value');
             if (!valueEl || !valueEl.id) return;
             if (_popupStatEl && _popupStatEl.dataset.statId === valueEl.id) {
-                _popupStatEl.remove();
+                const el = _popupStatEl;
                 _popupStatEl = null;
+                if (el._cerrar) el._cerrar();
+                else el.remove();
                 return;
             }
             item.dataset.statId = valueEl.id;
@@ -6790,7 +7473,24 @@
             });
         }
 
+        function bindEventos() {
+            document.querySelector('#card-estadisticas .card-header-clickable')?.addEventListener('click', () => toggleStats());
+            $('select-mes-stats')?.addEventListener('change', () => cambiarMesStats());
+            $('select-anio-stats')?.addEventListener('change', () => cambiarAnioStats());
+            $('select-semana-stats')?.addEventListener('change', () => cambiarSemanaStats());
+            $('btn-toggle-periodo')?.addEventListener('click', () => togglePeriodoStats());
+            $('btn-reporte')?.addEventListener('click', () => abrirModalReporteSecciones());
+            $('reporte-secciones-lista')?.addEventListener('click', (e) => {
+                const btn = e.target.closest('.btn-seccion-reporte');
+                if (btn) toggleSeccionReporte(btn);
+            });
+            $('btn-confirmar-reporte')?.addEventListener('click', () => confirmarGenerarReporte());
+            $('btn-volver-reporte-secciones')?.addEventListener('click', () => cerrarModalReporteSecciones());
+
+        }
+
         return {
+            bindEventos,
             _calcularEstadisticasRango,
             _renderizarStats,
             calcularEstadisticasMes,
@@ -6827,7 +7527,8 @@
         const {
             formatoDiferencia, mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
             _setBtnActivo, _setBtnDisabled, _flashCampo, _flashCampoTipo, registrarSwipe, _animarFadeSwap,
-            _animarMutacion, _animarSlideElemento, toggleSeccionGen, DUR_ANIM, _crearOpcion, setIconoBtn
+            _animarMutacion, _animarSlideElemento, toggleSeccionGen, DUR_ANIM, _crearOpcion, setIconoBtn,
+            aplicarFeedbackCampos
         } = UICore;
 
         let modoLoteActivo = false;
@@ -6987,7 +7688,7 @@
             const hoy = TimeUtils.obtenerFechaHoy();
             const diaSemana = new Date().getDay();
             const hoyIndex = diaSemana === 0 ? 7 : diaSemana;
-            const esDiaHabil = _esFechaHabil(hoy, diasHabiles);
+            const esDiaHabil = TimeUtils.esFechaHabil(hoy, diasHabiles);
             let quedanDiasFuturos;
             if (Array.isArray(diasHabiles)) {
                 quedanDiasFuturos = false;
@@ -6998,99 +7699,6 @@
                 quedanDiasFuturos = hoyIndex < diasHabiles;
             }
             return { esDiaHabil, quedanDiasFuturos };
-        }
-
-        function _esFechaHabil(fecha, diasHabiles) {
-            const diaSemana = TimeUtils.parsearFechaLocal(fecha).getDay();
-            if (Array.isArray(diasHabiles)) return diasHabiles.includes(diaSemana);
-            return diaSemana === 0 ? (diasHabiles === 7) : (diaSemana <= diasHabiles);
-        }
-
-        function _logicaCubiertoActiva() {
-            return !StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false, true);
-        }
-
-        function _calcularPoolSemana(lunes, hasta, asignacionesPrecalculadas = null) {
-            const lunesDate = TimeUtils.parsearFechaLocal(lunes);
-            lunesDate.setDate(lunesDate.getDate() + 6);
-            const domingo = TimeUtils.formatearFechaLocal(lunesDate);
-            const limite = domingo < hasta ? domingo : hasta;
-
-            const registrosSemana = D.registros().filter(r => r.fecha >= lunes && r.fecha <= limite);
-            const registrosMap = new Map(registrosSemana.map(r => [r.fecha, r]));
-
-            const EPS = 1e-6;
-            const pendientes = [];
-            let pool = 0, poolGenerado = 0, poolUsado = 0;
-
-            for (const isoDate of TimeUtils.generarRangoFechas(lunes, limite)) {
-                const r = registrosMap.get(isoDate);
-                const esEspecial = r && TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
-                const esRemoto = esEspecial && D.esTipoRemoto(r);
-                let deltaBruto = 0;
-                let montoCompensado = 0;
-                if (esRemoto) {
-                    deltaBruto = 0;
-                } else if (r && !esEspecial && r.salida) {
-                    const objetivo = _esFechaHabil(isoDate, D.diasHabilesEnFecha(isoDate)) ? D.objetivoDeRegistro(r) : 0;
-                    deltaBruto = r.total - objetivo;
-                    if (deltaBruto > EPS) montoCompensado = D.montoCompensadoDeReferencia(r, asignacionesPrecalculadas);
-                }
-                const deltaDisponible = deltaBruto - montoCompensado;
-
-                if (deltaBruto > EPS) poolGenerado += deltaBruto;
-                if (montoCompensado > EPS) poolUsado += montoCompensado;
-
-                if (deltaDisponible > EPS) pool += deltaDisponible;
-                else if (deltaDisponible < -EPS) pendientes.push({ fecha: isoDate, restante: -deltaDisponible });
-
-                for (const deuda of pendientes) {
-                    if (pool <= EPS) break;
-                    if (deuda.restante <= EPS) continue;
-                    const pago = Math.min(pool, deuda.restante);
-                    deuda.restante -= pago;
-                    pool -= pago;
-                    poolUsado += pago;
-                }
-            }
-
-            return { pendientes, poolGenerado, poolUsado };
-        }
-
-        function _cubiertoPorSaldo(fecha, asignacionesPrecalculadas = null) {
-            if (!_logicaCubiertoActiva()) return false;
-            const lunes = TimeUtils.obtenerLunesSemanaISO(fecha);
-            const hoy = TimeUtils.obtenerFechaHoy();
-            const { pendientes } = _calcularPoolSemana(lunes, hoy, asignacionesPrecalculadas);
-            const EPS = 1e-6;
-            const deuda = pendientes.find(d => d.fecha === fecha);
-            return deuda ? deuda.restante <= EPS : false;
-        }
-
-        function calcularAprovechamientoSaldo(desde, hasta, asignacionesPrecalculadas = null) {
-            if (!_logicaCubiertoActiva()) return null;
-            const hoy = TimeUtils.obtenerFechaHoy();
-            const topeReal = hasta < hoy ? hasta : hoy;
-            if (desde > topeReal) return null;
-
-            const asignaciones = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
-            let lunes = TimeUtils.obtenerLunesSemanaISO(desde);
-            let poolGenerado = 0, poolUsado = 0;
-
-            while (lunes <= topeReal) {
-                const r = _calcularPoolSemana(lunes, topeReal, asignaciones);
-                poolGenerado += r.poolGenerado;
-                poolUsado += r.poolUsado;
-                const siguienteLunes = TimeUtils.parsearFechaLocal(lunes);
-                siguienteLunes.setDate(siguienteLunes.getDate() + 7);
-                lunes = TimeUtils.formatearFechaLocal(siguienteLunes);
-            }
-
-            if (poolGenerado <= 1e-6) return null;
-            return {
-                porcentaje: Math.round((poolUsado / poolGenerado) * 1000) / 10,
-                horas: poolUsado
-            };
         }
 
         function _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias) {
@@ -7355,7 +7963,7 @@
 
             const horaSalida = _minutosAHoraWrap(minutosTotal);
 
-            const esLaborable = _esFechaHabil(reg.fecha, diasHabiles);
+            const esLaborable = TimeUtils.esFechaHabil(reg.fecha, diasHabiles);
             const mostrarBuffer = Math.abs(bufferSemanal) > 0.01 && esLaborable;
 
             if (mostrarBuffer) {
@@ -7394,7 +8002,7 @@
             if (!regHoy || !regHoy.entrada) {
 
                 if (est.ayerAbierto) {
-                    const objetivoDiarioAyerAplica = _esFechaHabil(est.ayerStr, diasHabiles)
+                    const objetivoDiarioAyerAplica = TimeUtils.esFechaHabil(est.ayerStr, diasHabiles)
                         ? (est.regAyer ? D.objetivoDeRegistro(est.regAyer) : objetivoDiario)
                         : 0;
                     const prog = _calcularProgreso(tiempoHoy, objetivoDiarioAyerAplica);
@@ -7466,7 +8074,7 @@
                 } else {
                     const faltoTexto = _fraseCantidad(Math.abs(dif), 'Faltó', 'Faltaron');
 
-                    if (_logicaCubiertoActiva() && horasGte(bufferSemanalBase, 0)) {
+                    if (SaldoSemanal.logicaCubiertoActiva() && horasGte(bufferSemanalBase, 0)) {
                         colorBarra = 'gold'; colorBorde = 'gold';
                         estadoFondo = 'especial';
                         estadoFondoColor = 'gold';
@@ -7717,8 +8325,8 @@
             const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
 
             if (!soloReloj) {
-                const idNuevoLista = UILogic.getVistaHistoricoCalendario() ? null : idNuevo;
-                UILogic.actualizarListaRegistros(D.registros(), idNuevoLista, asignacionesCompensatorio);
+                const idNuevoLista = UICalendario.getVistaHistoricoCalendario() ? null : idNuevo;
+                UIHistorico.actualizarListaRegistros(D.registros(), idNuevoLista, asignacionesCompensatorio);
             }
 
             const est = calcularEstadoCard(asignacionesCompensatorio);
@@ -7730,15 +8338,15 @@
             if (!timerFueraCorriendo) { _renderTitulo(vista, sinAnimarTitulo, est); }
             _renderCard(vista);
             _renderBarra(vista);
-            UILogic._renderSelectorStats();
+            UIEstadisticas._renderSelectorStats();
             actualizarEstadoBotonTimerMain(sinAnimarTitulo);
             if (modoLoteActivo) actualizarBotonLote();
-            if (UILogic.getVistaHistoricoCalendario()) {
+            if (UICalendario.getVistaHistoricoCalendario()) {
                 const selector = $('calendario-selector-meses');
                 if (selector && selector.style.display !== 'none') {
-                    UILogic._cerrarSelectorMeses(idNuevo);
+                    UICalendario._cerrarSelectorMeses(idNuevo);
                 } else {
-                    UILogic._renderizarCalendario(idNuevo, asignacionesCompensatorio);
+                    UICalendario._renderizarCalendario(idNuevo, asignacionesCompensatorio);
                 }
             }
 
@@ -7783,15 +8391,15 @@
             _forzarVista(nuevaVista, () => actualizarUI());
         }
 
-        function pegarHoraActual(id) {
+        function _alternarValorCampo(id, obtenerValor) {
             const input = $(id);
-            if (!input) return;
-            if (input.value.trim() !== '') {
-                input.value = '';
-            } else {
-                input.value = TimeUtils.obtenerHoraActual();
-            }
-            input.dispatchEvent(new Event('input'));
+            if (!input) return null;
+            input.value = input.value.trim() !== '' ? '' : obtenerValor();
+            return input;
+        }
+
+        function pegarHoraActual(id) {
+            _alternarValorCampo(id, TimeUtils.obtenerHoraActual)?.dispatchEvent(new Event('input'));
         }
 
         function limpiarCampo(id) {
@@ -7839,7 +8447,6 @@
             const registroHoy = D.registros().find(r => r.fecha === hoy);
             const storageKey = _breakStorageKey();
             const isRunning = StorageHelper.getItem(storageKey) !== null;
-            const icon = btn.querySelector('use');
             const diaCerrado = registroHoy?.salida?.trim() !== '' && !!registroHoy?.salida;
 
             if (!isRunning && (!registroHoy || diaCerrado)) {
@@ -7848,7 +8455,7 @@
                 Object.assign(btn, { disabled: false, title: isRunning ? 'Detener tiempo fuera' : 'Iniciar tiempo fuera' });
             }
 
-            icon.setAttribute('href', '#icon-exit');
+            setIconoBtn(btn, '#icon-exit');
             if (isRunning) {
                 btn.classList.add('running');
                 _actualizarCardTimerRunning(card, storageKey, sinAnimarTitulo);
@@ -7943,7 +8550,6 @@
 
             const aplicarCambiosLote = () => {
                 modoNormal.style.display = 'none';
-                modoLote.classList.remove('fade-out');
                 modoLote.style.display = 'block';
 
                 $('lote-tipo').value = 'feriado';
@@ -7962,7 +8568,7 @@
             const aplicarCambiosNormal = () => {
                 modoLote.style.display = 'none';
                 modoNormal.style.display = 'block';
-                UILogic.resetearBoton(btn);
+                resetearBoton(btn);
                 actualizarEstadoBotonTimerMain();
             };
 
@@ -7986,28 +8592,13 @@
             $('lote-fecha-hasta').value = '';
         }
 
-        async function _registrarEspecialHoy(tipo) {
-            const fechaHoy = UILogic.obtenerFechaHoy();
-            if (DataManagement.registros().find(r => r.fecha === fechaHoy)) {
-                mostrarToast('Ya existe un registro para hoy', 'warning'); _flashCampoTipo('warning', 'btn-agregar'); return;
+        async function _registrarEspecial(fecha, tipo, mensajeDuplicado, alExito) {
+            if (DataManagement.registros().find(r => r.fecha === fecha)) {
+                mostrarToast(mensajeDuplicado, 'warning'); _flashCampoTipo('warning', 'btn-agregar'); return;
             }
             try {
-                await DataManagement.registrarDiaEspecial(fechaHoy, tipo);
-                _limpiarCamposLote();
-                actualizarBotonLote();
-            } catch (e) { console.error('Error al registrar:', e); }
-        }
-
-        async function _registrarEspecialFecha(desde, tipo) {
-            if (DataManagement.registros().find(r => r.fecha === desde)) {
-                mostrarToast('Ya existe un registro para esa fecha', 'warning'); _flashCampoTipo('warning', 'btn-agregar'); return;
-            }
-            try {
-                await DataManagement.registrarDiaEspecial(desde, tipo);
-                UILogic.aplicarFeedbackCampos([
-                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
-                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: false }
-                ]);
+                await DataManagement.registrarDiaEspecial(fecha, tipo);
+                alExito?.();
                 _limpiarCamposLote();
                 actualizarBotonLote();
             } catch (e) { console.error('Error al registrar:', e); }
@@ -8031,12 +8622,15 @@
                     mostrarToast('Revisá las fechas ingresadas', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
                 }
                 if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
-                await _registrarEspecialHoy(tipo); return;
+                await _registrarEspecial(TimeUtils.obtenerFechaHoy(), tipo, 'Ya existe un registro para hoy'); return;
             }
 
             if (desde && !hasta) {
                 if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
-                await _registrarEspecialFecha(desde, tipo); return;
+                await _registrarEspecial(desde, tipo, 'Ya existe un registro para esa fecha', () => aplicarFeedbackCampos([
+                    { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
+                    { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: false }
+                ])); return;
             }
 
             if (!desde && hasta) { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
@@ -8049,7 +8643,7 @@
             try {
                 if (tipo === 'normal') await DataManagement.borrarPeriodoDirecto(desde, hasta);
                 else await DataManagement.registrarVacacionesDirecto(desde, hasta, tipo);
-                UILogic.aplicarFeedbackCampos(
+                aplicarFeedbackCampos(
                     [
                         { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
                         { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: true }
@@ -8233,17 +8827,12 @@
             const headerH = headerEl ? headerEl.offsetHeight : 0;
             const margen = headerH + 8;
             if (rect.top >= margen && rect.bottom <= window.innerHeight) return;
-            window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: 'smooth' });
+            window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: Motion.scrollBehavior() });
         }
 
         function alternarFechaActual(id) {
-            const c = $(id);
+            const c = _alternarValorCampo(id, TimeUtils.obtenerFechaHoy);
             if (!c) return;
-            if (c.value.trim() !== '') {
-                c.value = '';
-            } else {
-                c.value = TimeUtils.obtenerFechaHoy();
-            }
 
             actualizarBotonLote();
             if (id === 'edit-grupo-desde' || id === 'edit-grupo-hasta') {
@@ -8251,12 +8840,72 @@
             }
         }
 
+        function bindEventos() {
+            (function () {
+                const header = document.querySelector('.header');
+                const statsCard = $('stats-card');
+                if (!header || !statsCard) return;
+
+                let observer = null;
+
+                const crearObserver = () => {
+                    if (observer) observer.disconnect();
+                    const headerH = header.offsetHeight;
+                    observer = new IntersectionObserver(
+                        ([entry]) => {
+                            header.classList.toggle('scrolled', !entry.isIntersecting);
+                        },
+                        { rootMargin: `-${headerH}px 0px 0px 0px`, threshold: 0 }
+                    );
+                    observer.observe(statsCard);
+                };
+
+                crearObserver();
+                let resizeTimer = null;
+                window.addEventListener('resize', () => {
+                    clearTimeout(resizeTimer);
+                    resizeTimer = setTimeout(crearObserver, 200);
+                });
+            })();
+
+            $('stats-card')?.addEventListener('click', (e) => {
+                const enStatsNumber = e.target.closest('#stats-semana');
+                if (enStatsNumber && D.vistaActual() !== 'semana' && !_cicloStatsActivo()) {
+                    const ciclado = _iniciarCicloStats(true);
+                    if (ciclado) {
+                        e.stopPropagation();
+                        return;
+                    }
+                }
+                alternarVista();
+            });
+
+            $('btn-timer-main')?.addEventListener('click', () => toggleTimerBreakMain());
+            $('btn-agregar')?.addEventListener('click', () => ejecutarAccionRegistro());
+            $('icon-indicator-form')?.addEventListener('click', () => toggleFormulario());
+
+            $('btn-ir-modo-lote')?.addEventListener('click', () => toggleModoLote());
+            $('btn-pegar-entrada')?.addEventListener('click', () => pegarHoraActual('entrada'));
+            $('btn-pegar-salida')?.addEventListener('click', () => pegarHoraActual('salida'));
+
+            $('lote-tipo')?.addEventListener('change', () => actualizarBotonLote());
+            $('btn-ir-modo-normal')?.addEventListener('click', () => toggleModoLote());
+            $('btn-lote-desde')?.addEventListener('click', () => alternarFechaActual('lote-fecha-desde'));
+            $('btn-lote-hasta')?.addEventListener('click', () => alternarFechaActual('lote-fecha-hasta'));
+
+            $('btn-toggle-fondo')?.addEventListener('click', () => toggleFondoCard());
+            $('btn-edit-entrada')?.addEventListener('click', () => pegarHoraActual('edit-entrada'));
+            $('btn-edit-salida')?.addEventListener('click', () => pegarHoraActual('edit-salida'));
+            $('btn-edit-tf')?.addEventListener('click', () => limpiarCampo('edit-tiempo-fuera'));
+            $('btn-edit-notas')?.addEventListener('click', () => limpiarCampo('edit-notas'));
+            $('btn-grupo-desde')?.addEventListener('click', () => alternarFechaActual('edit-grupo-desde'));
+            $('btn-grupo-hasta')?.addEventListener('click', () => alternarFechaActual('edit-grupo-hasta'));
+        }
+
         return {
+            bindEventos,
             setFondoCard,
             toggleFondoCard,
-            _esFechaHabil,
-            _cubiertoPorSaldo,
-            calcularAprovechamientoSaldo,
             calcularEstadoCard,
             derivarVistaSemana,
             derivarVistaHoy,
@@ -8280,299 +8929,27 @@
             setTimerAutoVista: (v) => { _timerAutoVista = v; },
             _getLabelFondo,
             _iniciarCicloStats,
+            _detenerCicloStats,
             _cicloStatsActivo,
             _prepararMostrarFaseAlRenderizar,
             _refrescarFormatoCortoStatsCache,
         };
     })(DataManagement);
 
-    const UILogic = (function (S, D, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje) {
+    // ====================================================================
+    // UI CARDS LAYOUT MODULE (visibilidad y orden de las tarjetas)
+    // ====================================================================
+    const UICardsLayout = (function (UICore) {
 
         const {
-            formatoDiferencia, registrarSwipe, debounce, _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre,
-            _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
-            mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON,
-            mostrarToast, _habilitarCierreToast, resetearBoton, restaurarBotonGuardarEdicion,
-            _getCSSdur, DUR_ANIM, DUR_CALENDARIO, _crearToggleConfig, _setBtnActivo,
-            _crearOpcion, _poblarSelect, setIconoBtn, _setBtnDisabled,
-            _posicionarPopup, _registrarCierrePopup, _flashCampo, _flashCampoTipo,
-            _limpiarClonVisual, _finalizarSlidePendiente, _animarSlideElemento, toggleSeccionGen,
-            _animarFadeSwap, _animarMutacion
+            _crearToggleConfig, _setBtnActivo
         } = UICore;
-
-        const {
-            renderizarListaPerfiles, abrirSelectorPerfiles, crearPerfilDesdeSelector,
-            cerrarSelectorPerfiles, abrirEditorPerfil, cerrarEditorPerfil,
-            guardarEdicionPerfil, eliminarPerfilDesdeEditor
-        } = UIPerfiles;
-
-        const {
-            abrirSelectorMesesCalendario, _cerrarSelectorMeses, _activarVistaCalendarioHistorico, _renderizarCalendario,
-            toggleVistaHistorico, _popupCalendario, _popupCalendarioDiaSinRegistro,
-            _popupCalendarioHover, _onclickCalendarioDia, _cerrarPopupCalendarioHover,
-            navegarCalendario, irHoyCalendario, _agruparMesesPorAnio, _nombreMesCapitalizado,
-            getVistaHistoricoCalendario, setVistaHistoricoCalendario
-        } = UICalendario;
-
-        const {
-            mostrarImportar, cerrarImportar, mostrarExportar, cerrarExportar,
-            ejecutarExportacion, toggleCamposRangoExport, actualizarEstadoBotonesGist,
-            actualizarBotonesHistorico, abrirModalGist, cerrarModalGist, guardarConfigGist,
-            toggleVerToken, abrirGistEnBrowser, gistMergeCancelar, gistMergeAplicar,
-            toggleGistBackup, toggleGistMerge, cambiarLimiteSync, iniciarCambioLimite,
-            detenerCambioLimite, gistSubir, gistBajar
-        } = UIGistYRespaldo;
-
-        const {
-            agruparRegistrosConsecutivos, actualizarListaRegistros, cerrarEdicion,
-            setBloqueoEdicion, toggleBloqueoEdicion, toggleCredito, _actualizarHintEdicion,
-            _initListenerAccionesLista, _initListenerToggleAnio, _initListenerToggleMes,
-            actualizarHintGrupo, mostrarFiltros, cerrarFiltros, toggleHistorico,
-            iniciarTimerAutoCierreBotones, cancelarTimerAutoCierreBotones,
-            verificarBloqueoCredito, setBloqueoEdicionGrupo, toggleBloqueoEdicionGrupo,
-            cerrarEdicionGrupo, setTiempoExpansionBotones
-        } = UIHistorico;
-
-        const {
-            _calcularEstadisticasRango, _renderizarStats, calcularEstadisticasMes,
-            actualizarEstadisticas, _renderSelectorStats, calcularEstadisticasAnio,
-            poblarSelectorAnios, actualizarEstadisticasAnio, poblarSelectorSemanas,
-            calcularEstadisticasSemana, actualizarEstadisticasSemana, cambiarMesStats,
-            cambiarSemanaStats, cambiarAnioStats, togglePeriodoStats, poblarSelectorMeses,
-            generarReporte, abrirModalReporteSecciones, cerrarModalReporteSecciones,
-            toggleSeccionReporte, confirmarGenerarReporte,
-            _popupStat, _onclickStatItem, _bindStatItemPopups, toggleStats,
-            setModoEstadisticas
-        } = UIEstadisticas;
-
-        const {
-            setFondoCard, toggleFondoCard, _esFechaHabil, _cubiertoPorSaldo, calcularAprovechamientoSaldo, calcularEstadoCard,
-            derivarVistaSemana, derivarVistaHoy, actualizarUI, alternarVista, _forzarVista,
-            actualizarEstadoBotonTimerMain, toggleTimerBreakMain, toggleModoLote,
-            ejecutarAccionRegistro, registrarLoteDesdeCard, poblarSelectoresTipos,
-            actualizarBotonLote, toggleFormulario, _irAFicharConFecha, _scrollACardFichar,
-            alternarFechaActual, pegarHoraActual, limpiarCampo, getFondoCard, setTimerAutoVista,
-            _getLabelFondo, _iniciarCicloStats, _cicloStatsActivo, _prepararMostrarFaseAlRenderizar,
-            _refrescarFormatoCortoStatsCache,
-        } = UITarjetaFichaje;
-
-        function alternarTema() {
-            const temaActual = ThemeManager.temaGuardado();
-            const temaSiguiente = ThemeManager.siguienteTema(temaActual);
-            StorageHelper.setItem(STORAGE_KEYS.TEMA_OSCURO, temaSiguiente);
-            ThemeManager.aplicarTema(temaSiguiente);
-        }
-
-        const { toggle: toggleIgnorarTiempoFuera, actualizarEstado: actualizarEstadoBotonIgnorarTF } =
-            _crearToggleConfig({
-                getVal: () => D.getIgnorarTiempoFuera(),
-                setVal: (v) => { D.setIgnorarTiempoFuera(v); StorageHelper.setItem(STORAGE_KEYS.IGNORAR_TF, v, true); },
-                btnId: 'btn-toggle-ignorar-tf',
-                mensajeOn: 'No se descuenta el tiempo fuera en los registros',
-                mensajeOff: 'Se descuenta el tiempo fuera en los registros',
-                onAfterToggle: () => { D.recalcularTotalesEnMemoria(); actualizarUI(); },
-            });
-
-        const { toggle: toggleHoverPopupCalendario, actualizarEstado: actualizarEstadoBotonHoverPopup } =
-            _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.HOVER_POPUP, false),
-                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.HOVER_POPUP, v),
-                btnId: 'btn-toggle-hover-popup',
-                mensajeOn: 'Se muestra popup automático en calendario',
-                mensajeOff: 'No se muestra popup automático en calendario',
-            });
-
-        const { toggle: toggleLogicaCubierto, actualizarEstado: actualizarEstadoBotonLogicaCubierto } =
-            _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false, true),
-                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, v, true),
-                btnId: 'btn-toggle-logica-cubierto',
-                mensajeOn: 'Los registros no cubren el faltante con el banco de horas',
-                mensajeOff: 'Los registros cubren el faltante con el banco de horas disponible',
-                onAfterToggle: () => { actualizarUI(); }
-            });
-
-        const { toggle: toggleObjetivoPorRegistro, actualizarEstado: actualizarEstadoBotonObjetivoPorRegistro } =
-            _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true),
-                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, v, true),
-                btnId: 'btn-toggle-objetivo-registro',
-                mensajeOn: 'Las horas objetivo cambian dinámicamente según el valor global configurado',
-                mensajeOff: 'Las horas objetivo son independientes en cada registro',
-                onAfterToggle: () => { actualizarUI(); actualizarEstadoBotonAplicarHoras(); }
-            });
-
-        const { toggle: toggleFormatoCortoStats, actualizarEstado: actualizarEstadoBotonFormatoCortoStats } =
-            _crearToggleConfig({
-                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.FORMATO_CORTO_STATS, false),
-                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.FORMATO_CORTO_STATS, v),
-                btnId: 'btn-toggle-formato-corto-stats',
-                mensajeOn: 'La tarjeta de estadísticas usa formato corto (5h 9m)',
-                mensajeOff: 'La tarjeta de estadísticas usa formato dictado (5 horas 9 minutos)',
-                onAfterToggle: () => { _refrescarFormatoCortoStatsCache(); actualizarUI(); }
-            });
-
-        function actualizarEstadoBotonAplicarHoras() {
-            const modoGlobal = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true);
-            _setBtnDisabled('btn-aplicar-horas-todos', modoGlobal);
-        }
-
-        function _actualizarDisponibilidadBotonesPush() {
-            const habilitado = PushReminder.getHabilitado();
-            const usaBufferSemanal = PushReminder.getUsarBufferSemanal();
-            _setBtnDisabled('btn-toggle-push-buffer', !habilitado);
-            _setBtnDisabled('btn-toggle-push-buffer-ultimo-dia', !habilitado || !usaBufferSemanal);
-        }
-
-        function actualizarEstadoBotonNotificaciones() {
-            _setBtnActivo('btn-toggle-notification', PushReminder.getHabilitado());
-        }
-
-        const _sincronizarPushHoyDebounced = debounce(() => D.sincronizarPushHoy(), 400);
-
-        const { toggle: togglePushBuffer, actualizarEstado: actualizarEstadoBotonPushBuffer } =
-            _crearToggleConfig({
-                getVal: () => PushReminder.getUsarBufferSemanal(),
-                setVal: (v) => PushReminder.setUsarBufferSemanal(v),
-                btnId: 'btn-toggle-push-buffer',
-                mensajeOn: 'El banco de horas se aplica en las notificaciones',
-                mensajeOff: 'El banco de horas no se aplica en las notificaciones',
-                onAfterToggle: () => {
-                    actualizarEstadoBotonPushBufferUltimoDia();
-                    _actualizarDisponibilidadBotonesPush();
-                    _sincronizarPushHoyDebounced();
-                },
-            });
-
-        const { toggle: togglePushBufferUltimoDia, actualizarEstado: actualizarEstadoBotonPushBufferUltimoDia } =
-            _crearToggleConfig({
-                getVal: () => PushReminder.getBufferSoloUltimoDia(),
-                setVal: (v) => PushReminder.setBufferSoloUltimoDia(v),
-                btnId: 'btn-toggle-push-buffer-ultimo-dia',
-                mensajeOn: 'El banco de horas se aplica el último día hábil de la semana en las notificaciones',
-                mensajeOff: 'El banco de horas se aplica todos los días en las notificaciones',
-                onAfterToggle: () => _sincronizarPushHoyDebounced(),
-            });
-
-        const { toggle: togglePushHabilitado, actualizarEstado: actualizarEstadoBotonPushHabilitado } =
-            _crearToggleConfig({
-                getVal: () => PushReminder.getHabilitado(),
-                setVal: (v) => PushReminder.setHabilitado(v),
-                btnId: 'btn-toggle-push-habilitado',
-                mensajeOn: 'Notificaciones de horario cumplido activadas',
-                mensajeOff: 'Notificaciones de horario cumplido desactivadas',
-                puedeActivar: () => PushReminder.puedeHabilitarse(),
-                onAfterToggle: () => {
-                    _actualizarDisponibilidadBotonesPush();
-                    actualizarEstadoBotonNotificaciones();
-                    _sincronizarPushHoyDebounced();
-                },
-            });
-
-        function actualizarSelectPushAnticipacion() {
-            const select = $('config-push-anticipacion');
-            if (select) select.value = String(PushReminder.getAnticipacionMin());
-        }
-
-        function cambiarPushAnticipacion(minutos) {
-            PushReminder.setAnticipacionMin(minutos);
-            _sincronizarPushHoyDebounced();
-        }
-
-        let _permisoNotifStatus = null;
-        async function _suscribirCambiosPermisoNotificaciones() {
-            if (_permisoNotifStatus || !navigator.permissions?.query) return;
-            try {
-                _permisoNotifStatus = await navigator.permissions.query({ name: 'notifications' });
-                _permisoNotifStatus.onchange = () => actualizarEstadoPermisoNotificaciones();
-            } catch {
-            }
-        }
-
-        function actualizarEstadoPermisoNotificaciones() {
-            const el = $('push-permiso-estado');
-            if (!el) return;
-            el.innerHTML = '';
-
-            if (!('Notification' in window)) return;
-
-            const permiso = Notification.permission;
-            let claseColor, texto;
-            if (permiso === 'granted') {
-                claseColor = 'positivo';
-                texto = 'Permisos de notificaciones aceptados';
-            } else if (permiso === 'denied') {
-                claseColor = 'negativo';
-                texto = 'Permisos de notificaciones bloqueados en el navegador';
-            } else {
-                claseColor = 'neutral';
-                texto = 'Todavía no se pidió permiso al navegador';
-            }
-
-            const punto = document.createElement('span');
-            punto.className = `buffer-semanal-punto ${claseColor}`;
-            const span = document.createElement('span');
-            span.className = `buffer-semanal-texto ${claseColor}`;
-            span.textContent = texto;
-            span.insertBefore(punto, span.firstChild);
-            el.appendChild(span);
-        }
-
-        function abrirModalNotificaciones() {
-            _abrirModalConPadre('modal-notificaciones', () => {
-                actualizarEstadoBotonPushHabilitado();
-                actualizarEstadoBotonPushBuffer();
-                actualizarEstadoBotonPushBufferUltimoDia();
-                _actualizarDisponibilidadBotonesPush();
-                actualizarEstadoBotonNotificaciones();
-                actualizarSelectPushAnticipacion();
-                actualizarEstadoPermisoNotificaciones();
-            });
-        }
-
-        function cerrarModalNotificaciones() {
-            _cerrarModalConPadre('modal-notificaciones');
-        }
-
-        async function aplicarHorasConfiguradasATodos() {
-            const btn = $('btn-aplicar-horas-todos');
-            if (btn && btn.disabled) return;
-
-            const horas = D.horasDiarias();
-            const totalRegistros = D.registros().length;
-            if (totalRegistros === 0) {
-                mostrarToast('No hay registros para actualizar', 'info');
-                return;
-            }
-
-            const confirmado = await ModalManager.confirmar(
-                `Se va a reemplazar el objetivo horario de ${totalRegistros} registro${TimeUtils.pluralizar(totalRegistros)} existente${TimeUtils.pluralizar(totalRegistros)} por ${TimeUtils.horasATexto(horas, 'short')}.`,
-                'Aplicar',
-                '#icon-aplicar-horas'
-            );
-            if (!confirmado) return;
-
-            const { aplicados, creditosRecalculados } = D.aplicarHorasATodosLosRegistros();
-            const guardado = await D.guardarYActualizar();
-            if (guardado) {
-                actualizarUI();
-                let mensaje = aplicados > 0
-                    ? `Objetivo actualizado en ${aplicados} registro${TimeUtils.pluralizar(aplicados)}`
-                    : 'Los registros ya tenían este objetivo';
-                if (creditosRecalculados > 0) {
-                    mensaje += ` (${creditosRecalculados} con Salida Temprana recalculada)`;
-                }
-                mostrarToast(mensaje, 'success');
-            }
-        }
 
         const { toggle: togglePersistirTarjetas, actualizarEstado: actualizarEstadoBotonPersistir } =
             _crearToggleConfig({
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.PERSISTIR_TARJETAS, v),
                 btnId: 'btn-toggle-persistir-tarjetas',
-                mensajeOn: 'Se recuerda el estado de las tarjetas',
-                mensajeOff: 'No se recuerda el estado de las tarjetas',
             });
 
         function toggleVisibilidadCard(cual) {
@@ -8581,7 +8958,6 @@
             StorageHelper.setItem(key, nuevo, true);
             aplicarVisibilidadCard(cual, nuevo);
             _setBtnActivo('btn-toggle-card-' + cual, nuevo);
-            mostrarToast('Tarjeta ' + cual + (nuevo ? ' visible' : ' oculta'), 'info');
         }
 
         function aplicarVisibilidadCard(cual, visible) {
@@ -8701,9 +9077,7 @@
                 const itemsDOM = Array.from(lista.querySelectorAll('.orden-card-item'));
                 const nuevoOrden = itemsDOM.map(i => getCardFromItem(i)).filter(Boolean);
 
-                try {
-                    StorageHelper.setItem(STORAGE_KEYS.ORDEN_CARDS, nuevoOrden, true);
-                } catch (e) { }
+                StorageHelper.setItem(STORAGE_KEYS.ORDEN_CARDS, nuevoOrden, true);
 
                 if (typeof aplicarOrdenCards === 'function') {
                     aplicarOrdenCards(nuevoOrden);
@@ -8734,11 +9108,277 @@
             document.addEventListener('mouseup', endDrag);
         }
 
+        function bindEventos() {
+            $('btn-toggle-persistir-tarjetas')?.addEventListener('click', () => togglePersistirTarjetas());
+            $('btn-toggle-card-registrar')?.addEventListener('click', () => toggleVisibilidadCard('registrar'));
+            $('btn-toggle-card-estadisticas')?.addEventListener('click', () => toggleVisibilidadCard('estadisticas'));
+            $('btn-toggle-card-historico')?.addEventListener('click', () => toggleVisibilidadCard('historico'));
+        }
+
+        return {
+            actualizarEstadoBotonPersistir, aplicarVisibilidadCards, obtenerOrdenCards, aplicarOrdenCards,
+            iniciarDragOrdenCards, bindEventos
+        };
+
+    })(UICore);
+
+    // ====================================================================
+    // UI NOTIFICATIONS MODULE (push y permisos de notificaciones)
+    // ====================================================================
+    const UINotificaciones = (function (D, UICore) {
+
+        const {
+            debounce, _abrirModalConPadre, _cerrarModalConPadre, _crearToggleConfig, _setBtnActivo,
+            _setBtnDisabled
+        } = UICore;
+
+        function _actualizarDisponibilidadBotonesPush() {
+            const habilitado = PushReminder.getHabilitado();
+            const usaBufferSemanal = PushReminder.getUsarBufferSemanal();
+            _setBtnDisabled('btn-toggle-push-buffer', !habilitado);
+            _setBtnDisabled('btn-toggle-push-buffer-ultimo-dia', !habilitado || !usaBufferSemanal);
+        }
+
+        function actualizarEstadoBotonNotificaciones() {
+            _setBtnActivo('btn-toggle-notification', PushReminder.getHabilitado());
+        }
+
+        const _sincronizarPushHoyDebounced = debounce(() => D.sincronizarPushHoy(), 400);
+
+        const { toggle: togglePushBuffer, actualizarEstado: actualizarEstadoBotonPushBuffer } =
+            _crearToggleConfig({
+                getVal: () => PushReminder.getUsarBufferSemanal(),
+                setVal: (v) => PushReminder.setUsarBufferSemanal(v),
+                btnId: 'btn-toggle-push-buffer',
+                onAfterToggle: () => {
+                    actualizarEstadoBotonPushBufferUltimoDia();
+                    _actualizarDisponibilidadBotonesPush();
+                    _sincronizarPushHoyDebounced();
+                },
+            });
+
+        const { toggle: togglePushBufferUltimoDia, actualizarEstado: actualizarEstadoBotonPushBufferUltimoDia } =
+            _crearToggleConfig({
+                getVal: () => PushReminder.getBufferSoloUltimoDia(),
+                setVal: (v) => PushReminder.setBufferSoloUltimoDia(v),
+                btnId: 'btn-toggle-push-buffer-ultimo-dia',
+                onAfterToggle: () => _sincronizarPushHoyDebounced(),
+            });
+
+        const { toggle: togglePushHabilitado, actualizarEstado: actualizarEstadoBotonPushHabilitado } =
+            _crearToggleConfig({
+                getVal: () => PushReminder.getHabilitado(),
+                setVal: (v) => PushReminder.setHabilitado(v),
+                btnId: 'btn-toggle-push-habilitado',
+                puedeActivar: () => PushReminder.puedeHabilitarse(),
+                onAfterToggle: () => {
+                    _actualizarDisponibilidadBotonesPush();
+                    actualizarEstadoBotonNotificaciones();
+                    _sincronizarPushHoyDebounced();
+                },
+            });
+
+        function actualizarSelectPushAnticipacion() {
+            const select = $('config-push-anticipacion');
+            if (select) select.value = String(PushReminder.getAnticipacionMin());
+        }
+
+        function cambiarPushAnticipacion(minutos) {
+            PushReminder.setAnticipacionMin(minutos);
+            _sincronizarPushHoyDebounced();
+        }
+
+        let _permisoNotifStatus = null;
+
+        async function _suscribirCambiosPermisoNotificaciones() {
+            if (_permisoNotifStatus || !navigator.permissions?.query) return;
+            try {
+                _permisoNotifStatus = await navigator.permissions.query({ name: 'notifications' });
+                _permisoNotifStatus.onchange = () => actualizarEstadoPermisoNotificaciones();
+            } catch {
+            }
+        }
+
+        function actualizarEstadoPermisoNotificaciones() {
+            const el = $('push-permiso-estado');
+            if (!el) return;
+            el.innerHTML = '';
+
+            if (!('Notification' in window)) return;
+
+            const permiso = Notification.permission;
+            let claseColor, texto;
+            if (permiso === 'denied') {
+                claseColor = 'negativo';
+                texto = 'Permisos de notificaciones bloqueados en el navegador';
+            } else if (!PushReminder.getHabilitado() && !PushReminder.puedeHabilitarse()) {
+                claseColor = 'neutral';
+                texto = 'Usá la app para activar tus notificaciones en este perfil';
+            } else if (permiso === 'granted') {
+                claseColor = 'positivo';
+                texto = 'Permisos de notificaciones aceptados';
+            } else {
+                claseColor = 'neutral';
+                texto = 'Todavía no se pidió permiso al navegador';
+            }
+
+            const punto = document.createElement('span');
+            punto.className = `buffer-semanal-punto ${claseColor}`;
+            const span = document.createElement('span');
+            span.className = `buffer-semanal-texto ${claseColor}`;
+            span.textContent = texto;
+            span.insertBefore(punto, span.firstChild);
+            el.appendChild(span);
+        }
+
+        function abrirModalNotificaciones() {
+            _abrirModalConPadre('modal-notificaciones', () => {
+                actualizarEstadoBotonPushHabilitado();
+                actualizarEstadoBotonPushBuffer();
+                actualizarEstadoBotonPushBufferUltimoDia();
+                _actualizarDisponibilidadBotonesPush();
+                actualizarEstadoBotonNotificaciones();
+                actualizarSelectPushAnticipacion();
+                actualizarEstadoPermisoNotificaciones();
+            });
+        }
+
+        function cerrarModalNotificaciones() {
+            _cerrarModalConPadre('modal-notificaciones');
+        }
+
+        function bindEventos() {
+            $('btn-toggle-push-buffer')?.addEventListener('click', () => togglePushBuffer());
+            $('btn-toggle-push-buffer-ultimo-dia')?.addEventListener('click', () => togglePushBufferUltimoDia());
+            $('btn-toggle-push-habilitado')?.addEventListener('click', () => togglePushHabilitado());
+            $('config-push-anticipacion')?.addEventListener('change', (e) => cambiarPushAnticipacion(e.target.value));
+            $('btn-toggle-notification')?.addEventListener('click', () => abrirModalNotificaciones());
+            document.querySelector('#modal-notificaciones .btn-cancel')?.addEventListener('click', () => cerrarModalNotificaciones());
+        }
+
+        return {
+            actualizarEstadoBotonNotificaciones, actualizarEstadoBotonPushBuffer,
+            actualizarEstadoBotonPushHabilitado, actualizarSelectPushAnticipacion,
+            _suscribirCambiosPermisoNotificaciones, abrirModalNotificaciones, cerrarModalNotificaciones,
+            bindEventos
+        };
+
+    })(DataManagement, UICore);
+
+    // ====================================================================
+    // UI CONFIG MODULE (configuración, ayuda, tema y steppers)
+    // ====================================================================
+    const UIConfig = (function (D, UICore, UIHistorico, UITarjetaFichaje, UICardsLayout, UINotificaciones) {
+
+        const {
+            _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre, mostrarToast, DUR_ANIM,
+            _crearToggleConfig, _setBtnDisabled, _animarValor
+        } = UICore;
+
+        const {
+            verificarBloqueoCredito
+        } = UIHistorico;
+
+        const {
+            actualizarUI, getFondoCard, _getLabelFondo, _refrescarFormatoCortoStatsCache
+        } = UITarjetaFichaje;
+
+        const {
+            actualizarEstadoBotonPersistir
+        } = UICardsLayout;
+
+        const {
+            actualizarEstadoBotonNotificaciones
+        } = UINotificaciones;
+
+        function alternarTema() {
+            const temaActual = ThemeManager.temaGuardado();
+            const temaSiguiente = ThemeManager.siguienteTema(temaActual);
+            StorageHelper.setItem(STORAGE_KEYS.TEMA_OSCURO, temaSiguiente);
+            ThemeManager.aplicarTema(temaSiguiente);
+        }
+
+        const { toggle: toggleIgnorarTiempoFuera, actualizarEstado: actualizarEstadoBotonIgnorarTF } =
+            _crearToggleConfig({
+                getVal: () => D.getIgnorarTiempoFuera(),
+                setVal: (v) => { D.setIgnorarTiempoFuera(v); StorageHelper.setItem(STORAGE_KEYS.IGNORAR_TF, v, true); },
+                btnId: 'btn-toggle-ignorar-tf',
+                onAfterToggle: () => { D.recalcularTotalesEnMemoria(); actualizarUI(); },
+            });
+
+        const { toggle: toggleHoverPopupCalendario, actualizarEstado: actualizarEstadoBotonHoverPopup } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.HOVER_POPUP, false),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.HOVER_POPUP, v),
+                btnId: 'btn-toggle-hover-popup',
+            });
+
+        const { toggle: toggleLogicaCubierto, actualizarEstado: actualizarEstadoBotonLogicaCubierto } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, false, true),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_LOGICA_CUBIERTO, v, true),
+                btnId: 'btn-toggle-logica-cubierto',
+                onAfterToggle: () => { actualizarUI(); }
+            });
+
+        const { toggle: toggleObjetivoPorRegistro, actualizarEstado: actualizarEstadoBotonObjetivoPorRegistro } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, v, true),
+                btnId: 'btn-toggle-objetivo-registro',
+                onAfterToggle: () => { actualizarUI(); actualizarEstadoBotonAplicarHoras(); }
+            });
+
+        const { toggle: toggleFormatoCortoStats, actualizarEstado: actualizarEstadoBotonFormatoCortoStats } =
+            _crearToggleConfig({
+                getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.FORMATO_CORTO_STATS, false),
+                setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.FORMATO_CORTO_STATS, v),
+                btnId: 'btn-toggle-formato-corto-stats',
+                onAfterToggle: () => { _refrescarFormatoCortoStatsCache(); actualizarUI(); }
+            });
+
+        function actualizarEstadoBotonAplicarHoras() {
+            const modoGlobal = StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true);
+            _setBtnDisabled('btn-aplicar-horas-todos', modoGlobal);
+        }
+
+        async function aplicarHorasConfiguradasATodos() {
+            const btn = $('btn-aplicar-horas-todos');
+            if (btn && btn.disabled) return;
+
+            const horas = D.horasDiarias();
+            const totalRegistros = D.registros().length;
+            if (totalRegistros === 0) {
+                mostrarToast('No hay registros para actualizar', 'info');
+                return;
+            }
+
+            const confirmado = await ModalManager.confirmar(
+                `Se va a reemplazar el objetivo horario de ${totalRegistros} registro${TimeUtils.pluralizar(totalRegistros)} existente${TimeUtils.pluralizar(totalRegistros)} por ${TimeUtils.horasATexto(horas, 'short')}.`,
+                'Aplicar',
+                '#icon-aplicar-horas'
+            );
+            if (!confirmado) return;
+
+            const { aplicados, creditosRecalculados } = D.aplicarHorasATodosLosRegistros();
+            const guardado = await D.guardarYActualizar();
+            if (guardado) {
+                actualizarUI();
+                let mensaje = aplicados > 0
+                    ? `Objetivo actualizado en ${aplicados} registro${TimeUtils.pluralizar(aplicados)}`
+                    : 'Los registros ya tenían este objetivo';
+                if (creditosRecalculados > 0) {
+                    mensaje += ` (${creditosRecalculados} con Salida Temprana recalculada)`;
+                }
+                mostrarToast(mensaje, 'success');
+            }
+        }
+
         let _resolverOnboarding = null;
 
         function cerrarConfig() {
             if (document.body.classList.contains('config-onboarding')) {
-                setTimeout(() => document.body.classList.remove('config-onboarding'), 350);
+                setTimeout(() => document.body.classList.remove('config-onboarding'), DUR_ANIM() + 50);
                 StorageHelper.setItem(STORAGE_KEYS.BIENVENIDA_VISTA, true, true);
                 if (_resolverOnboarding) {
                     _resolverOnboarding();
@@ -8761,6 +9401,18 @@
             _cerrarModalConPadre('modal-ayuda');
         }
 
+        const _ETIQUETAS_ANIMACIONES = { auto: 'Auto', on: 'Sí', off: 'No' };
+
+        function actualizarHintAnimaciones() {
+            const lbl = $('hint-animaciones-label');
+            if (lbl) lbl.textContent = _ETIQUETAS_ANIMACIONES[Motion.modo()];
+        }
+
+        function toggleReducirAnimaciones() {
+            Motion.siguienteModo();
+            actualizarHintAnimaciones();
+        }
+
         function _precargarCamposConfig() {
             const elHoras = $('config-horas-diarias');
             elHoras.dataset.valor = D.horasDiarias();
@@ -8770,15 +9422,16 @@
             const checkboxes = document.querySelectorAll('input[name="dia-habil"]');
             checkboxes.forEach(cb => {
                 cb.checked = diasActivos.includes(parseInt(cb.value));
-                cb.onchange = UILogic.actualizarFeedbackConfig;
+                cb.onchange = actualizarFeedbackConfig;
             });
 
-            UILogic.actualizarFeedbackConfig();
+            actualizarFeedbackConfig();
             actualizarEstadoBotonIgnorarTF();
-            UILogic.actualizarEstadoBotonAplicarHoras();
+            actualizarEstadoBotonAplicarHoras();
             actualizarEstadoBotonNotificaciones();
             const lbl = $('hint-fondo-label');
-            if (lbl) lbl.textContent = _getLabelFondo(UILogic.getFondoCard());
+            if (lbl) lbl.textContent = _getLabelFondo(getFondoCard());
+            actualizarHintAnimaciones();
         }
 
         function mostrarconfig() {
@@ -8797,444 +9450,6 @@
             return new Promise(resolve => { _resolverOnboarding = resolve; });
         }
 
-
-        function _initGlobales() {
-            PerfilManager.inicializar();
-            window.DataManagement = {
-                agregarRegistro: D.agregarRegistro,
-                exportarJSON: D.exportarJSON,
-                mostrarImportar: mostrarImportar,
-                importarDatos: D.importarDatos,
-                borrarTodoHistorial: D.borrarTodoHistorial,
-                editarRegistro: D.editarRegistro,
-                guardarEdicion: D.guardarEdicion,
-                pegarReferenciaAutomatica: D.pegarReferenciaAutomatica,
-                eliminarRegistroActual: D.eliminarRegistroActual,
-                undoAction: D.undoAction,
-                redoAction: D.redoAction,
-                aplicarFiltrosInmediato: D.aplicarFiltrosInmediato,
-                limpiarFiltros: D.limpiarFiltros,
-                registrarDiaEspecial: D.registrarDiaEspecial,
-                registros: D.registros,
-                diasHabiles: D.diasHabiles,
-                horasDiarias: D.horasDiarias,
-                setDiasHabiles: D.setDiasHabiles,
-                setHorasDiarias: D.setHorasDiarias,
-                calcularHoras: D.calcularHoras,
-                registrarVacacionesDirecto: D.registrarVacacionesDirecto,
-                borrarPeriodoDirecto: D.borrarPeriodoDirecto,
-                editarGrupo: D.editarGrupo,
-                guardarEdicionGrupo: D.guardarEdicionGrupo,
-                eliminarGrupoActual: D.eliminarGrupoActual
-            };
-            window.HistoryManager = { undo: D.undoAction, redo: D.redoAction };
-            window.PWAInstaller = { instalarApp: PWAInstaller.instalarApp };
-            window.PerfilManager = PerfilManager;
-            window.UILogic = UILogic;
-
-            D.configurarNotificaciones({
-                actualizarEstadoBotonTimerMain, actualizarHintGrupo, actualizarUI,
-                aplicarFeedbackCampos, cerrarEdicion, cerrarEdicionGrupo, cerrarFiltros, cerrarImportar,
-                descargarJSON, flashCampoTipo: _flashCampoTipo, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
-                obtenerNombrePerfilSafe, resetearBoton, restaurarBotonGuardarEdicion, setBloqueoEdicion,
-                setBloqueoEdicionGrupo, verificarBloqueoCredito
-            });
-            StorageHelper.configurarNotificaciones({ mostrarToast });
-
-            ModalManager.registrarAccionVolver('modal-gist', cerrarModalGist);
-            ModalManager.registrarAccionVolver('modal-gist-merge', gistMergeCancelar);
-            ModalManager.registrarAccionVolver('modal-config', cerrarConfig);
-            ModalManager.registrarAccionVolver('modal-selector-perfiles', cerrarSelectorPerfiles);
-            ModalManager.registrarAccionVolver('modal-editar', cerrarEdicion);
-            ModalManager.registrarAccionVolver('modal-importar', cerrarImportar);
-            ModalManager.registrarAccionVolver('modal-exportar', cerrarExportar);
-            ModalManager.registrarAccionVolver('modal-editar-perfil', cerrarEditorPerfil);
-            ModalManager.registrarAccionVolver('modal-editar-grupo', cerrarEdicionGrupo);
-            ModalManager.registrarAccionVolver('modal-reporte-secciones', cerrarModalReporteSecciones);
-            ModalManager.registrarAccionVolver('modal-ayuda', cerrarModalAyuda);
-            ModalManager.registrarAccionVolver('modal-historial-dias', cerrarModalHistorialDias);
-            ModalManager.registrarAccionVolver('modal-notificaciones', cerrarModalNotificaciones);
-            ModalManager.registrarAccionVolver('modal-editar-tramo-dias', cerrarEditorTramoDias);
-        }
-
-        function _initListenersFormulario() {
-            const verificarBloqueCreditoDebounced = debounce(verificarBloqueoCredito, 200);
-
-            ['entrada', 'salida'].forEach(id => {
-                const el = $(id);
-                if (el) el.addEventListener('input', formatearInput);
-                if (el) el.addEventListener('input', () => limpiarError(id, null));
-            });
-            $('fecha')?.addEventListener('change', () => limpiarError('fecha', null));
-
-            ['edit-entrada', 'edit-salida'].forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.addEventListener('input', (e) => { formatearInput(e); verificarBloqueCreditoDebounced(); });
-                el.addEventListener('change', verificarBloqueoCredito);
-            });
-
-            $('calendario-selector-meses')?.addEventListener('click', (e) => {
-                if (e.target === e.currentTarget) _cerrarSelectorMeses();
-            });
-
-            const tf = document.getElementById('edit-tiempo-fuera');
-            if (tf) tf.addEventListener('input', (e) => { formatearInput(e); verificarBloqueCreditoDebounced(); });
-
-            const notasEl = document.getElementById('edit-notas');
-            if (notasEl) notasEl.addEventListener('input', () => {
-                const v = notasEl.value;
-                const filtrado = S.sanitizeNotas(v);
-                if (filtrado !== v) {
-                    const pos = notasEl.selectionStart - (v.length - filtrado.length);
-                    notasEl.value = filtrado;
-                    notasEl.setSelectionRange(pos, pos);
-                }
-            });
-
-            ['gist-rango-desde', 'gist-rango-hasta'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('input', formatearInput);
-            });
-
-            ['edit-entrada', 'edit-salida', 'edit-tiempo-fuera'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.addEventListener('input', _actualizarHintEdicion);
-            });
-        }
-
-        function _initListenersTeclado() {
-            const bindEnter = (id, handler) => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.addEventListener('keydown', (e) => {
-                    if (e.key !== 'Enter') return;
-                    e.preventDefault();
-                    handler(el);
-                });
-            };
-            bindEnter('entrada', () => document.getElementById('salida')?.focus());
-            bindEnter('salida', (el) => { el.blur(); const b = document.getElementById('btn-agregar'); if (b && !b.disabled) b.click(); });
-            bindEnter('edit-entrada', () => document.getElementById('edit-salida')?.focus());
-            bindEnter('edit-salida', () => document.getElementById('edit-tiempo-fuera')?.focus());
-            bindEnter('edit-tiempo-fuera', (el) => { el.blur(); const b = document.querySelector('#modal-editar .btn-edit'); if (b && !b.disabled) b.click(); });
-            bindEnter('nombre-nuevo-perfil-selector', (el) => { el.blur(); UILogic.crearPerfilDesdeSelector(); });
-            bindEnter('nombre-perfil-editar', (el) => { el.blur(); const b = document.querySelector('#modal-editar-perfil .btn-edit'); if (b && !b.disabled) b.click(); });
-        }
-
-        function _initSwipesYStats() {
-            _habilitarCierreToast();
-            registrarSwipe(document.getElementById('stats-card'), () => alternarVista());
-            registrarSwipe(document.getElementById('form-registro'), dir => toggleModoLote(dir), { ignoreInputs: true });
-
-            const anchor = document.getElementById('stat-items-tipos-anchor');
-            if (anchor) {
-                TiposRegistro.obtenerTodosLosTipos().forEach(t => {
-                    const item = document.createElement('div');
-                    item.className = 'stat-item';
-                    const label = Object.assign(document.createElement('div'), { className: 'stat-label', textContent: t.labelPlural });
-                    const value = Object.assign(document.createElement('div'), { className: 'stat-value', id: `stat-${TiposRegistro.claveStat(t)}`, textContent: '0' });
-                    item.appendChild(label);
-                    item.appendChild(value);
-                    anchor.parentNode.insertBefore(item, anchor);
-                });
-            }
-            _bindStatItemPopups(document.querySelector('.stats-grid'));
-        }
-
-        function _initDatosYConfig() {
-            const config = D.cargarConfiguracion();
-            D.setVistaActual(config.vistaActual);
-            D.setIgnorarTiempoFuera(config.ignorarTiempoFuera || false);
-            UILogic.actualizarEstadoBotonIgnorarTF();
-            UILogic.poblarSelectoresTipos();
-            UILogic.actualizarEstadoBotonHoverPopup();
-            UILogic.actualizarEstadoBotonLogicaCubierto();
-            UILogic.actualizarEstadoBotonObjetivoPorRegistro();
-            UILogic.actualizarEstadoBotonFormatoCortoStats();
-            UILogic._refrescarFormatoCortoStatsCache();
-            UILogic.actualizarEstadoBotonAplicarHoras();
-            UILogic.actualizarEstadoBotonPushBuffer();
-            UILogic.actualizarEstadoBotonPushHabilitado();
-            UILogic.actualizarEstadoBotonNotificaciones();
-            UILogic.actualizarSelectPushAnticipacion();
-            UILogic.aplicarVisibilidadCards();
-            UILogic.aplicarOrdenCards(UILogic.obtenerOrdenCards());
-            UILogic.iniciarDragOrdenCards();
-            UILogic.setFondoCard(config.fondoCard || 'golden-gate');
-            UILogic.setModoEstadisticas(config.modoEstadisticas || 'mensual');
-
-            const perfilActual = PerfilManager.obtenerDatosPerfil();
-            D.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
-            D.setHorasDiarias(perfilActual.horasDiarias !== undefined ? perfilActual.horasDiarias : 7);
-            const historialGuardado = D.sanitizarHistorialDiasHabiles(perfilActual.historialDiasHabiles);
-            D.setHistorialDiasHabiles(
-                historialGuardado && historialGuardado.length > 0
-                    ? historialGuardado
-                    : [{ desde: '0001-01-01', dias: D.diasHabiles() }]
-            );
-            D.registros().splice(0, D.registros().length, ...(perfilActual.registros || []));
-
-            const historialCargado = HistoryManager.loadFromLocalStorage();
-            if (historialCargado) {
-                const estadoActual = HistoryManager.getCurrentState();
-                if (estadoActual !== null && estadoActual !== undefined) {
-                    D.registros().splice(0, D.registros().length, ...estadoActual);
-                } else {
-                    console.warn('Historial corrupto, descartado. Usando registros del perfil.');
-                    HistoryManager.clear();
-                }
-            }
-            D.recalcularTotalesEnMemoria();
-            if (!historialCargado) {
-                HistoryManager.saveState(D.registros());
-            }
-
-            const migrados = D.migrarObjetivoHorasFaltante();
-            if (migrados > 0) {
-                console.info(`Migración: ${migrados} registro(s) sin objetivo estampado, asignado el valor global vigente (${D.horasDiarias()}h).`);
-                HistoryManager.parchearRegistrosEnHistorial(r => {
-                    if (typeof r.objetivoHoras !== 'number' || !Number.isFinite(r.objetivoHoras)) {
-                        r.objetivoHoras = D.horasDiarias();
-                        return true;
-                    }
-                    return false;
-                });
-                if (window.PerfilManager) PerfilManager.guardarDatosPerfilActual();
-            }
-
-            HistoryManager.updateButtons();
-        }
-
-        function _restaurarEstadoVisual() {
-            const config = D.cargarConfiguracion();
-            ThemeManager.aplicarTema(config.tema);
-
-            $('fecha').value = TimeUtils.obtenerFechaHoy();
-
-            try {
-                const persistir = StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true);
-                if (persistir && StorageHelper.getBoolean(STORAGE_KEYS.FORMULARIO_EXPANDIDO)) toggleFormulario();
-                if (persistir && StorageHelper.getBoolean(STORAGE_KEYS.STATS_EXPANDIDO)) toggleStats();
-
-                const estadoHistorico = persistir ? StorageHelper.getItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'cerrado') : 'cerrado';
-                if (estadoHistorico === 'meses' || estadoHistorico === 'completo') {
-                    const contenido = $('contenido-historico');
-                    const icon = $('icon-indicator-historico');
-                    if (contenido) contenido.classList.add('expanded');
-                    if (estadoHistorico === 'meses') {
-                        if (icon) { icon.classList.remove('icon-rotate-neg90'); icon.classList.add('rotated'); }
-                    } else {
-                        const botones = $('botones-historico');
-                        if (botones) { botones.classList.add('expanded'); UILogic.setTiempoExpansionBotones(Date.now()); }
-                        if (icon) { icon.classList.remove('rotated'); icon.classList.add('icon-rotate-neg90'); }
-                    }
-                }
-
-                const usarCalendario = StorageHelper.getBoolean(STORAGE_KEYS.VISTA_HISTORICO_CAL, true);
-                if (usarCalendario) {
-                    if ($('contenido-historico')?.classList.contains('expanded')) {
-                        setVistaHistoricoCalendario(false);
-                        toggleVistaHistorico();
-                    } else {
-                        setVistaHistoricoCalendario(true);
-                    }
-                }
-            } catch (e) {
-                console.warn('Error restaurando estado visual:', e);
-            }
-        }
-
-        function _initAutoSync() {
-            const _tieneCredenciales = GistSync.getToken() && GistSync.esGistIdValido(GistSync.getGistId());
-            if (!_tieneCredenciales) return;
-            const estado = GistSync.getAutoSync();
-            if (estado === 1 && GistSync.dentroDelRangoHorario() && !GistSync.superaLimite('bajar')) {
-                setTimeout(async () => { await gistBajar(true); GistSync.marcarSync('bajar'); }, 2000);
-            } else if (estado === 2 && GistSync.dentroDelRangoHorario() && !GistSync.superaLimite('subir')) {
-                setTimeout(async () => { await gistSubir(); GistSync.marcarSync('subir'); }, 2000);
-            }
-        }
-
-        let _relojUIInterval = null;
-
-        function _iniciarRelojUI() {
-            if (_relojUIInterval) return;
-            _relojUIInterval = setInterval(() => actualizarUI(null, true), 20000);
-        }
-
-        function _detenerRelojUI() {
-            clearInterval(_relojUIInterval);
-            _relojUIInterval = null;
-        }
-
-        function _initListenerVisibility() {
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    _detenerRelojUI();
-                    _detenerCicloStats();
-                } else {
-                    actualizarUI(null, true);
-                    _iniciarRelojUI();
-                    _iniciarCicloStats();
-                }
-            });
-        }
-
-        function _initListenerEscape() {
-            document.addEventListener('keydown', (e) => {
-                if (e.key !== 'Escape') return;
-                const modal = document.querySelector('.modal.show');
-                if (!modal) return;
-                e.preventDefault();
-                ModalManager.ejecutarAccionCierre(modal.id);
-            });
-        }
-
-        function _initListenerUndoRedo() {
-            document.addEventListener('keydown', (e) => {
-                if (!(e.ctrlKey || e.metaKey)) return;
-                const tag = e.target.tagName;
-                const esCampoEditable = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
-                if (esCampoEditable) return;
-                if (e.key === 'z' || e.key === 'Z') {
-                    e.preventDefault();
-                    document.getElementById('btn-undo')?.click();
-                } else if (e.key === 'y' || e.key === 'Y') {
-                    e.preventDefault();
-                    document.getElementById('btn-redo')?.click();
-                }
-            });
-        }
-
-        function _initListenersOtros() {
-            const actualizarBotonLoteDebounced = debounce(actualizarBotonLote, 300);
-            const agregarListenersFecha = (el) => {
-                if (!el) return;
-                el.addEventListener('change', () => actualizarBotonLote());
-                el.addEventListener('input', () => actualizarBotonLoteDebounced());
-            };
-            agregarListenersFecha(document.getElementById('lote-fecha-desde'));
-            agregarListenersFecha(document.getElementById('lote-fecha-hasta'));
-
-            document.getElementById('tipo-exportacion')?.addEventListener('change', () => UILogic.toggleCamposRangoExport());
-
-            const fileInput = document.getElementById('file-import');
-            if (fileInput) {
-                fileInput.addEventListener('change', (e) => {
-                    const nombreEl = document.getElementById('nombre-archivo-seleccionado');
-                    const btnCombinar = document.getElementById('btn-combinar');
-                    const btnReemplazar = document.getElementById('btn-reemplazar');
-                    const hayArchivo = e.target.files.length > 0;
-                    if (hayArchivo) {
-                        if (nombreEl) { nombreEl.textContent = `✓ ${e.target.files[0].name}`; nombreEl.style.display = 'block'; }
-                        if (btnCombinar) btnCombinar.disabled = false;
-                        if (btnReemplazar) btnReemplazar.disabled = false;
-                    } else {
-                        if (nombreEl) { nombreEl.style.display = 'none'; nombreEl.textContent = ''; }
-                        if (btnCombinar) btnCombinar.disabled = true;
-                        if (btnReemplazar) btnReemplazar.disabled = true;
-                    }
-                });
-            }
-        }
-
-        async function init() {
-            if (typeof Storage === 'undefined') { alert('Tu navegador no soporta localStorage.'); return; }
-
-            _initGlobales();
-            _initListenersFormulario();
-            _initListenersTeclado();
-            _initSwipesYStats();
-            _initDatosYConfig();
-            _restaurarEstadoVisual();
-            setBloqueoEdicion(true);
-            setBloqueoEdicionGrupo(true);
-            const btnEliminarPerfil = $('btn-eliminar-perfil-editor');
-            if (btnEliminarPerfil) btnEliminarPerfil.disabled = true;
-
-            PWAInstaller.init();
-            _suscribirCambiosPermisoNotificaciones();
-            actualizarUI(null, false, false, true);
-            _iniciarCicloStats();
-            actualizarBotonesHistorico();
-
-            const hoy = TimeUtils.obtenerFechaHoy();
-            const hoyEsLaborable = _esFechaHabil(hoy, D.diasHabilesEnFecha(hoy));
-            if (D.vistaActual() === 'semana' && hoyEsLaborable) {
-                setTimerAutoVista(setTimeout(() => {
-                    setTimerAutoVista(null);
-                    alternarVista();
-                    setTimeout(() => _iniciarCicloStats(), 350);
-                }, 2500));
-            }
-
-            _initAutoSync();
-            _iniciarRelojUI();
-            _initListenerVisibility();
-
-            _initListenerEscape();
-            _initListenerUndoRedo();
-            const lista = document.getElementById('lista-registros');
-            if (lista) {
-                _initListenerAccionesLista(lista);
-                _initListenerToggleAnio(lista);
-                _initListenerToggleMes(lista);
-            }
-            _initListenersOtros();
-
-            _actualizarOffsetsStickyMes();
-            window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
-
-            _manejarAccionDeShortcut();
-        }
-
-        function _manejarAccionDeShortcut() {
-            const params = new URLSearchParams(location.search);
-            const accion = params.get('accion');
-            if (!accion) return;
-
-            history.replaceState(null, '', location.pathname + location.hash);
-
-            if (accion === 'entrada' || accion === 'salida') {
-                const btn = $('btn-agregar');
-                if (btn && !btn.disabled) setTimeout(() => btn.click(), 300);
-            } else if (accion === 'restante') {
-                setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 300);
-            }
-        }
-
-        function aplicarFeedbackCampos(campos, texto = '✓ Agregado', claseColor = 'label-feedback--green') {
-            const activos = campos
-                .filter(c => c.mostrar)
-                .map(c => {
-                    const input = document.getElementById(c.id);
-                    const label = input?.closest('.form-group')?.querySelector('label');
-                    const textoOriginal = label ? label.textContent : c.fallback;
-                    return { label, textoOriginal };
-                });
-
-            const labels = activos.filter(a => a.label).map(a => a.label);
-
-            _animarMutacion(labels, () => {
-                activos.forEach(({ label }) => {
-                    if (!label) return;
-                    label.textContent = texto;
-                    label.classList.add(claseColor);
-                });
-            });
-
-            setTimeout(() => {
-                _animarMutacion(labels, () => {
-                    activos.forEach(({ label, textoOriginal }) => {
-                        if (!label) return;
-                        label.textContent = textoOriginal;
-                        label.classList.remove(claseColor);
-                    });
-                });
-            }, 2000);
-        }
-
         function actualizarFeedbackConfig() {
             const checkboxes = document.querySelectorAll('input[name="dia-habil"]:checked');
             const seleccionados = checkboxes.length;
@@ -9243,8 +9458,8 @@
 
             const el = $('config-total-feedback');
             if (el) {
-                if (horas === 0) el.textContent = `(Registro libre sin objetivos)`;
-                else el.textContent = `(Total semanal: ${TimeUtils.horasATexto(total, 'short')})`;
+                if (horas === 0) el.textContent = 'Registro libre sin objetivos';
+                else el.textContent = `Total semanal: ${TimeUtils.horasATexto(total, 'short')}`;
             }
 
             if (seleccionados > 0) {
@@ -9261,6 +9476,106 @@
                 actualizarEstadoBotonPersistir();
             }
         }
+
+        function _ajustarStepperHoras(el, incremento) {
+            let valorActual = parseFloat(el.dataset.valor);
+            if (isNaN(valorActual)) valorActual = D.horasDiarias();
+            const nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
+            if (isNaN(nuevoValor)) return nuevoValor;
+            el.dataset.valor = nuevoValor;
+            _animarValor(el, TimeUtils.horasATexto(nuevoValor, 'short'), Math.sign(nuevoValor - valorActual));
+            return nuevoValor;
+        }
+
+        const pressHoldHoras = _crearPressHold(incremento => cambiarHorasDiarias(incremento));
+
+        function cambiarHorasDiarias(incremento) {
+            const nuevoValor = _ajustarStepperHoras($('config-horas-diarias'), incremento);
+            if (isNaN(nuevoValor)) return;
+
+            actualizarFeedbackConfig();
+            D.setHorasDiarias(nuevoValor);
+
+            const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
+            if (esDefault) StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, nuevoValor);
+            D.guardarYActualizar();
+        }
+
+        const pressHoldObjetivoEdicion = _crearPressHold(incremento => cambiarObjetivoEdicion(incremento));
+
+        function cambiarObjetivoEdicion(incremento) {
+            const el = $('edit-objetivo');
+            if (!el) return;
+            _ajustarStepperHoras(el, incremento);
+            verificarBloqueoCredito();
+        }
+
+        function formatearInput(e) {
+            let v = e.target.value.replace(/\D/g, '');
+            if (v.length > 4) v = v.substring(0, 4);
+            if (v.length > 2) {
+                e.target.value = v.substring(0, 2) + ':' + v.substring(2);
+            } else {
+                e.target.value = v;
+            }
+        }
+
+        function bindEventos() {
+            $('btn-toggle-ignorar-tf')?.addEventListener('click', () => toggleIgnorarTiempoFuera());
+            $('btn-toggle-hover-popup')?.addEventListener('click', () => toggleHoverPopupCalendario());
+            $('btn-toggle-animaciones')?.addEventListener('click', () => toggleReducirAnimaciones());
+            $('btn-toggle-logica-cubierto')?.addEventListener('click', () => toggleLogicaCubierto());
+            $('btn-toggle-objetivo-registro')?.addEventListener('click', () => toggleObjetivoPorRegistro());
+            $('btn-toggle-formato-corto-stats')?.addEventListener('click', () => toggleFormatoCortoStats());
+            $('btn-aplicar-horas-todos')?.addEventListener('click', () => aplicarHorasConfiguradasATodos());
+            document.getElementById('btn-ayuda-perfiles')?.addEventListener('click', () => abrirModalAyuda());
+            document.getElementById('btn-ayuda-config')?.addEventListener('click', () => abrirModalAyuda());
+            document.querySelector('#modal-ayuda .btn-cancel')?.addEventListener('click', () => cerrarModalAyuda());
+            document.getElementById('ayuda-indice')?.addEventListener('click', (e) => {
+                const btn = e.target.closest('.ayuda-indice-item');
+                if (!btn) return;
+                document.getElementById(btn.dataset.target)?.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'start' });
+            });
+            document.querySelector('.config-actions .btn-delete')?.addEventListener('click', () => DataManagement.borrarTodoHistorial());
+            document.querySelector('#modal-config .modal-panel-footer .btn-cancel')?.addEventListener('click', () => cerrarConfig());
+            const inputHoras = $('config-horas-diarias');
+            if (inputHoras) {
+                const btnHorasInc = $('btn-horas-diarias-inc');
+                const btnHorasDec = $('btn-horas-diarias-dec');
+                if (btnHorasInc) pressHoldHoras.vincular(btnHorasInc, 0.5);
+                if (btnHorasDec) pressHoldHoras.vincular(btnHorasDec, -0.5);
+            }
+            const btnObjetivoInc = $('btn-edit-objetivo-inc');
+            const btnObjetivoDec = $('btn-edit-objetivo-dec');
+            if (btnObjetivoInc) pressHoldObjetivoEdicion.vincular(btnObjetivoInc, 0.5);
+            if (btnObjetivoDec) pressHoldObjetivoEdicion.vincular(btnObjetivoDec, -0.5);
+            document.querySelector('#modal-selector-perfiles .btn-settings')?.addEventListener('click', () => mostrarconfig());
+            $('theme-toggle-modal')?.addEventListener('click', () => alternarTema());
+            $('theme-toggle-config')?.addEventListener('click', () => alternarTema());
+        }
+
+        return {
+            actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonHoverPopup,
+            actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
+            actualizarEstadoBotonFormatoCortoStats, actualizarEstadoBotonAplicarHoras, cerrarConfig,
+            cerrarModalAyuda, _precargarCamposConfig, refrescarConfigSiVisible, mostrarConfigOnboarding,
+            pressHoldObjetivoEdicion, formatearInput, bindEventos
+        };
+
+    })(DataManagement, UICore, UIHistorico, UITarjetaFichaje, UICardsLayout, UINotificaciones);
+
+    // ====================================================================
+    // UI WORKDAY HISTORY MODULE (historial de días hábiles y horas)
+    // ====================================================================
+    const UIHistorialDias = (function (D, UICore, UIConfig) {
+
+        const {
+            _abrirModalConPadre, _cerrarModalConPadre, mostrarToast
+        } = UICore;
+
+        const {
+            _precargarCamposConfig
+        } = UIConfig;
 
         let _tramoEnEdicionDesde = null;
 
@@ -9298,7 +9613,7 @@
                     textContent: `${_formatoFechaHistorial(tramo.desde)}${esActual ? ' (actual)' : ''}`
                 }));
                 infoSection.appendChild(Object.assign(document.createElement('div'), {
-                    className: 'btn-perfil-badge',
+                    className: 'btn-perfil-detalle',
                     textContent: diasTexto
                 }));
 
@@ -9306,7 +9621,7 @@
                     className: 'btn-perfil-edit',
                     innerHTML: '<svg class="icon"><use href="#icon-edit"/></svg>',
                     title: 'Editar tramo',
-                    onclick: (e) => { e.stopPropagation(); UILogic.abrirEditorTramoDias(tramo.desde); }
+                    onclick: (e) => { e.stopPropagation(); abrirEditorTramoDias(tramo.desde); }
                 });
 
                 container.appendChild(infoSection);
@@ -9403,87 +9718,466 @@
             cerrarEditorTramoDias();
         }
 
-        function _ajustarStepperHoras(el, incremento) {
-            let valorActual = parseFloat(el.dataset.valor);
-            if (isNaN(valorActual)) valorActual = D.horasDiarias();
-            const nuevoValor = Math.min(24, Math.max(0, valorActual + incremento));
-            if (isNaN(nuevoValor)) return nuevoValor;
-            el.dataset.valor = nuevoValor;
-            el.textContent = TimeUtils.horasATexto(nuevoValor, 'short');
-            return nuevoValor;
-        }
-
-        const _pressHoldHoras = _crearPressHold(incremento => cambiarHorasDiarias(incremento));
-        function iniciarCambioHoras(incremento) { _pressHoldHoras.iniciar(incremento); }
-        function detenerCambio() { _pressHoldHoras.detener(); }
-
-        function cambiarHorasDiarias(incremento) {
-            const nuevoValor = _ajustarStepperHoras($('config-horas-diarias'), incremento);
-            if (isNaN(nuevoValor)) return;
-
-            actualizarFeedbackConfig();
-            D.setHorasDiarias(nuevoValor);
-
-            const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
-            if (esDefault) StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, nuevoValor);
-            D.guardarYActualizar();
-        }
-
-        const _pressHoldObjetivoEdicion = _crearPressHold(incremento => cambiarObjetivoEdicion(incremento));
-        function iniciarCambioObjetivoEdicion(incremento) { _pressHoldObjetivoEdicion.iniciar(incremento); }
-        function detenerCambioObjetivoEdicion() { _pressHoldObjetivoEdicion.detener(); }
-
-        function cambiarObjetivoEdicion(incremento) {
-            const el = $('edit-objetivo');
-            if (!el) return;
-            _ajustarStepperHoras(el, incremento);
-            verificarBloqueoCredito();
-        }
-
-        function formatearInput(e) {
-            let v = e.target.value.replace(/\D/g, '');
-            if (v.length > 4) v = v.substring(0, 4);
-            if (v.length > 2) {
-                e.target.value = v.substring(0, 2) + ':' + v.substring(2);
-            } else {
-                e.target.value = v;
-            }
+        function bindEventos() {
+            $('btn-historial-dias-habiles')?.addEventListener('click', () => abrirModalHistorialDias());
+            document.querySelector('#modal-historial-dias .btn-cancel')?.addEventListener('click', () => cerrarModalHistorialDias());
+            document.querySelector('#modal-editar-tramo-dias .btn-edit')?.addEventListener('click', () => guardarEdicionTramoDias());
+            $('btn-eliminar-tramo-dias')?.addEventListener('click', () => eliminarTramoDias());
+            document.querySelector('#modal-editar-tramo-dias .btn-cancel')?.addEventListener('click', () => cerrarEditorTramoDias());
         }
 
         return {
-            _activarVistaCalendarioHistorico, _agruparMesesPorAnio, _cerrarPopupCalendarioHover, _cerrarSelectorMeses, _cicloStatsActivo, _cubiertoPorSaldo,
-            calcularAprovechamientoSaldo,
-            _esFechaHabil, _forzarVista, _iniciarCicloStats, _irAFicharConFecha, _nombreMesCapitalizado, _onclickCalendarioDia,
-            _popupCalendarioDiaSinRegistro, _popupCalendarioHover, _prepararMostrarFaseAlRenderizar, _renderSelectorStats, _renderizarCalendario, abrirEditorPerfil,
-            abrirEditorTramoDias, abrirGistEnBrowser, abrirModalAyuda, abrirModalGist, abrirModalHistorialDias, abrirModalReporteSecciones,
-            abrirSelectorMesesCalendario, abrirSelectorPerfiles,
-            actualizarBotonLote, actualizarEstadoBotonAplicarHoras, actualizarEstadoBotonHoverPopup, actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
-            actualizarEstadoBotonFormatoCortoStats, toggleFormatoCortoStats, _refrescarFormatoCortoStatsCache,
-            actualizarEstadoBotonPushBuffer, togglePushBuffer,
-            actualizarEstadoBotonPushBufferUltimoDia, togglePushBufferUltimoDia,
-            actualizarSelectPushAnticipacion, cambiarPushAnticipacion,
-            actualizarEstadoBotonPushHabilitado, togglePushHabilitado,
-            actualizarEstadoBotonNotificaciones,
-            abrirModalNotificaciones, cerrarModalNotificaciones,
-            actualizarEstadoBotonesGist, actualizarFeedbackConfig, actualizarListaRegistros, actualizarUI, agruparRegistrosConsecutivos, alternarFechaActual,
-            alternarTema, alternarVista, aplicarFeedbackCampos, aplicarHorasConfiguradasATodos, aplicarOrdenCards, aplicarVisibilidadCards,
-            cambiarAnioStats, cambiarMesStats, cambiarSemanaStats, cerrarConfig, cerrarEdicion, cerrarEdicionGrupo,
-            cerrarEditorPerfil, cerrarEditorTramoDias, cerrarExportar, cerrarImportar, cerrarModalAyuda, cerrarModalGist,
-            cerrarModalHistorialDias, cerrarModalReporteSecciones,
-            cerrarSelectorPerfiles, confirmarGenerarReporte, crearPerfilDesdeSelector, detenerCambio, detenerCambioLimite, detenerCambioObjetivoEdicion,
-            ejecutarAccionRegistro, ejecutarExportacion, eliminarPerfilDesdeEditor, eliminarTramoDias, getFondoCard, getVistaHistoricoCalendario, gistBajar,
-            gistMergeAplicar, gistMergeCancelar, gistSubir, guardarConfigGist, guardarEdicionPerfil, guardarEdicionTramoDias, iniciarCambioHoras,
-            iniciarCambioLimite, iniciarCambioObjetivoEdicion, iniciarDragOrdenCards, iniciarTimerAutoCierreBotones, init, irHoyCalendario,
-            limpiarCampo, mostrarConfigOnboarding, mostrarExportar, mostrarFiltros, mostrarImportar, mostrarToast,
-            mostrarconfig, navegarCalendario, obtenerFechaHoy: TimeUtils.obtenerFechaHoy, obtenerOrdenCards, pegarHoraActual, poblarSelectoresTipos,
-            resetearBoton, setFondoCard, setModoEstadisticas, setTiempoExpansionBotones, toggleBloqueoEdicion, toggleBloqueoEdicionGrupo,
-            toggleCamposRangoExport, toggleCredito, toggleFondoCard, toggleFormulario, toggleGistBackup, toggleGistMerge,
-            toggleHistorico, toggleHoverPopupCalendario, toggleIgnorarTiempoFuera, toggleLogicaCubierto, toggleModoLote, toggleObjetivoPorRegistro,
-            togglePeriodoStats, togglePersistirTarjetas, toggleSeccionReporte, toggleStats, toggleTimerBreakMain, toggleVerToken,
-            toggleVisibilidadCard, toggleVistaHistorico, vistaActual: D.vistaActual, refrescarConfigSiVisible
+            cerrarModalHistorialDias, cerrarEditorTramoDias, bindEventos
         };
 
-    })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje);
+    })(DataManagement, UICore, UIConfig);
+
+
+    const UILogic = (function (S, D, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje, UICardsLayout, UINotificaciones, UIConfig) {
+
+        const {
+            registrarSwipe, debounce, _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
+            mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON, mostrarToast,
+            _habilitarCierreToast, resetearBoton, restaurarBotonGuardarEdicion, DUR_ANIM, _flashCampoTipo,
+            aplicarFeedbackCampos
+        } = UICore;
+
+        const {
+            crearPerfilDesdeSelector, cerrarSelectorPerfiles, cerrarEditorPerfil
+        } = UIPerfiles;
+
+        const {
+            _cerrarSelectorMeses, toggleVistaHistorico, setVistaHistoricoCalendario
+        } = UICalendario;
+
+        const {
+            mostrarImportar, cerrarImportar, cerrarExportar, toggleCamposRangoExport,
+            actualizarBotonesHistorico, cerrarModalGist, gistMergeCancelar, gistSubir, gistBajar
+        } = UIGistYRespaldo;
+
+        const {
+            cerrarEdicion, setBloqueoEdicion, _actualizarHintEdicion, _initListenerAccionesLista,
+            _initListenerToggleAnio, _initListenerToggleMes, actualizarHintGrupo, cerrarFiltros,
+            iniciarTimerAutoCierreBotones, verificarBloqueoCredito, setBloqueoEdicionGrupo, cerrarEdicionGrupo,
+            setTiempoExpansionBotones
+        } = UIHistorico;
+
+        const {
+            cerrarModalReporteSecciones, _bindStatItemPopups, toggleStats, setModoEstadisticas
+        } = UIEstadisticas;
+
+        const {
+            setFondoCard, actualizarUI, alternarVista, _forzarVista, actualizarEstadoBotonTimerMain,
+            toggleModoLote, poblarSelectoresTipos, actualizarBotonLote, toggleFormulario, setTimerAutoVista,
+            _iniciarCicloStats, _detenerCicloStats, _prepararMostrarFaseAlRenderizar,
+            _refrescarFormatoCortoStatsCache
+        } = UITarjetaFichaje;
+
+        const {
+            aplicarVisibilidadCards, obtenerOrdenCards, aplicarOrdenCards, iniciarDragOrdenCards
+        } = UICardsLayout;
+
+        const {
+            actualizarEstadoBotonNotificaciones, actualizarEstadoBotonPushBuffer,
+            actualizarEstadoBotonPushHabilitado, actualizarSelectPushAnticipacion,
+            _suscribirCambiosPermisoNotificaciones, cerrarModalNotificaciones
+        } = UINotificaciones;
+
+        const {
+            actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonHoverPopup,
+            actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
+            actualizarEstadoBotonFormatoCortoStats, actualizarEstadoBotonAplicarHoras, cerrarConfig,
+            cerrarModalAyuda, refrescarConfigSiVisible, formatearInput
+        } = UIConfig;
+
+        const {
+            cerrarModalHistorialDias, cerrarEditorTramoDias
+        } = UIHistorialDias;
+
+        function _initGlobales() {
+            PerfilManager.inicializar();
+            window.PerfilManager = PerfilManager;
+
+            D.configurarNotificaciones({
+                actualizarEstadoBotonTimerMain, actualizarHintGrupo, actualizarUI,
+                aplicarFeedbackCampos, cerrarEdicion, cerrarEdicionGrupo, cerrarFiltros, cerrarImportar,
+                descargarJSON, flashCampoTipo: _flashCampoTipo, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
+                obtenerNombrePerfilSafe, resetearBoton, restaurarBotonGuardarEdicion, setBloqueoEdicion,
+                setBloqueoEdicionGrupo, verificarBloqueoCredito,
+                forzarVista: _forzarVista, prepararMostrarFaseAlRenderizar: _prepararMostrarFaseAlRenderizar, refrescarConfigSiVisible
+            });
+            StorageHelper.configurarNotificaciones({ mostrarToast });
+
+            ModalManager.registrarAccionVolver('modal-gist', cerrarModalGist);
+            ModalManager.registrarAccionVolver('modal-gist-merge', gistMergeCancelar);
+            ModalManager.registrarAccionVolver('modal-config', cerrarConfig);
+            ModalManager.registrarAccionVolver('modal-selector-perfiles', cerrarSelectorPerfiles);
+            ModalManager.registrarAccionVolver('modal-editar', cerrarEdicion);
+            ModalManager.registrarAccionVolver('modal-importar', cerrarImportar);
+            ModalManager.registrarAccionVolver('modal-exportar', cerrarExportar);
+            ModalManager.registrarAccionVolver('modal-editar-perfil', cerrarEditorPerfil);
+            ModalManager.registrarAccionVolver('modal-editar-grupo', cerrarEdicionGrupo);
+            ModalManager.registrarAccionVolver('modal-reporte-secciones', cerrarModalReporteSecciones);
+            ModalManager.registrarAccionVolver('modal-ayuda', cerrarModalAyuda);
+            ModalManager.registrarAccionVolver('modal-historial-dias', cerrarModalHistorialDias);
+            ModalManager.registrarAccionVolver('modal-notificaciones', cerrarModalNotificaciones);
+            ModalManager.registrarAccionVolver('modal-editar-tramo-dias', cerrarEditorTramoDias);
+        }
+
+        function _initListenersFormulario() {
+            const verificarBloqueCreditoDebounced = debounce(verificarBloqueoCredito, 200);
+
+            ['entrada', 'salida'].forEach(id => {
+                const el = $(id);
+                if (el) el.addEventListener('input', formatearInput);
+                if (el) el.addEventListener('input', () => limpiarError(id, null));
+            });
+            $('fecha')?.addEventListener('change', () => limpiarError('fecha', null));
+
+            ['edit-entrada', 'edit-salida'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', (e) => { formatearInput(e); verificarBloqueCreditoDebounced(); });
+                el.addEventListener('change', verificarBloqueoCredito);
+            });
+
+            $('calendario-selector-meses')?.addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) _cerrarSelectorMeses();
+            });
+
+            const tf = document.getElementById('edit-tiempo-fuera');
+            if (tf) tf.addEventListener('input', (e) => { formatearInput(e); verificarBloqueCreditoDebounced(); });
+
+            const notasEl = document.getElementById('edit-notas');
+            if (notasEl) notasEl.addEventListener('input', () => {
+                const v = notasEl.value;
+                const filtrado = S.sanitizeNotas(v);
+                if (filtrado !== v) {
+                    const pos = notasEl.selectionStart - (v.length - filtrado.length);
+                    notasEl.value = filtrado;
+                    notasEl.setSelectionRange(pos, pos);
+                }
+            });
+
+            ['gist-rango-desde', 'gist-rango-hasta'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', formatearInput);
+            });
+
+            ['edit-entrada', 'edit-salida', 'edit-tiempo-fuera'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.addEventListener('input', _actualizarHintEdicion);
+            });
+        }
+
+        function _initListenersTeclado() {
+            const bindEnter = (id, handler) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    handler(el);
+                });
+            };
+            bindEnter('entrada', () => document.getElementById('salida')?.focus());
+            bindEnter('salida', (el) => { el.blur(); const b = document.getElementById('btn-agregar'); if (b && !b.disabled) b.click(); });
+            bindEnter('edit-entrada', () => document.getElementById('edit-salida')?.focus());
+            bindEnter('edit-salida', () => document.getElementById('edit-tiempo-fuera')?.focus());
+            bindEnter('edit-tiempo-fuera', (el) => { el.blur(); const b = document.querySelector('#modal-editar .btn-edit'); if (b && !b.disabled) b.click(); });
+            bindEnter('nombre-nuevo-perfil-selector', (el) => { el.blur(); crearPerfilDesdeSelector(); });
+            bindEnter('nombre-perfil-editar', (el) => { el.blur(); const b = document.querySelector('#modal-editar-perfil .btn-edit'); if (b && !b.disabled) b.click(); });
+        }
+
+        function _initSwipesYStats() {
+            _habilitarCierreToast();
+            registrarSwipe(document.getElementById('stats-card'), () => alternarVista());
+            registrarSwipe(document.getElementById('form-registro'), dir => {
+                document.activeElement?.blur?.();
+                toggleModoLote(dir);
+            });
+
+            const anchor = document.getElementById('stat-items-tipos-anchor');
+            if (anchor) {
+                TiposRegistro.obtenerTodosLosTipos().forEach(t => {
+                    const item = document.createElement('div');
+                    item.className = 'stat-item';
+                    const label = Object.assign(document.createElement('div'), { className: 'stat-label', textContent: t.labelPlural });
+                    const value = Object.assign(document.createElement('div'), { className: 'stat-value', id: `stat-${TiposRegistro.claveStat(t)}`, textContent: '0' });
+                    item.appendChild(label);
+                    item.appendChild(value);
+                    anchor.parentNode.insertBefore(item, anchor);
+                });
+            }
+            _bindStatItemPopups(document.querySelector('.stats-grid'));
+        }
+
+        function _initDatosYConfig() {
+            const config = D.cargarConfiguracion();
+            D.setVistaActual(config.vistaActual);
+            D.setIgnorarTiempoFuera(config.ignorarTiempoFuera || false);
+            actualizarEstadoBotonIgnorarTF();
+            poblarSelectoresTipos();
+            actualizarEstadoBotonHoverPopup();
+            actualizarEstadoBotonLogicaCubierto();
+            actualizarEstadoBotonObjetivoPorRegistro();
+            actualizarEstadoBotonFormatoCortoStats();
+            _refrescarFormatoCortoStatsCache();
+            actualizarEstadoBotonAplicarHoras();
+            actualizarEstadoBotonPushBuffer();
+            actualizarEstadoBotonPushHabilitado();
+            actualizarEstadoBotonNotificaciones();
+            actualizarSelectPushAnticipacion();
+            aplicarVisibilidadCards();
+            aplicarOrdenCards(obtenerOrdenCards());
+            iniciarDragOrdenCards();
+            setFondoCard(config.fondoCard || 'golden-gate');
+            setModoEstadisticas(config.modoEstadisticas || 'mensual');
+
+            const perfilActual = PerfilManager.obtenerDatosPerfil();
+            D.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
+            D.setHorasDiarias(perfilActual.horasDiarias !== undefined ? perfilActual.horasDiarias : 7);
+            const historialGuardado = D.sanitizarHistorialDiasHabiles(perfilActual.historialDiasHabiles);
+            D.setHistorialDiasHabiles(
+                historialGuardado && historialGuardado.length > 0
+                    ? historialGuardado
+                    : [{ desde: '0001-01-01', dias: D.diasHabiles() }]
+            );
+            D.registros().splice(0, D.registros().length, ...(perfilActual.registros || []));
+
+            const historialCargado = HistoryManager.loadFromLocalStorage();
+            if (historialCargado) {
+                const estadoActual = HistoryManager.getCurrentState();
+                if (estadoActual !== null && estadoActual !== undefined) {
+                    D.registros().splice(0, D.registros().length, ...estadoActual);
+                } else {
+                    console.warn('Historial corrupto, descartado. Usando registros del perfil.');
+                    HistoryManager.clear();
+                }
+            }
+            D.recalcularTotalesEnMemoria();
+            if (!historialCargado) {
+                HistoryManager.saveState(D.registros());
+            }
+
+            const migrados = D.migrarObjetivoHorasFaltante();
+            if (migrados > 0) {
+                console.info(`Migración: ${migrados} registro(s) sin objetivo estampado, asignado el valor global vigente (${D.horasDiarias()}h).`);
+                HistoryManager.parchearRegistrosEnHistorial(r => {
+                    if (typeof r.objetivoHoras !== 'number' || !Number.isFinite(r.objetivoHoras)) {
+                        r.objetivoHoras = D.horasDiarias();
+                        return true;
+                    }
+                    return false;
+                });
+                if (window.PerfilManager) PerfilManager.guardarDatosPerfilActual();
+            }
+
+            HistoryManager.updateButtons();
+        }
+
+        function _restaurarEstadoVisual() {
+            const config = D.cargarConfiguracion();
+            ThemeManager.aplicarTema(config.tema);
+            Motion.init();
+
+            $('fecha').value = TimeUtils.obtenerFechaHoy();
+
+            try {
+                const persistir = StorageHelper.getBoolean(STORAGE_KEYS.PERSISTIR_TARJETAS, true);
+                if (persistir && StorageHelper.getBoolean(STORAGE_KEYS.FORMULARIO_EXPANDIDO)) toggleFormulario();
+                if (persistir && StorageHelper.getBoolean(STORAGE_KEYS.STATS_EXPANDIDO)) toggleStats();
+
+                const estadoHistorico = persistir ? StorageHelper.getItem(STORAGE_KEYS.HISTORICO_EXPANDIDO, 'cerrado') : 'cerrado';
+                if (estadoHistorico === 'meses' || estadoHistorico === 'completo') {
+                    const contenido = $('contenido-historico');
+                    const icon = $('icon-indicator-historico');
+                    if (contenido) contenido.classList.add('expanded');
+                    if (estadoHistorico === 'meses') {
+                        if (icon) { icon.classList.remove('icon-rotate-neg90'); icon.classList.add('rotated'); }
+                    } else {
+                        const botones = $('botones-historico');
+                        if (botones) { botones.classList.add('expanded'); setTiempoExpansionBotones(Date.now()); }
+                        if (icon) { icon.classList.remove('rotated'); icon.classList.add('icon-rotate-neg90'); }
+                    }
+                }
+
+                const usarCalendario = StorageHelper.getBoolean(STORAGE_KEYS.VISTA_HISTORICO_CAL, true);
+                if (usarCalendario) {
+                    if ($('contenido-historico')?.classList.contains('expanded')) {
+                        setVistaHistoricoCalendario(false);
+                        toggleVistaHistorico();
+                    } else {
+                        setVistaHistoricoCalendario(true);
+                    }
+                }
+            } catch (e) {
+                console.warn('Error restaurando estado visual:', e);
+            }
+        }
+
+        function _initAutoSync() {
+            const _tieneCredenciales = GistSync.getToken() && GistSync.esGistIdValido(GistSync.getGistId());
+            if (!_tieneCredenciales) return;
+            const estado = GistSync.getAutoSync();
+            if (estado === 1 && GistSync.dentroDelRangoHorario() && !GistSync.superaLimite('bajar')) {
+                setTimeout(async () => { await gistBajar(true); GistSync.marcarSync('bajar'); }, 2000);
+            } else if (estado === 2 && GistSync.dentroDelRangoHorario() && !GistSync.superaLimite('subir')) {
+                setTimeout(async () => { await gistSubir(); GistSync.marcarSync('subir'); }, 2000);
+            }
+        }
+
+        let _relojUIInterval = null;
+
+        function _iniciarRelojUI() {
+            if (_relojUIInterval) return;
+            _relojUIInterval = setInterval(() => actualizarUI(null, true), 20000);
+        }
+
+        function _detenerRelojUI() {
+            clearInterval(_relojUIInterval);
+            _relojUIInterval = null;
+        }
+
+        function _initListenerVisibility() {
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    _detenerRelojUI();
+                    _detenerCicloStats();
+                } else {
+                    actualizarUI(null, true);
+                    _iniciarRelojUI();
+                    _iniciarCicloStats();
+                }
+            });
+        }
+
+        function _initListenerEscape() {
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape') return;
+                const modal = document.querySelector('.modal.show');
+                if (!modal) return;
+                e.preventDefault();
+                ModalManager.ejecutarAccionCierre(modal.id);
+            });
+        }
+
+        function _initListenerUndoRedo() {
+            document.addEventListener('keydown', (e) => {
+                if (!(e.ctrlKey || e.metaKey)) return;
+                const tag = e.target.tagName;
+                const esCampoEditable = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
+                if (esCampoEditable) return;
+                if (e.key === 'z' || e.key === 'Z') {
+                    e.preventDefault();
+                    document.getElementById('btn-undo')?.click();
+                } else if (e.key === 'y' || e.key === 'Y') {
+                    e.preventDefault();
+                    document.getElementById('btn-redo')?.click();
+                }
+            });
+        }
+
+        function _initListenersOtros() {
+            const actualizarBotonLoteDebounced = debounce(actualizarBotonLote, 300);
+            const agregarListenersFecha = (el) => {
+                if (!el) return;
+                el.addEventListener('change', () => actualizarBotonLote());
+                el.addEventListener('input', () => actualizarBotonLoteDebounced());
+            };
+            agregarListenersFecha(document.getElementById('lote-fecha-desde'));
+            agregarListenersFecha(document.getElementById('lote-fecha-hasta'));
+
+            document.getElementById('tipo-exportacion')?.addEventListener('change', () => toggleCamposRangoExport());
+
+            const fileInput = document.getElementById('file-import');
+            if (fileInput) {
+                fileInput.addEventListener('change', (e) => {
+                    const nombreEl = document.getElementById('nombre-archivo-seleccionado');
+                    const btnCombinar = document.getElementById('btn-combinar');
+                    const btnReemplazar = document.getElementById('btn-reemplazar');
+                    const hayArchivo = e.target.files.length > 0;
+                    if (hayArchivo) {
+                        if (nombreEl) { nombreEl.textContent = `✓ ${e.target.files[0].name}`; nombreEl.style.display = 'block'; }
+                        if (btnCombinar) btnCombinar.disabled = false;
+                        if (btnReemplazar) btnReemplazar.disabled = false;
+                    } else {
+                        if (nombreEl) { nombreEl.style.display = 'none'; nombreEl.textContent = ''; }
+                        if (btnCombinar) btnCombinar.disabled = true;
+                        if (btnReemplazar) btnReemplazar.disabled = true;
+                    }
+                });
+            }
+        }
+
+        async function init() {
+            if (typeof Storage === 'undefined') { alert('Tu navegador no soporta localStorage.'); return; }
+
+            _initGlobales();
+            _initListenersFormulario();
+            _initListenersTeclado();
+            _initSwipesYStats();
+            _initDatosYConfig();
+            _restaurarEstadoVisual();
+            setBloqueoEdicion(true);
+            setBloqueoEdicionGrupo(true);
+            const btnEliminarPerfil = $('btn-eliminar-perfil-editor');
+            if (btnEliminarPerfil) btnEliminarPerfil.disabled = true;
+
+            PWAInstaller.init();
+            _suscribirCambiosPermisoNotificaciones();
+            actualizarUI(null, false, false, true);
+            _iniciarCicloStats();
+            actualizarBotonesHistorico();
+
+            const hoy = TimeUtils.obtenerFechaHoy();
+            const hoyEsLaborable = TimeUtils.esFechaHabil(hoy, D.diasHabilesEnFecha(hoy));
+            if (D.vistaActual() === 'semana' && hoyEsLaborable) {
+                setTimerAutoVista(setTimeout(() => {
+                    setTimerAutoVista(null);
+                    alternarVista();
+                    setTimeout(() => _iniciarCicloStats(), DUR_ANIM() + 50);
+                }, 2500));
+            }
+
+            _initAutoSync();
+            _iniciarRelojUI();
+            _initListenerVisibility();
+
+            _initListenerEscape();
+            _initListenerUndoRedo();
+            const lista = document.getElementById('lista-registros');
+            if (lista) {
+                _initListenerAccionesLista(lista);
+                _initListenerToggleAnio(lista);
+                _initListenerToggleMes(lista);
+            }
+            _initListenersOtros();
+
+            _actualizarOffsetsStickyMes();
+            window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
+
+            _manejarAccionDeShortcut();
+        }
+
+        function _manejarAccionDeShortcut() {
+            const params = new URLSearchParams(location.search);
+            const accion = params.get('accion');
+            if (!accion) return;
+
+            history.replaceState(null, '', location.pathname + location.hash);
+
+            if (accion === 'entrada' || accion === 'salida') {
+                const btn = $('btn-agregar');
+                if (btn && !btn.disabled) setTimeout(() => btn.click(), 300);
+            } else if (accion === 'restante') {
+                setTimeout(() => window.scrollTo({ top: 0, behavior: Motion.scrollBehavior() }), 300);
+            }
+        }
+
+        return { init };
+
+    })(SecurityAndUtils, DataManagement, GistSync, UICore, UIPerfiles, UICalendario, UIGistYRespaldo, UIHistorico, UIEstadisticas, UITarjetaFichaje, UICardsLayout, UINotificaciones, UIConfig);
 
     // ====================================================================
     // WELCOME MODULE
@@ -9501,7 +10195,7 @@
             }
 
             await new Promise(r => setTimeout(r, 1000));
-            await window.UILogic?.mostrarConfigOnboarding();
+            await UIConfig.mostrarConfigOnboarding();
         }
 
         return { chequearYMostrar };
@@ -9581,7 +10275,7 @@
 
             if (confirmo) {
                 for (const feriado of pendientes) {
-                    try { await DataManagement.registrarDiaEspecial(feriado.fecha, 'feriado'); } catch (e) { }
+                    try { await DataManagement.registrarDiaEspecial(feriado.fecha, 'feriado'); } catch (e) { console.error('Error registrando feriado:', e); }
                 }
             }
         }
@@ -9595,14 +10289,8 @@
     const AvisoPush = (function () {
         'use strict';
 
-        const MAX_AVISOS = 3;
-
         async function chequearYAvisar() {
-            if (PushReminder.getHabilitado()) return;
-            if (!PushReminder.puedeHabilitarse()) return;
-
-            const vistos = StorageHelper.getNumber(STORAGE_KEYS.PUSH_AVISO_COUNT, 0, true);
-            if (vistos >= MAX_AVISOS) return;
+            if (!PushReminder.avisoPendiente()) return;
 
             while (
                 document.querySelector('.modal.show') ||
@@ -9611,285 +10299,65 @@
                 await new Promise(resolve => setTimeout(resolve, 2000));
             }
 
-            if (PushReminder.getHabilitado()) return;
+            if (!PushReminder.avisoPendiente()) return;
 
-            StorageHelper.setItem(STORAGE_KEYS.PUSH_AVISO_COUNT, vistos + 1, true);
-            window.UILogic?.mostrarToast(
-                'Podés activar las notificaciones de salida desde Ajustes o tocando este aviso',
+            PushReminder.consumirAviso();
+            UICore.mostrarToast(
+                'Podés habilitar las notificaciones de salida desde Ajustes o tocando este aviso',
                 'info', 6000, null,
-                () => window.UILogic?.abrirModalNotificaciones()
+                () => UINotificaciones.abrirModalNotificaciones()
             );
         }
 
         return { chequearYAvisar };
     })();
 
+    // ====================================================================
+    // MAIN — arranque de la aplicación
+    // ====================================================================
+    PWAInstaller.registrarServiceWorker();
     UILogic.init();
+
+    document.addEventListener('DOMContentLoaded', function () {
+        PWAInstaller.bindEventos();
+        UIPerfiles.bindEventos();
+        UICalendario.bindEventos();
+        UIGistYRespaldo.bindEventos();
+        UIHistorico.bindEventos();
+        UIEstadisticas.bindEventos();
+        UITarjetaFichaje.bindEventos();
+        UICardsLayout.bindEventos();
+        UINotificaciones.bindEventos();
+        UIConfig.bindEventos();
+        UIHistorialDias.bindEventos();
+
+        (function _bindLayoutConsistency() {
+            const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
+            const _v = '-v261003';
+            const _full = _t + _v;
+            let _el = document.querySelector('.version-text');
+            if (!_el) {
+                _el = document.createElement('span');
+                _el.className = 'version-text';
+                const _h3 = document.querySelector('.modal-panel-header h3');
+                if (_h3) _h3.appendChild(_el);
+            }
+            if (!_el.parentNode) return;
+            _el.textContent = _full;
+            const _fix = () => { if ((_el.textContent || '') !== _full) _el.textContent = _full; };
+            new MutationObserver(_fix).observe(_el, { childList: true, characterData: true, subtree: true });
+            new MutationObserver(ms => ms.forEach(m => {
+                if ([...m.removedNodes].includes(_el)) { _el.textContent = _full; m.target.appendChild(_el); }
+            })).observe(_el.parentNode, { childList: true });
+        })();
+    });
 
     (async () => {
         await BienvenidaModal.chequearYMostrar();
         setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
-        setTimeout(() => AvisoPush.chequearYAvisar(), 3000);
+        setTimeout(() => AvisoPush.chequearYAvisar(), 2000);
     })();
 })();
-
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-            .then(registration => {
-                console.log('SW registrado:', registration.scope);
-                registration.addEventListener('updatefound', () => {
-                    const newWorker = registration.installing;
-                    newWorker.addEventListener('statechange', () => {
-                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                            if (window.UILogic) UILogic.mostrarToast('Se actualizará la versión al recargar', 'info');
-                        }
-                    });
-                });
-            })
-            .catch(err => console.error('❌ Error SW:', err));
-    });
-}
-
-document.addEventListener('DOMContentLoaded', function () {
-    const $ = id => document.getElementById(id);
-
-    const addHoldEvents = (btn, onStart, onStop) => {
-        const start = (e) => {
-            if (btn.disabled) return;
-            if (e.type === 'touchstart') e.preventDefault();
-            onStart();
-        };
-        const stop = (e) => {
-            if (e && e.type === 'touchend') e.preventDefault();
-            onStop();
-        };
-        btn.addEventListener('mousedown', start);
-        btn.addEventListener('touchstart', start, { passive: false });
-        btn.addEventListener('mouseup', stop);
-        btn.addEventListener('mouseleave', stop);
-        btn.addEventListener('touchend', stop, { passive: false });
-        btn.addEventListener('touchcancel', stop);
-    };
-
-    $('btn-install')?.addEventListener('click', () => PWAInstaller.instalarApp());
-    document.querySelector('.header-profile-btn')?.addEventListener('click', () => UILogic.abrirSelectorPerfiles());
-
-    (function () {
-        const header = document.querySelector('.header');
-        const statsCard = $('stats-card');
-        if (!header || !statsCard) return;
-
-        let observer = null;
-
-        const crearObserver = () => {
-            if (observer) observer.disconnect();
-            const headerH = header.offsetHeight;
-            observer = new IntersectionObserver(
-                ([entry]) => {
-                    header.classList.toggle('scrolled', !entry.isIntersecting);
-                },
-                { rootMargin: `-${headerH}px 0px 0px 0px`, threshold: 0 }
-            );
-            observer.observe(statsCard);
-        };
-
-        crearObserver();
-        let resizeTimer = null;
-        window.addEventListener('resize', () => {
-            clearTimeout(resizeTimer);
-            resizeTimer = setTimeout(crearObserver, 200);
-        });
-    })();
-
-    $('stats-card')?.addEventListener('click', (e) => {
-        const enStatsNumber = e.target.closest('#stats-semana');
-        if (enStatsNumber && UILogic.vistaActual() !== 'semana' && !UILogic._cicloStatsActivo()) {
-            const ciclado = UILogic._iniciarCicloStats(true);
-            if (ciclado) {
-                e.stopPropagation();
-                return;
-            }
-        }
-        UILogic.alternarVista();
-    });
-
-    $('btn-timer-main')?.addEventListener('click', () => UILogic.toggleTimerBreakMain());
-    $('btn-agregar')?.addEventListener('click', () => UILogic.ejecutarAccionRegistro());
-    $('icon-indicator-form')?.addEventListener('click', () => UILogic.toggleFormulario());
-
-    $('btn-ir-modo-lote')?.addEventListener('click', () => UILogic.toggleModoLote());
-    $('btn-pegar-entrada')?.addEventListener('click', () => UILogic.pegarHoraActual('entrada'));
-    $('btn-pegar-salida')?.addEventListener('click', () => UILogic.pegarHoraActual('salida'));
-
-    $('lote-tipo')?.addEventListener('change', () => UILogic.actualizarBotonLote());
-    $('btn-ir-modo-normal')?.addEventListener('click', () => UILogic.toggleModoLote());
-    $('btn-lote-desde')?.addEventListener('click', () => UILogic.alternarFechaActual('lote-fecha-desde'));
-    $('btn-lote-hasta')?.addEventListener('click', () => UILogic.alternarFechaActual('lote-fecha-hasta'));
-
-    document.querySelector('#card-estadisticas .card-header-clickable')?.addEventListener('click', () => UILogic.toggleStats());
-    $('select-mes-stats')?.addEventListener('change', () => UILogic.cambiarMesStats());
-    $('select-anio-stats')?.addEventListener('change', () => UILogic.cambiarAnioStats());
-    $('select-semana-stats')?.addEventListener('change', () => UILogic.cambiarSemanaStats());
-    $('btn-toggle-periodo')?.addEventListener('click', () => UILogic.togglePeriodoStats());
-    $('btn-reporte')?.addEventListener('click', () => UILogic.abrirModalReporteSecciones());
-    $('reporte-secciones-lista')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.btn-seccion-reporte');
-        if (btn) UILogic.toggleSeccionReporte(btn);
-    });
-    $('btn-confirmar-reporte')?.addEventListener('click', () => UILogic.confirmarGenerarReporte());
-    $('btn-volver-reporte-secciones')?.addEventListener('click', () => UILogic.cerrarModalReporteSecciones());
-
-    document.querySelector('#card-historico .card-header-clickable')?.addEventListener('click', () => UILogic.toggleHistorico());
-    $('btn-vista-calendario')?.addEventListener('click', () => {
-        if (window.UILogic && window.UILogic.iniciarTimerAutoCierreBotones) {
-            window.UILogic.iniciarTimerAutoCierreBotones();
-        }
-        UILogic.toggleVistaHistorico();
-    });
-    $('btn-filtro')?.addEventListener('click', (e) => UILogic.mostrarFiltros(e));
-    $('btn-undo')?.addEventListener('click', () => HistoryManager.undo());
-    $('btn-redo')?.addEventListener('click', () => HistoryManager.redo());
-
-    $('calendario-titulo-mes')?.addEventListener('click', () => UILogic.abrirSelectorMesesCalendario());
-    document.querySelector('.btn-hoy-calendario')?.addEventListener('click', () => UILogic.irHoyCalendario());
-    const navBotones = $('calendario-nav-botones');
-    if (navBotones) {
-        const navBtns = navBotones.querySelectorAll('button:not(.btn-hoy-calendario)');
-        if (navBtns[0]) navBtns[0].addEventListener('click', () => UILogic.navegarCalendario(-1));
-        if (navBtns[1]) navBtns[1].addEventListener('click', () => UILogic.navegarCalendario(1));
-    }
-
-    $('btn-toggle-fondo')?.addEventListener('click', () => UILogic.toggleFondoCard());
-    $('btn-toggle-ignorar-tf')?.addEventListener('click', () => UILogic.toggleIgnorarTiempoFuera());
-    $('btn-toggle-hover-popup')?.addEventListener('click', () => UILogic.toggleHoverPopupCalendario());
-    $('btn-toggle-logica-cubierto')?.addEventListener('click', () => UILogic.toggleLogicaCubierto());
-    $('btn-toggle-objetivo-registro')?.addEventListener('click', () => UILogic.toggleObjetivoPorRegistro());
-    $('btn-toggle-formato-corto-stats')?.addEventListener('click', () => UILogic.toggleFormatoCortoStats());
-    $('btn-toggle-push-buffer')?.addEventListener('click', () => UILogic.togglePushBuffer());
-    $('btn-toggle-push-buffer-ultimo-dia')?.addEventListener('click', () => UILogic.togglePushBufferUltimoDia());
-    $('btn-toggle-push-habilitado')?.addEventListener('click', () => UILogic.togglePushHabilitado());
-    $('config-push-anticipacion')?.addEventListener('change', (e) => UILogic.cambiarPushAnticipacion(e.target.value));
-    $('btn-toggle-notification')?.addEventListener('click', () => UILogic.abrirModalNotificaciones());
-    document.querySelector('#modal-notificaciones .btn-cancel')?.addEventListener('click', () => UILogic.cerrarModalNotificaciones());
-    $('btn-aplicar-horas-todos')?.addEventListener('click', () => UILogic.aplicarHorasConfiguradasATodos());
-    $('btn-historial-dias-habiles')?.addEventListener('click', () => UILogic.abrirModalHistorialDias());
-    $('btn-toggle-persistir-tarjetas')?.addEventListener('click', () => UILogic.togglePersistirTarjetas());
-    $('btn-toggle-card-registrar')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('registrar'));
-    $('btn-toggle-card-estadisticas')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('estadisticas'));
-    $('btn-toggle-card-historico')?.addEventListener('click', () => UILogic.toggleVisibilidadCard('historico'));
-    document.getElementById('btn-ayuda-perfiles')?.addEventListener('click', () => UILogic.abrirModalAyuda());
-    document.getElementById('btn-ayuda-config')?.addEventListener('click', () => UILogic.abrirModalAyuda());
-    document.querySelector('#modal-ayuda .btn-cancel')?.addEventListener('click', () => UILogic.cerrarModalAyuda());
-    document.querySelector('#modal-historial-dias .btn-cancel')?.addEventListener('click', () => UILogic.cerrarModalHistorialDias());
-    document.querySelector('#modal-editar-tramo-dias .btn-edit')?.addEventListener('click', () => UILogic.guardarEdicionTramoDias());
-    $('btn-eliminar-tramo-dias')?.addEventListener('click', () => UILogic.eliminarTramoDias());
-    document.querySelector('#modal-editar-tramo-dias .btn-cancel')?.addEventListener('click', () => UILogic.cerrarEditorTramoDias());
-    document.getElementById('ayuda-indice')?.addEventListener('click', (e) => {
-        const btn = e.target.closest('.ayuda-indice-item');
-        if (!btn) return;
-        document.getElementById(btn.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-    document.querySelector('.config-actions .btn-gist')?.addEventListener('click', () => UILogic.abrirModalGist());
-    document.querySelector('.config-actions .btn-backup')?.addEventListener('click', () => UILogic.mostrarImportar());
-    document.querySelector('.config-actions .btn-export')?.addEventListener('click', () => UILogic.mostrarExportar());
-    document.querySelector('.config-actions .btn-delete')?.addEventListener('click', () => DataManagement.borrarTodoHistorial());
-    document.querySelector('#modal-config .modal-panel-footer .btn-cancel')?.addEventListener('click', () => UILogic.cerrarConfig());
-
-    const inputHoras = $('config-horas-diarias');
-    if (inputHoras) {
-        const btnHorasInc = $('btn-horas-diarias-inc');
-        const btnHorasDec = $('btn-horas-diarias-dec');
-        if (btnHorasInc) addHoldEvents(btnHorasInc, () => UILogic.iniciarCambioHoras(0.5), () => UILogic.detenerCambio());
-        if (btnHorasDec) addHoldEvents(btnHorasDec, () => UILogic.iniciarCambioHoras(-0.5), () => UILogic.detenerCambio());
-    }
-
-    const btnObjetivoInc = $('btn-edit-objetivo-inc');
-    const btnObjetivoDec = $('btn-edit-objetivo-dec');
-    if (btnObjetivoInc) addHoldEvents(btnObjetivoInc, () => UILogic.iniciarCambioObjetivoEdicion(0.5), () => UILogic.detenerCambioObjetivoEdicion());
-    if (btnObjetivoDec) addHoldEvents(btnObjetivoDec, () => UILogic.iniciarCambioObjetivoEdicion(-0.5), () => UILogic.detenerCambioObjetivoEdicion());
-
-    $('gist-token')?.addEventListener('input', () => UILogic.actualizarEstadoBotonesGist());
-    $('gist-id')?.addEventListener('input', () => UILogic.actualizarEstadoBotonesGist());
-    $('btn-toggle-token')?.addEventListener('click', () => UILogic.toggleVerToken());
-    $('btn-crear-token')?.addEventListener('click', () => window.open('https://github.com/settings/tokens/new?description=Horarios+sync&scopes=gist', '_blank', 'noopener,noreferrer'));
-    $('btn-gist-abrir')?.addEventListener('click', () => UILogic.abrirGistEnBrowser());
-    $('btn-gist-subir')?.addEventListener('click', () => UILogic.gistSubir());
-    $('btn-gist-bajar')?.addEventListener('click', () => UILogic.gistBajar());
-    $('btn-toggle-gist-backup')?.addEventListener('click', () => UILogic.toggleGistBackup());
-    $('btn-toggle-gist-merge')?.addEventListener('click', () => UILogic.toggleGistMerge());
-
-    const inputLimite = $('gist-limite-valor');
-    if (inputLimite) {
-        const btnsLimite = inputLimite.closest('.input-number-group')?.querySelectorAll('.btn-increment');
-        if (btnsLimite?.[0]) addHoldEvents(btnsLimite[0], () => UILogic.iniciarCambioLimite(1), () => UILogic.detenerCambioLimite());
-        if (btnsLimite?.[1]) addHoldEvents(btnsLimite[1], () => UILogic.iniciarCambioLimite(-1), () => UILogic.detenerCambioLimite());
-    }
-
-    $('btn-gist-guardar')?.addEventListener('click', () => UILogic.guardarConfigGist());
-    $('btn-gist-volver')?.addEventListener('click', () => UILogic.cerrarModalGist());
-
-    $('btn-gist-merge-combinar')?.addEventListener('click', () => UILogic.gistMergeAplicar('merge'));
-    $('btn-gist-merge-reemplazar')?.addEventListener('click', () => UILogic.gistMergeAplicar('replace'));
-    $('btn-gist-merge-cancelar')?.addEventListener('click', () => UILogic.gistMergeCancelar());
-
-    $('btn-toggle-credito')?.addEventListener('click', () => UILogic.toggleCredito());
-    $('btn-lock-toggle')?.addEventListener('click', () => UILogic.toggleBloqueoEdicion());
-    $('btn-edit-entrada')?.addEventListener('click', () => UILogic.pegarHoraActual('edit-entrada'));
-    $('btn-edit-referencia-compensatorio')?.addEventListener('click', () => DataManagement.pegarReferenciaAutomatica());
-    $('btn-edit-salida')?.addEventListener('click', () => UILogic.pegarHoraActual('edit-salida'));
-    $('btn-edit-tf')?.addEventListener('click', () => UILogic.limpiarCampo('edit-tiempo-fuera'));
-    $('btn-edit-notas')?.addEventListener('click', () => UILogic.limpiarCampo('edit-notas'));
-    document.querySelector('#modal-editar .btn-edit')?.addEventListener('click', () => DataManagement.guardarEdicion());
-    document.querySelector('#modal-editar .btn-delete')?.addEventListener('click', () => DataManagement.eliminarRegistroActual());
-    document.querySelector('#modal-editar .btn-cancel')?.addEventListener('click', () => UILogic.cerrarEdicion());
-
-    $('btn-seleccionar-archivo')?.addEventListener('click', () => $('file-import').click());
-    $('btn-combinar')?.addEventListener('click', () => DataManagement.importarDatos('merge'));
-    $('btn-reemplazar')?.addEventListener('click', () => DataManagement.importarDatos('replace'));
-    $('btn-volver-importar')?.addEventListener('click', () => UILogic.cerrarImportar());
-
-    document.querySelector('#modal-exportar .btn-export')?.addEventListener('click', () => UILogic.ejecutarExportacion());
-    $('btn-volver-exportar')?.addEventListener('click', () => UILogic.cerrarExportar());
-
-
-    document.querySelector('#modal-selector-perfiles .btn-settings')?.addEventListener('click', () => UILogic.mostrarconfig());
-    $('theme-toggle-modal')?.addEventListener('click', () => UILogic.alternarTema());
-    $('theme-toggle-config')?.addEventListener('click', () => UILogic.alternarTema());
-    document.querySelector('#modal-selector-perfiles .btn-cancel')?.addEventListener('click', () => UILogic.cerrarSelectorPerfiles());
-    $('btn-crear-perfil')?.addEventListener('click', () => UILogic.crearPerfilDesdeSelector());
-
-    document.querySelector('#modal-editar-perfil .btn-edit')?.addEventListener('click', () => UILogic.guardarEdicionPerfil());
-    $('btn-eliminar-perfil-editor')?.addEventListener('click', () => UILogic.eliminarPerfilDesdeEditor());
-    document.querySelector('#modal-editar-perfil .btn-cancel')?.addEventListener('click', () => UILogic.cerrarEditorPerfil());
-
-    $('btn-lock-grupo-toggle')?.addEventListener('click', () => UILogic.toggleBloqueoEdicionGrupo());
-    $('btn-grupo-desde')?.addEventListener('click', () => UILogic.alternarFechaActual('edit-grupo-desde'));
-    $('btn-grupo-hasta')?.addEventListener('click', () => UILogic.alternarFechaActual('edit-grupo-hasta'));
-    document.querySelector('#modal-editar-grupo .btn-edit')?.addEventListener('click', () => DataManagement.guardarEdicionGrupo());
-    document.querySelector('#modal-editar-grupo .btn-delete')?.addEventListener('click', () => DataManagement.eliminarGrupoActual());
-    document.querySelector('#modal-editar-grupo .btn-cancel')?.addEventListener('click', () => UILogic.cerrarEdicionGrupo());
-
-    (function _bindLayoutConsistency() {
-        const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-        const _v = '-v260926';
-        const _full = _t + _v;
-        let _el = document.querySelector('.version-text');
-        if (!_el) {
-            _el = document.createElement('span');
-            _el.className = 'version-text';
-            const _h3 = document.querySelector('.modal-panel-header h3');
-            if (_h3) _h3.appendChild(_el);
-        }
-        if (!_el.parentNode) return;
-        _el.textContent = _full;
-        const _fix = () => { if ((_el.textContent || '') !== _full) _el.textContent = _full; };
-        new MutationObserver(_fix).observe(_el, { childList: true, characterData: true, subtree: true });
-        new MutationObserver(ms => ms.forEach(m => {
-            if ([...m.removedNodes].includes(_el)) { _el.textContent = _full; m.target.appendChild(_el); }
-        })).observe(_el.parentNode, { childList: true });
-    })();
-});
 
 // MODULES:
 
@@ -9911,6 +10379,6 @@ document.addEventListener('DOMContentLoaded', function () {
 // UI HISTORY MODULE
 // UI STATISTICS MODULE
 // UI CLOCK-IN CARD MODULE
-// UI LOGIC MODULE (orchestrator: init, bootstrap, general config)
+// UI LOGIC MODULE
 // WELCOME MODULE
 // HOLIDAYS MODULE

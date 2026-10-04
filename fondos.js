@@ -111,4 +111,62 @@ window.FONDOS_SVG = [
             <rect x="0" y="180" width="800" height="20" opacity="0.95"/>
         </g></svg>`
     },
+    {
+        id: 'circuito',
+        label: 'Circuito',
+        svg: (color) => `<svg viewBox="0 0 800 400" preserveAspectRatio="xMaxYMax meet" xmlns="http://www.w3.org/2000/svg" class="card-bg-svg card-bg-svg--right">
+            <g fill="none" stroke="${color}">
+                <!-- Trazas horizontales -->
+                <polyline points="0,80 120,80 120,120 220,120 220,80 340,80" stroke-width="3"/>
+                <polyline points="0,160 80,160 80,200 160,200 160,160 300,160 300,200 420,200 420,160 560,160" stroke-width="3"/>
+                <polyline points="0,240 100,240 100,280 200,280 200,240 360,240 360,280 480,280 480,240 640,240" stroke-width="3"/>
+                <polyline points="0,320 140,320 140,360 260,360 260,320 400,320 400,360 520,360 520,320 700,320" stroke-width="3"/>
+                <!-- Trazas verticales -->
+                <polyline points="200,0 200,40 240,40 240,120 200,120 200,160" stroke-width="3"/>
+                <polyline points="380,0 380,80 420,80 420,200 380,200 380,240" stroke-width="3"/>
+                <polyline points="560,0 560,60 600,60 600,160 560,160 560,240 520,240 520,320" stroke-width="3"/>
+                <polyline points="700,80 700,160 740,160 740,240 700,240 700,320" stroke-width="3"/>
+                <polyline points="280,160 280,240" stroke-width="3"/>
+                <polyline points="460,200 460,240 500,240 500,280 460,280 460,320" stroke-width="3"/>
+                <!-- Pads / componentes (círculos) -->
+                <circle cx="120" cy="80" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="220" cy="80" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="220" cy="120" r="6" stroke-width="2"/>
+                <circle cx="80" cy="160" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="300" cy="160" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="160" cy="200" r="6" stroke-width="2"/>
+                <circle cx="420" cy="160" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="420" cy="200" r="6" stroke-width="2"/>
+                <circle cx="100" cy="240" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="360" cy="240" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="480" cy="240" r="6" stroke-width="2"/>
+                <circle cx="140" cy="320" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="400" cy="320" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="520" cy="320" r="6" stroke-width="2"/>
+                <circle cx="700" cy="320" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="560" cy="160" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="700" cy="160" r="6" stroke-width="2"/>
+                <circle cx="640" cy="240" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="700" cy="240" r="6" stroke-width="2"/>
+                <circle cx="200" cy="40" r="8" stroke-width="2.5" fill="${color}"/>
+                <circle cx="380" cy="80" r="8" stroke-width="2.5" fill="${color}"/>
+                <!-- Componentes rectangulares (chips/resistencias) -->
+                <rect x="310" y="68" width="50" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="430" y="62" width="56" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="170" y="148" width="40" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="500" y="148" width="44" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="240" y="268" width="46" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="560" y="268" width="52" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="270" y="308" width="48" height="24" rx="4" stroke-width="2.5"/>
+                <rect x="600" y="310" width="44" height="24" rx="4" stroke-width="2.5"/>
+                <!-- Via / through-hole (círculos con punto) -->
+                <circle cx="280" cy="200" r="10" stroke-width="2.5"/>
+                <circle cx="280" cy="200" r="4" stroke-width="1.5" fill="${color}"/>
+                <circle cx="460" cy="280" r="10" stroke-width="2.5"/>
+                <circle cx="460" cy="280" r="4" stroke-width="1.5" fill="${color}"/>
+                <circle cx="600" cy="60" r="10" stroke-width="2.5"/>
+                <circle cx="600" cy="60" r="4" stroke-width="1.5" fill="${color}"/>
+            </g>
+        </svg>`
+    },
 ];

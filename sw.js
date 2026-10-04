@@ -1,4 +1,4 @@
-const CACHE_NAME = 'horarios-v260927.2109-cache';
+const CACHE_NAME = 'horarios-v261003.1739-cache';
 const urlsToCache = [
   './',
   './index.html',
@@ -46,6 +46,9 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
+  
+  // Limitar al scope del Service Worker para no cachear otros proyectos en el mismo origen de GitHub Pages
+  if (!url.pathname.startsWith(self.registration.scope.replace(location.origin, ''))) return;
 
   event.respondWith(
     caches.match(event.request, { ignoreSearch: true })
