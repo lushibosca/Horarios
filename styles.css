@@ -36,7 +36,6 @@
     --c-active: var(--c-blue);
     --c-blue-bg: rgba(76, 114, 172, 0.1);
     --c-red: rgba(172, 90, 76, 0.8);
-    --c-red-pulse: rgba(192, 93, 118, 0.4);
     --c-purple: rgba(129, 76, 172, 0.8);
     --c-gold: rgba(172, 155, 76, 0.8);
     --c-orange: rgba(210, 120, 50, 0.8);
@@ -110,6 +109,7 @@ body[data-theme="pink"] {
     --surface-row-hover: #f6d8e6;
     --toggle-track-off: #e3b6cd;
     --c-gray-btn: #fbe7f0;
+    --c-active: rgba(194, 85, 127, 0.9);
     --shadow: 0 1px 4px rgba(172, 76, 130, 0.1), 0 0 0 1px rgba(172, 76, 130, 0.05);
     --hover: brightness(0.95);
 }
@@ -128,6 +128,7 @@ body[data-theme="crema"] {
     --surface-row-hover: #f0e2cb;
     --toggle-track-off: #ddc7a0;
     --c-gray-btn: #f7eee1;
+    --c-active: rgba(176, 106, 50, 0.9);
     --shadow: 0 1px 4px rgba(140, 100, 60, 0.1), 0 0 0 1px rgba(140, 100, 60, 0.05);
     --hover: brightness(0.95);
 }
@@ -146,6 +147,7 @@ body[data-theme="green"] {
     --surface-row-hover: #d8ecde;
     --toggle-track-off: #a8d2b4;
     --c-gray-btn: #e7f5eb;
+    --c-active: rgba(63, 143, 99, 0.9);
     --shadow: 0 1px 4px rgba(76, 152, 100, 0.1), 0 0 0 1px rgba(76, 152, 100, 0.05);
     --hover: brightness(0.95);
 }
@@ -182,8 +184,28 @@ body[data-theme="lilac"] {
     --surface-row-hover: #e5d9f3;
     --toggle-track-off: #c7ace3;
     --c-gray-btn: #f0e9fa;
+    --c-active: rgba(124, 92, 191, 0.9);
     --shadow: 0 1px 4px rgba(120, 80, 180, 0.1), 0 0 0 1px rgba(120, 80, 180, 0.05);
     --hover: brightness(0.95);
+}
+
+/* ─── TEMA MEDIANOCHE (azul marino con cian) ───────────────────────────── */
+html[data-theme="medianoche"] body,
+body[data-theme="medianoche"] {
+    --bg-body: #0b1120;
+    --bg-card: #131c2e;
+    --bg-header: #0b1120f6;
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-disabled: #94a3b8a2;
+    --border: #1f2a40;
+    --input-bg: #1c2638;
+    --surface-row-hover: #26334a;
+    --toggle-track-off: #3b4a63;
+    --c-gray-btn: #1c2638;
+    --c-active: rgba(8, 145, 178, 0.9);
+    --shadow: 0 4px 20px rgba(2, 6, 23, 0.6), 0 0 0 1px rgba(34, 211, 238, 0.05);
+    --hover: brightness(1.2);
 }
 
 /* ─── RESET ─────────────────────────────────────────────────────────────────── */
@@ -2121,6 +2143,7 @@ button:disabled .toggle-switch {
     transform-origin: center;
     z-index: 3;
     position: relative;
+    animation: mutacionEntrada var(--dur-anim) ease-out;
 }
 
 .animated-card {
@@ -2183,7 +2206,11 @@ button:disabled .toggle-switch {
 .timer-btn.running {
     color: var(--c-red);
     border-color: var(--c-red);
-    animation: pulse 2s infinite;
+
+}
+
+.timer-btn.running:not(:disabled) {
+    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
 }
 
 .toggle-hint,
@@ -2744,18 +2771,6 @@ body.config-onboarding #theme-toggle-config {
     }
 }
 
-@keyframes calPopupIn {
-    from {
-        opacity: 0;
-        transform: translateY(24px) scale(0.96);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-}
-
 @keyframes llamarAtencion {
     0% {
         transform: scale(1, 1);
@@ -2803,20 +2818,6 @@ body.config-onboarding #theme-toggle-config {
     to {
         opacity: 1;
         transform: scale(1);
-    }
-}
-
-@keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 var(--c-red-pulse);
-    }
-
-    70% {
-        box-shadow: 0 0 0 10px rgba(192, 93, 118, 0);
-    }
-
-    100% {
-        box-shadow: 0 0 0 0 rgba(192, 93, 118, 0);
     }
 }
 
@@ -2874,6 +2875,37 @@ button.campo-flash {
 
 .calendario-dia.hoy.campo-flash {
     animation: calendario-hoy-flash 500ms ease-in-out 2;
+}
+
+/* Filas de ajustes: sin borde propio y dentro de un contenedor con overflow hidden,
+   así que el resalte va como sombra interna */
+@keyframes ajuste-flash {
+
+    0%,
+    60%,
+    100% {
+        box-shadow: none;
+    }
+
+    20%,
+    40% {
+        box-shadow: inset 0 0 0 2px var(--text-main);
+    }
+}
+
+.settings-list>.campo-flash {
+    animation: ajuste-flash 500ms ease-in-out 2;
+}
+
+/* La sombra interna sigue el radio de la fila, no el del contenedor */
+.settings-list>.campo-flash:first-child {
+    border-top-left-radius: var(--radius);
+    border-top-right-radius: var(--radius);
+}
+
+.settings-list>.campo-flash:last-child {
+    border-bottom-left-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
 }
 
 @keyframes campo-flash-color {
@@ -3073,12 +3105,7 @@ button.campo-flash-color {
 }
 
 /* ─── REDUCED MOTION ─────────────────────────────────────────────────────────── */
-/* Se activa con <html data-motion="reduce"> (ver Motion en app.js y flash.js):
-   sigue al sistema en modo automático o lo fuerza el ajuste "Reducir animaciones".
-   Las duraciones bajan a 1ms y NO a 0 ni a "none": con 0 el
-   navegador no dispara transitionend/animationend, y el JS depende de ellos
-   (p. ej. _limpiarAlturaLista) y además lee estas variables con _getCSSdur()
-   para sus timers. Si se agrega una --dur-* nueva en :root, sumarla acá. */
+
 :root[data-motion="reduce"] {
     --dur-fast: 1ms;
     --dur-anim: 1ms;
@@ -3088,9 +3115,6 @@ button.campo-flash-color {
     --dur-slow: 1ms;
 }
 
-/* Modales y popups: sin escala, solo fade de opacidad. Esta regla va al final del
-   archivo y su especificidad (0,3,0) iguala o supera a .modal.show .modal-content
-   y a .X.show, así que no hace falta !important (el JS solo fija transform-origin). */
 :root[data-motion="reduce"] :is(.modal-content, .cal-popup, .stat-popup, .filtro-popup) {
     transform: none;
     transition: opacity 0.15s ease;

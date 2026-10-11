@@ -1,3 +1,10 @@
+// Anti-clickjacking: GitHub Pages no permite enviar el header frame-ancestors
+// y la CSP en <meta> lo ignora.
+if (window.top !== window.self) {
+    try { window.top.location = window.self.location.href; }
+    catch (e) { document.documentElement.style.display = 'none'; }
+}
+
 (function () {
     try {
         var s = localStorage.getItem('temaOscuro');
@@ -26,5 +33,3 @@
         document.documentElement.setAttribute('data-motion', reducir ? 'reduce' : 'full');
     } catch (e) { }
 }());
-
-// Parche anti parpadeo blanco en modo oscuro / temas pastel

@@ -421,6 +421,30 @@
         const VAPID_PUBLIC_KEY = 'BMU-iLslFVrTxUKMHRUn8r_CtyCLX41ppVTUgdATAdPYE8ayJ0U_ew6d50CmvghkIdv34fGuXvf-KP5W62rs3ms';
         const APP_SECRET = '487e4c492604b653b56e9ba234cb9eda007fc149c66650e9'; // que mira bobo, anda paya
         const MARGEN_CRON_MS = 60 * 1000;
+        const AVISO_FALLO_CADA_MS = 10 * 60 * 1000;
+        const REINTENTOS_MAX = 3;
+        const REINTENTO_ESPERA_MS = 60 * 1000;
+        let _generacionProgramacion = 0;
+
+        let notify = { mostrarToast: () => { } };
+        function configurarNotificaciones(handlers) { notify = { ...notify, ...handlers }; }
+
+        const _ultimoAvisoFallo = {};
+        function _avisarFallo(accion, status) {
+            const motivo = status == null
+                ? (navigator.onLine === false ? 'sin conexión' : 'no se pudo contactar al servicio')
+                : status === 409 ? 'este dispositivo está vinculado a otra instalación'
+                    : status === 429 ? 'el servicio está recibiendo demasiados pedidos'
+                        : 'el servicio no está disponible ahora';
+            const clave = `${accion}|${motivo}`;
+            const ahora = Date.now();
+            if (ahora - (_ultimoAvisoFallo[clave] || 0) < AVISO_FALLO_CADA_MS) return;
+            _ultimoAvisoFallo[clave] = ahora;
+            const mensaje = accion === 'cancelar'
+                ? 'No se pudo cancelar el aviso de hoy (puede que igual te llegue)'
+                : 'No se pudo programar el aviso de fin de jornada';
+            notify.mostrarToast(mensaje, 'warning', 5000, motivo);
+        }
 
         function _headersWorker() {
             const headers = { 'Content-Type': 'application/json' };
@@ -544,8 +568,6 @@
         function _getAvisosRestantes() {
             return StorageHelper.getNumber(STORAGE_KEYS.PUSH_AVISOS_RESTANTES, AVISOS_INICIALES, true);
         }
-        // Hay que avisar si el usuario nunca eligió (activar/desactivar), se cumplen las condiciones
-        // y todavía quedan avisos del contador (arranca en AVISOS_INICIALES, uno por recarga).
         function avisoPendiente() {
             const hayEleccion = [true, false].some(porPerfil => StorageHelper.getItem(STORAGE_KEYS.PUSH_HABILITADO, null, porPerfil) !== null);
             return !hayEleccion && puedeHabilitarse() && _getAvisosRestantes() > 0;
@@ -652,18 +674,33 @@
             const anticipacionMin = getAnticipacionMin();
             const mensaje = _construirMensajeNotificacion(anticipacionMin, bufferSemanalHoras);
 
-            try {
-                const res = await _postWorker('/api/schedule', {
-                    id: _claveRecordatorio(fechaISO),
-                    ownerToken: _ownerToken(),
-                    subscription: sub.toJSON(),
-                    targetTime: targetMs,
-                    title: 'Horarios',
-                    message: mensaje
-                });
-                if (res.ok) _guardarInfoActiva(fechaISO, targetMs);
-            } catch (err) {
-                console.error('No se pudo programar el recordatorio:', err);
+            const generacion = ++_generacionProgramacion;
+            const payload = {
+                id: _claveRecordatorio(fechaISO),
+                ownerToken: _ownerToken(),
+                subscription: sub.toJSON(),
+                targetTime: targetMs,
+                title: 'Horarios',
+                message: mensaje
+            };
+
+            for (let intento = 0; ; intento++) {
+                let status = null;
+                try {
+                    const res = await _postWorker('/api/schedule', payload);
+                    if (res.ok) { _guardarInfoActiva(fechaISO, targetMs); return; }
+                    status = res.status;
+                } catch (err) {
+                    console.error('No se pudo programar el recordatorio:', err);
+                }
+
+                const reintentable = status == null || status === 429 || status >= 500;
+                if (!reintentable || intento >= REINTENTOS_MAX) {
+                    _avisarFallo('programar', status);
+                    return;
+                }
+                await new Promise(resolve => setTimeout(resolve, REINTENTO_ESPERA_MS));
+                if (generacion !== _generacionProgramacion || !getHabilitado() || Date.now() >= targetMs) return;
             }
         }
 
@@ -685,6 +722,7 @@
             if (esPerfilActivo) limpiarNotificacionVisible();
 
             const esHoy = fechaISO === TimeUtils.obtenerFechaHoy();
+            if (esHoy && esPerfilActivo) _generacionProgramacion++;
             const activa = esHoy ? obtenerInfoActiva(perfilId) : null;
             if (esHoy) _borrarInfoActiva(perfilId);
 
@@ -700,7 +738,11 @@
             }
 
             _postWorker('/api/cancel', { id: _claveRecordatorio(fechaISO, perfilId), ownerToken: _ownerToken() }, true)
-                .catch(err => console.error('No se pudo cancelar el recordatorio:', err));
+                .then(res => { if (!res.ok) _avisarFallo('cancelar', res.status); })
+                .catch(err => {
+                    console.error('No se pudo cancelar el recordatorio:', err);
+                    _avisarFallo('cancelar', null);
+                });
         }
 
         function restablecer() {
@@ -718,6 +760,7 @@
         }
 
         return {
+            configurarNotificaciones,
             programarFinDeJornada, cancelarFinDeJornada, limpiarNotificacionVisible,
             getAnticipacionMin, setAnticipacionMin, setBufferSoloUltimoDia,
             getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado, puedeHabilitarse, avisoPendiente, consumirAviso,
@@ -932,7 +975,7 @@
     // THEME MANAGER MODULE
     // ====================================================================
     const ThemeManager = (function () {
-        const TEMAS = ['light', 'dark', 'pink', 'green', 'blue', 'lilac', 'crema'];
+        const TEMAS = ['light', 'dark', 'medianoche', 'pink', 'green', 'blue', 'lilac', 'crema'];
 
         function temaGuardado() {
             const raw = StorageHelper.getItem(STORAGE_KEYS.TEMA_OSCURO, null);
@@ -2378,7 +2421,7 @@
 
             ordenarRegistros();
             HistoryManager.saveState(registros, `editar registro (${TimeUtils.fechaCorta(f)})`);
-            const saved = await guardarYActualizar(null, true);
+            const saved = await guardarYActualizar(r.id, true);
             notify.restaurarBotonGuardarEdicion(btnGuardar);
             if (saved) {
                 _sincronizarPushHoy();
@@ -3447,6 +3490,21 @@
             });
         }
 
+        function _crearFantasmaSiVisible(el) {
+            if (!el || Motion.reducido()) return null;
+            if (el.closest('.collapsible:not(.expanded)')) return null;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 0 || r.height <= 0) return null;
+            if (r.bottom < 0 || r.top > window.innerHeight) return null;
+
+            const fantasma = _fantasmaDe(el);
+            fantasma.classList.remove('nuevo-registro-animacion', 'mutacion-entrante');
+            const limpiar = () => fantasma.remove();
+            fantasma.addEventListener('animationend', limpiar, { once: true });
+            setTimeout(limpiar, DUR_ANIM() + 150);
+            return fantasma;
+        }
+
         const _valorAnimEstado = new WeakMap();
 
         function _finalizarValorPendiente(el) {
@@ -3837,6 +3895,7 @@
             toggleSeccionGen,
             _animarFadeSwap,
             _animarMutacion,
+            _crearFantasmaSiVisible,
             _animarValor
         };
     })(SecurityAndUtils, DataManagement);
@@ -4117,7 +4176,7 @@
     //                     UI CALENDAR MODULE
     // ====================================================================
     const UICalendario = (function (S, D, UICore) {
-        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia, _flashElemento, DUR_CALENDARIO } = UICore;
+        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia, _flashElemento, DUR_CALENDARIO, _crearFantasmaSiVisible } = UICore;
 
         function _cerrarSelectorMeses(idResaltar = null) {
             const grid = document.getElementById('calendario-grid');
@@ -4286,6 +4345,14 @@
             }
 
             grid.classList.toggle('calendario-filtro-activo', filtroActivo);
+
+            if (idResaltar) {
+                const idsAnimados = (Array.isArray(idResaltar) ? idResaltar : [idResaltar]).map(String);
+                grid.querySelectorAll('.calendario-dia[data-reg-id]').forEach(celdaVieja => {
+                    if (idsAnimados.includes(celdaVieja.dataset.regId)) _crearFantasmaSiVisible(celdaVieja);
+                });
+            }
+
             grid.innerHTML = '';
             grid.appendChild(frag);
 
@@ -5667,7 +5734,8 @@
     const UIHistorico = (function (S, D, UICore) {
         const {
             formatoDiferencia, mostrarToast, _setBtnActivo, debounce,
-            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, setIconoBtn
+            _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, setIconoBtn,
+            _crearFantasmaSiVisible, DUR_ANIM
         } = UICore;
 
         let edicionBloqueada = true;
@@ -5951,8 +6019,108 @@
             });
         }
 
+        const _MAX_BLOQUES_EXPANDIDOS = 12;
+
+        function _clavesItemLista(item) {
+            if (!item) return [];
+            if (item.dataset.registroId) return ['r:' + item.dataset.registroId];
+            if (item.dataset.accion === 'editar-grupo') {
+                try { return JSON.parse(item.dataset.grupoData).registros.map(id => 'r:' + id); } catch (e) { return []; }
+            }
+            return [];
+        }
+
+        function _clavesBloqueLista(el) {
+            if (el.classList.contains('registro-item')) return _clavesItemLista(el);
+            if (el.dataset.mesId) return ['m:' + el.dataset.mesId];
+            if (el.dataset.anioId) return ['a:' + el.dataset.anioId];
+            return [];
+        }
+
+        function _claveContenedorLista(cont) {
+            const header = cont.querySelector(':scope > .registro-mes-header');
+            return header ? (_clavesBloqueLista(header)[0] || null) : null;
+        }
+
+        function _expandirElemento(el, dur) {
+            el.style.contentVisibility = 'visible';
+            el.style.overflow = 'hidden';
+            const cs = getComputedStyle(el);
+            const final = {
+                height: cs.height,
+                paddingTop: cs.paddingTop, paddingBottom: cs.paddingBottom,
+                marginTop: cs.marginTop, marginBottom: cs.marginBottom,
+                borderTopWidth: cs.borderTopWidth, borderBottomWidth: cs.borderBottomWidth
+            };
+            const inicial = {
+                height: '0px',
+                paddingTop: '0px', paddingBottom: '0px',
+                marginTop: '0px', marginBottom: '0px',
+                borderTopWidth: '0px', borderBottomWidth: '0px'
+            };
+            const limpiar = () => { el.style.contentVisibility = ''; el.style.overflow = ''; };
+            const anim = el.animate([inicial, final], { duration: dur, easing: 'ease-out' });
+            anim.addEventListener('finish', limpiar, { once: true });
+            anim.addEventListener('cancel', limpiar, { once: true });
+        }
+
+        function _expandirBloquesNuevos(lista, clavesPrevias) {
+            const dur = DUR_ANIM();
+            const objetivos = new Set();
+            lista.querySelectorAll('.registro-item.nuevo-registro-animacion').forEach(item => {
+                if (_clavesItemLista(item).some(c => clavesPrevias.has(c))) return;
+                let objetivo = item;
+                for (let cont = item.closest('.registro-mes-container'); cont;
+                    cont = cont.parentElement ? cont.parentElement.closest('.registro-mes-container') : null) {
+                    const clave = _claveContenedorLista(cont);
+                    if (clave && !clavesPrevias.has(clave)) objetivo = cont;
+                }
+                if (objetivo.closest('.collapsible:not(.expanded)')) return;
+                objetivos.add(objetivo);
+            });
+            if (objetivos.size > _MAX_BLOQUES_EXPANDIDOS) return;
+            objetivos.forEach(el => _expandirElemento(el, dur));
+        }
+
+        function _prepararAnimacionLista(lista, idNuevo) {
+            const sinAnimacion = { reproducir() { } };
+            const ids = (idNuevo === null || idNuevo === undefined) ? [] : (Array.isArray(idNuevo) ? idNuevo : [idNuevo]);
+            if (ids.length === 0 || Motion.reducido() || !lista.offsetParent) return sinAnimacion;
+
+            const elementoPorId = new Map();
+            lista.querySelectorAll('.registro-item').forEach(item => {
+                _clavesItemLista(item).forEach(c => elementoPorId.set(c.slice(2), item));
+            });
+
+            const claves = ids.map(String);
+            const existentes = claves.filter(id => elementoPorId.has(id));
+            const hayNuevos = existentes.length < claves.length;
+
+            const vistos = new Set();
+            existentes.forEach(id => {
+                const el = elementoPorId.get(id);
+                if (vistos.has(el)) return;
+                vistos.add(el);
+                _crearFantasmaSiVisible(el);
+            });
+
+            let clavesPrevias = null;
+            if (hayNuevos) {
+                clavesPrevias = new Set();
+                lista.querySelectorAll('.registro-item, .registro-mes-header').forEach(el => {
+                    _clavesBloqueLista(el).forEach(c => clavesPrevias.add(c));
+                });
+            }
+            return {
+                reproducir() {
+                    if (clavesPrevias) _expandirBloquesNuevos(lista, clavesPrevias);
+                }
+            };
+        }
+
         function actualizarListaRegistros(registros, idNuevo = null, asignacionesPrecalculadas = null) {
             const lista = $('lista-registros');
+            const animacionLista = _prepararAnimacionLista(lista, idNuevo);
             lista.innerHTML = '';
 
             const registrosAMostrar = D.obtenerRegistrosFiltrados();
@@ -5987,6 +6155,7 @@
             lista.appendChild(fragmento);
             _consolidarMesesAbiertos(lista, mesHoy);
             _actualizarOffsetsStickyMes();
+            animacionLista.reproducir();
         }
 
         function crearGrupoExpandible(grupo, idResaltar = null, asignacionesCompensatorio = null) {
@@ -7360,6 +7529,12 @@
             'stat-compensaciones': { titulo: 'Salidas Tempranas', desc: 'Cantidad de jornadas en las que se registró un crédito por salida anticipada o asueto dentro del registro en curso.' },
         };
 
+        const AJUSTE_POR_STAT = {
+            'stat-dias-trabajados': 'config-row-dias-habiles',
+            'stat-tiempo-fuera-total': 'btn-toggle-ignorar-tf',
+            'stat-promedio-diario': 'config-row-horas-diarias',
+        };
+
         let _popupStatEl = null;
 
         function _popupStat(event, statId) {
@@ -7421,19 +7596,32 @@
                 };
             }
 
-            const popup = _crearPopupFlotante({
+            const ajusteId = AJUSTE_POR_STAT[statId];
+            const btnModificarHtml = ajusteId ? `
+                <button class="cal-popup-btn-edit" id="_stat-popup-btn-modificar">
+                    <svg class="icon"><use href="#icon-settings"/></svg>
+                    Modificar
+                </button>` : '';
+
+            const { popup, cerrar } = _crearPopupFlotante({
                 className: 'stat-popup',
                 id: '_stat-popup',
                 dataset: { statId },
                 html: `
                 <div class="stat-popup-titulo">${S.escapeHtml(info.titulo)}</div>
-                <div class="stat-popup-desc">${info.desc}</div>`,
+                <div class="stat-popup-desc">${info.desc}</div>
+                ${btnModificarHtml}`,
                 event,
                 selectorTrigger: '.stat-item',
                 esMismoTrigger: item => item.dataset.statId === statId,
                 alCerrar: (p) => { if (_popupStatEl === p) _popupStatEl = null; }
-            }).popup;
+            });
             _popupStatEl = popup;
+
+            popup.querySelector('#_stat-popup-btn-modificar')?.addEventListener('click', () => {
+                cerrar();
+                UIConfig.mostrarConfigEnAjuste(ajusteId);
+            });
         }
 
         function _onclickStatItem(event) {
@@ -8922,6 +9110,7 @@
             toggleFormulario,
             _irAFicharConFecha,
             _scrollACardFichar,
+            _FLASH_SCROLL_DELAY,
             alternarFechaActual,
             pegarHoraActual,
             limpiarCampo,
@@ -9272,7 +9461,7 @@
 
         const {
             _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre, mostrarToast, DUR_ANIM,
-            _crearToggleConfig, _setBtnDisabled, _animarValor
+            _crearToggleConfig, _setBtnDisabled, _animarValor, _flashCampo
         } = UICore;
 
         const {
@@ -9280,7 +9469,7 @@
         } = UIHistorico;
 
         const {
-            actualizarUI, getFondoCard, _getLabelFondo, _refrescarFormatoCortoStatsCache
+            actualizarUI, getFondoCard, _getLabelFondo, _refrescarFormatoCortoStatsCache, _FLASH_SCROLL_DELAY
         } = UITarjetaFichaje;
 
         const {
@@ -9438,6 +9627,20 @@
             ModalManager.alternar('modal-selector-perfiles', 'modal-config', null, _precargarCamposConfig);
         }
 
+        function mostrarConfigEnAjuste(id) {
+            ModalManager.abrir('modal-config', _precargarCamposConfig);
+            setTimeout(() => {
+                const el = $(id);
+                const cuerpo = el?.closest('.modal-panel-body');
+                if (!el || !cuerpo) return;
+                const r = el.getBoundingClientRect();
+                const c = cuerpo.getBoundingClientRect();
+                const visible = r.top >= c.top && r.bottom <= c.bottom;
+                if (!visible) el.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'nearest' });
+                setTimeout(() => _flashCampo(id), visible ? 0 : _FLASH_SCROLL_DELAY);
+            }, 500);
+        }
+
         function refrescarConfigSiVisible() {
             if (document.getElementById('modal-config')?.classList.contains('show')) {
                 _precargarCamposConfig();
@@ -9558,7 +9761,7 @@
             actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonHoverPopup,
             actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
             actualizarEstadoBotonFormatoCortoStats, actualizarEstadoBotonAplicarHoras, cerrarConfig,
-            cerrarModalAyuda, _precargarCamposConfig, refrescarConfigSiVisible, mostrarConfigOnboarding,
+            cerrarModalAyuda, _precargarCamposConfig, refrescarConfigSiVisible, mostrarConfigOnboarding, mostrarConfigEnAjuste,
             pressHoldObjetivoEdicion, formatearInput, bindEventos
         };
 
@@ -9807,6 +10010,7 @@
                 forzarVista: _forzarVista, prepararMostrarFaseAlRenderizar: _prepararMostrarFaseAlRenderizar, refrescarConfigSiVisible
             });
             StorageHelper.configurarNotificaciones({ mostrarToast });
+            PushReminder.configurarNotificaciones({ mostrarToast });
 
             ModalManager.registrarAccionVolver('modal-gist', cerrarModalGist);
             ModalManager.registrarAccionVolver('modal-gist-merge', gistMergeCancelar);
@@ -10333,7 +10537,7 @@
 
         (function _bindLayoutConsistency() {
             const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-            const _v = '-v261003';
+            const _v = '-v261011';
             const _full = _t + _v;
             let _el = document.querySelector('.version-text');
             if (!_el) {
