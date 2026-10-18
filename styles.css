@@ -3,7 +3,7 @@
 :root {
     --bg-body: #f5f6fa;
     --bg-card: #ffffff;
-    --bg-header: #ffffffee;
+    --bg-header: #f5f6faee;
     --text-main: #1f1f1f;
     --text-muted: #444746;
     --text-disabled: #444746a2;
@@ -51,9 +51,11 @@
     --dur-collapse: 300ms;
     --dur-calendario: 320ms;
     --dur-valor: 150ms;
+    --dur-conteo: 500ms;
     --dur-slow: 0.5s;
     --ease-anim: ease;
     --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-conteo: cubic-bezier(0.215, 0.61, 0.355, 1);
     --transition-anim: opacity var(--dur-anim) var(--ease-anim), transform var(--dur-anim) var(--ease-anim);
     --transition-collapse: grid-template-rows var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
     --transition-ui: var(--dur-anim) ease;
@@ -1399,6 +1401,11 @@ button:disabled .toggle-switch {
 
 #progress-bar {
     width: 0%;
+}
+
+/* Conteo inicial del valor: la barra llena con la misma duración y curva que el número */
+.stats-card.conteo-inicial .progress-fill {
+    transition: width var(--dur-conteo) var(--ease-conteo), background-color var(--dur-slow) ease;
 }
 
 /* ─── REGISTROS ──────────────────────────────────────────────────────────────── */
@@ -3112,6 +3119,7 @@ button.campo-flash-color {
     --dur-collapse: 1ms;
     --dur-calendario: 1ms;
     --dur-valor: 1ms;
+    --dur-conteo: 1ms;
     --dur-slow: 1ms;
 }
 

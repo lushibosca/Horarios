@@ -3,8 +3,8 @@
   "short_name": "Horarios",
   "start_url": "./index.html?mode=pwa",
   "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#1f2937",
+  "background_color": "#131314",
+  "theme_color": "#131314",
   "orientation": "portrait",
   "scope": "./",
   "id": "./index.html",
@@ -32,7 +32,7 @@
     },
     {
       "src": "./icons/icon-1024.png",
-      "sizes": "512x512",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any"
     }

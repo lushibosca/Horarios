@@ -1,4 +1,4 @@
-const CACHE_NAME = 'horarios-v261011.1544-cache';
+const CACHE_NAME = 'horarios-v261017.1800-cache';
 const urlsToCache = [
   './',
   './index.html',
@@ -18,7 +18,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        return cache.addAll(urlsToCache).catch(err => {
+        return cache.addAll(urlsToCache.map(u => new Request(u, { cache: 'reload' }))).catch(err => {
           console.error('CRÍTICO: Falló la carga de archivos en el install:', err);
           throw err;
         });
@@ -33,7 +33,8 @@ self.addEventListener('activate', event => {
     caches.keys()
       .then(cacheNames => Promise.all(
         cacheNames
-          .filter(name => name !== CACHE_NAME)
+          // Solo cachés propias: el origen de GitHub Pages es compartido con otras apps
+          .filter(name => name.startsWith('horarios-') && name !== CACHE_NAME)
           .map(name => caches.delete(name))
       ))
       .then(() => self.clients.claim())

@@ -1,8 +1,9 @@
 // Anti-clickjacking: GitHub Pages no permite enviar el header frame-ancestors
 // y la CSP en <meta> lo ignora.
+// Se oculta siempre: un <iframe sandbox> bloquea la navegación del top sin lanzar excepción.
 if (window.top !== window.self) {
-    try { window.top.location = window.self.location.href; }
-    catch (e) { document.documentElement.style.display = 'none'; }
+    document.documentElement.style.display = 'none';
+    try { window.top.location = window.self.location.href; } catch (e) { }
 }
 
 (function () {

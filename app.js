@@ -320,17 +320,16 @@
             return { horas: h, minutos: m, esNegativo: totalHoras < 0 };
         }
 
+        function partesATexto(horas, minutos, modo = 'long', ref = { horas, minutos }) {
+            const corto = modo === 'short', partes = [];
+            if (ref.horas > 0) partes.push(corto ? `${horas}h` : `${horas} hora${pluralizar(ref.horas)}`);
+            if (ref.minutos > 0 || !partes.length) partes.push(corto ? `${minutos}m` : `${minutos} minuto${pluralizar(ref.minutos)}`);
+            return partes.join(' ');
+        }
+
         function horasATexto(totalHoras, modo = 'long') {
             const { horas, minutos, esNegativo } = descomponerHorasDecimales(totalHoras);
-            const signo = esNegativo ? '-' : '';
-            if (modo === 'short') {
-                return horas > 0 ? `${signo}${horas}h${minutos > 0 ? ' ' + minutos + 'm' : ''}` : `${signo}${minutos}m`;
-            }
-            let partes = [];
-            if (horas > 0) partes.push(`${horas} ${horas === 1 ? 'hora' : 'horas'}`);
-            if (minutos > 0) partes.push(`${minutos} ${minutos === 1 ? 'minuto' : 'minutos'}`);
-            if (horas === 0 && minutos === 0) partes.push('0 minutos');
-            return signo + partes.join(' ');
+            return (esNegativo ? '-' : '') + partesATexto(horas, minutos, modo);
         }
 
         function _esCantidadSingular(textoHoras) {
@@ -402,14 +401,16 @@
             return nombre.charAt(0).toUpperCase() + nombre.slice(1);
         }
 
+        function esperar(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
         return {
             esFechaHabil, esDiaAnterior, agruparMesesPorAnio, nombreMesCapitalizado,
             validarFecha, validarHora, normalizarMinutosSueltos, parsearFechaLocal, formatearFechaLocal,
             obtenerFechaHoy, obtenerHoraActual, minutosAHora, fechaLocalISOFull,
             horaAMinutos, sumarMinutosAHora, descomponerHorasDecimales,
             obtenerNombreDia, nombreDiaPorIndice, nombreMesPorIndice, obtenerLunes, obtenerLunesSemanaISO, obtenerSemanaRangoActual,
-            horasATexto, formatoDiferencia, formatoTituloMes, _esCantidadSingular, pluralizar,
-            generarRangoFechas, fechaCorta, segundosAMinutosRedondeado, _pad2
+            horasATexto, partesATexto, formatoDiferencia, formatoTituloMes, _esCantidadSingular, pluralizar,
+            generarRangoFechas, fechaCorta, segundosAMinutosRedondeado, _pad2, esperar
         };
     })();
 
@@ -425,6 +426,7 @@
         const REINTENTOS_MAX = 3;
         const REINTENTO_ESPERA_MS = 60 * 1000;
         let _generacionProgramacion = 0;
+        let _generacionCancelada = 0;
 
         let notify = { mostrarToast: () => { } };
         function configurarNotificaciones(handlers) { notify = { ...notify, ...handlers }; }
@@ -625,7 +627,7 @@
             }
         }
 
-        function _calcularTarget(entradaHHMM, objetivoHoras, bufferSemanalHoras = 0) {
+        function _calcularTarget(entradaHHMM, objetivoHoras, bufferSemanalHoras = 0, minutosTiempoFuera = 0) {
             if (!entradaHHMM || !objetivoHoras) return null;
             const [h, m] = entradaHHMM.split(':').map(Number);
             if (Number.isNaN(h) || Number.isNaN(m)) return null;
@@ -637,7 +639,8 @@
             const anticipacionMin = getAnticipacionMin();
             const target = new Date();
             target.setHours(h, m, 0, 0);
-            target.setTime(target.getTime() + objetivoAjustado * 60 * 60 * 1000 - anticipacionMin * 60 * 1000 - MARGEN_CRON_MS);
+            const extraMs = Number.isFinite(minutosTiempoFuera) ? minutosTiempoFuera * 60 * 1000 : 0;
+            target.setTime(target.getTime() + objetivoAjustado * 60 * 60 * 1000 + extraMs - anticipacionMin * 60 * 1000 - MARGEN_CRON_MS);
             return target.getTime();
         }
 
@@ -663,18 +666,18 @@
             }
         }
 
-        async function programarFinDeJornada(fechaISO, entradaHHMM, objetivoHoras, bufferSemanalHoras = 0) {
+        async function programarFinDeJornada(fechaISO, entradaHHMM, objetivoHoras, bufferSemanalHoras = 0, minutosTiempoFuera = 0) {
             if (!getHabilitado()) return;
-            const targetMs = _calcularTarget(entradaHHMM, objetivoHoras, bufferSemanalHoras);
+            const targetMs = _calcularTarget(entradaHHMM, objetivoHoras, bufferSemanalHoras, minutosTiempoFuera);
             if (targetMs == null) return;
 
+            const generacion = ++_generacionProgramacion;
             const sub = await _asegurarSuscripcion();
-            if (!sub) return;
+            if (!sub || generacion !== _generacionProgramacion || !getHabilitado()) return;
 
             const anticipacionMin = getAnticipacionMin();
             const mensaje = _construirMensajeNotificacion(anticipacionMin, bufferSemanalHoras);
 
-            const generacion = ++_generacionProgramacion;
             const payload = {
                 id: _claveRecordatorio(fechaISO),
                 ownerToken: _ownerToken(),
@@ -688,7 +691,15 @@
                 let status = null;
                 try {
                     const res = await _postWorker('/api/schedule', payload);
-                    if (res.ok) { _guardarInfoActiva(fechaISO, targetMs); return; }
+                    if (res.ok) {
+                        if (generacion === _generacionProgramacion) {
+                            _guardarInfoActiva(fechaISO, targetMs);
+                        } else if (_generacionCancelada > generacion && _generacionCancelada === _generacionProgramacion) {
+                            // Se canceló mientras este schedule estaba en vuelo: el cancel pudo llegar antes
+                            _postWorker('/api/cancel', { id: payload.id, ownerToken: payload.ownerToken }, true).catch(() => { /* noop */ });
+                        }
+                        return;
+                    }
                     status = res.status;
                 } catch (err) {
                     console.error('No se pudo programar el recordatorio:', err);
@@ -699,7 +710,7 @@
                     _avisarFallo('programar', status);
                     return;
                 }
-                await new Promise(resolve => setTimeout(resolve, REINTENTO_ESPERA_MS));
+                await TimeUtils.esperar(REINTENTO_ESPERA_MS);
                 if (generacion !== _generacionProgramacion || !getHabilitado() || Date.now() >= targetMs) return;
             }
         }
@@ -722,11 +733,13 @@
             if (esPerfilActivo) limpiarNotificacionVisible();
 
             const esHoy = fechaISO === TimeUtils.obtenerFechaHoy();
-            if (esHoy && esPerfilActivo) _generacionProgramacion++;
+            if (esHoy && esPerfilActivo) _generacionCancelada = ++_generacionProgramacion;
             const activa = esHoy ? obtenerInfoActiva(perfilId) : null;
             if (esHoy) _borrarInfoActiva(perfilId);
 
-            if (esHoy && !activa) {
+            // Sin info local igual se cancela: el Worker pudo guardar el aviso aunque la
+            // respuesta del schedule nunca se procesó (app cerrada o congelada al fichar)
+            if (!activa && !getHabilitado()) {
                 return;
             }
 
@@ -738,10 +751,10 @@
             }
 
             _postWorker('/api/cancel', { id: _claveRecordatorio(fechaISO, perfilId), ownerToken: _ownerToken() }, true)
-                .then(res => { if (!res.ok) _avisarFallo('cancelar', res.status); })
+                .then(res => { if (!res.ok && activa) _avisarFallo('cancelar', res.status); })
                 .catch(err => {
                     console.error('No se pudo cancelar el recordatorio:', err);
-                    _avisarFallo('cancelar', null);
+                    if (activa) _avisarFallo('cancelar', null);
                 });
         }
 
@@ -759,8 +772,46 @@
             });
         }
 
+        // Estadísticas de uso anónimas. Usa un id propio, distinto de pushInstallId,
+        // para que no se pueda cruzar con los recordatorios. Como mucho un ping
+        // cada USO_INTERVALO_MS por dispositivo: alcanza para contar usuarios
+        // activos y sesiones sin gastar cupo del Worker.
+        const USO_INTERVALO_MS = 30 * 60 * 1000;
+
+        function _idEstadisticas() {
+            const KEY = 'statsId';
+            const existente = StorageHelper.getItem(KEY, null);
+            if (existente) return existente;
+            const nuevo = crypto.randomUUID ? crypto.randomUUID() : null;
+            if (nuevo) StorageHelper.setItem(KEY, nuevo);
+            return nuevo;
+        }
+
+        async function _versionApp() {
+            try {
+                const claves = await caches.keys();
+                return claves.find(k => k.startsWith('horarios-')) || 'desconocida';
+            } catch {
+                return 'desconocida';
+            }
+        }
+
+        async function registrarUso() {
+            if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+            const KEY = 'statsUltimoPing';
+            const ahora = Date.now();
+            if (ahora - Number(StorageHelper.getItem(KEY, 0)) < USO_INTERVALO_MS) return;
+            const id = _idEstadisticas();
+            if (!id) return;
+            StorageHelper.setItem(KEY, String(ahora));
+            const pwa = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            try {
+                await _postWorker('/api/hola', { id, modo: pwa ? 'pwa' : 'navegador', version: await _versionApp() });
+            } catch { /* sin estadística esta vez, no afecta a la app */ }
+        }
+
         return {
-            configurarNotificaciones,
+            configurarNotificaciones, registrarUso,
             programarFinDeJornada, cancelarFinDeJornada, limpiarNotificacionVisible,
             getAnticipacionMin, setAnticipacionMin, setBufferSoloUltimoDia,
             getUsarBufferSemanal, setUsarBufferSemanal, getHabilitado, setHabilitado, puedeHabilitarse, avisoPendiente, consumirAviso,
@@ -997,7 +1048,21 @@
                 const icon = document.getElementById(id)?.querySelector('use');
                 if (icon) icon.setAttribute('href', esClaro ? '#icon-moon' : '#icon-sun');
             });
+            sincronizarBarraDelSistema();
         }
+
+        function sincronizarBarraDelSistema() {
+            const color = getComputedStyle(document.body).getPropertyValue('--bg-body').trim();
+            if (!/^#[0-9a-f]{3,8}$/i.test(color)) return;
+            let meta = document.querySelector('meta[name="theme-color"]');
+            if (!meta) {
+                meta = document.createElement('meta');
+                meta.name = 'theme-color';
+                document.head.appendChild(meta);
+            }
+            meta.setAttribute('content', color);
+        }
+
 
         function siguienteTema(temaActual) {
             const idx = TEMAS.indexOf(temaActual);
@@ -1126,7 +1191,14 @@
         }
 
         let _navegandoHaciaAtras = false;
-        let _ignorandoPopstate = false;
+        let _popstatesAIgnorar = 0;
+        let _resetPopstatesTimeout = null;
+
+        function _ignorarProximoPopstate() {
+            _popstatesAIgnorar++;
+            clearTimeout(_resetPopstatesTimeout);
+            _resetPopstatesTimeout = setTimeout(() => { _popstatesAIgnorar = 0; }, 500);
+        }
         let _enAlternanciaHaciaAdelante = false;
         let _enAlternanciaHaciaAtras = false;
 
@@ -1218,8 +1290,8 @@
         }
 
         window.addEventListener('popstate', (event) => {
-            if (_ignorandoPopstate) {
-                _ignorandoPopstate = false;
+            if (_popstatesAIgnorar > 0) {
+                _popstatesAIgnorar--;
                 return;
             }
 
@@ -1291,7 +1363,7 @@
             modal.removeEventListener('click', handleOutsideClick);
 
             if (estabaAbierto && !_navegandoHaciaAtras && !_enAlternanciaHaciaAdelante) {
-                _ignorandoPopstate = true;
+                _ignorarProximoPopstate();
                 history.back();
             }
 
@@ -1727,12 +1799,12 @@
             actualizarHintGrupo: () => { },
             actualizarUI: () => { },
             aplicarFeedbackCampos: () => { },
+            avisarFichaje: () => { },
             cerrarEdicion: () => { },
             cerrarEdicionGrupo: () => { },
             cerrarFiltros: () => { },
             cerrarImportar: () => { },
             descargarJSON: () => { },
-            flashCampoTipo: () => { },
             forzarVista: (vista, fn) => fn(),
             iniciarTimerAutoCierreBotones: () => { },
             limpiarError: () => { },
@@ -1770,6 +1842,10 @@
         function _obtenerPerfilIdActual() {
             return window.PerfilManager ? PerfilManager.obtenerPerfilActual() : 'default';
         }
+
+        function registroPorFecha(fecha) { return registros.find(r => r.fecha === fecha); }
+        function registroPorId(id) { return registros.find(r => r.id === id); }
+        function existeRegistroEnFecha(fecha) { return registros.some(r => r.fecha === fecha); }
 
         function _hayEspacioParaRegistros(cantidadAAgregar = 1) {
             return (registros.length + cantidadAAgregar) <= S.SECURITY_LIMITS.MAX_REGISTROS;
@@ -1852,9 +1928,20 @@
                     notify.mostrarToast(`Conflicto en día(s): ${dias}\n Ya existen registros en esas fechas.`, 'error'); return;
                 }
 
+                const deltaRegistros = fechasNuevas.length - idsDelGrupo.size;
+                if (deltaRegistros > 0 && !_hayEspacioParaRegistros(deltaRegistros)) {
+                    notify.mostrarToast('Límite de registros alcanzado', 'error'); return;
+                }
+                const notaPrevia = TiposRegistro.notaDeGrupo(grupoEnEdicion) || null;
+                const objetivoPorFecha = new Map(grupoEnEdicion.registros.map(r => [r.fecha, r.objetivoHoras]));
                 registros = registros.filter(r => !idsDelGrupo.has(r.id));
                 const { entrada, salida } = TiposRegistro.obtenerCodigosPorTipo(nuevoTipo);
-                const nuevosRegistros = fechasNuevas.map(fechaISO => _construirRegistro(fechaISO, entrada, salida));
+                const nuevosRegistros = fechasNuevas.map((fechaISO, idx) => {
+                    const reg = _construirRegistro(fechaISO, entrada, salida);
+                    if (_esObjetivoValido(objetivoPorFecha.get(fechaISO))) reg.objetivoHoras = objetivoPorFecha.get(fechaISO);
+                    if (idx === 0 && notaPrevia) reg.notas = notaPrevia;
+                    return reg;
+                });
                 registros.push(...nuevosRegistros);
                 ordenarRegistros();
                 _sincronizarPushHoy();
@@ -1881,17 +1968,17 @@
         }
 
         async function registrarDiaEspecial(fecha, tipo) {
-            const registroExistente = registros.find(r => r.fecha === fecha);
+            const registroExistente = registroPorFecha(fecha);
             if (registroExistente) { notify.mostrarToast('Ya existe un registro para hoy', 'warning'); throw new Error('Registro ya existe'); }
 
             const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
-            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Tipo inválido'); }
+            if (!tipoConfig) { notify.avisarFichaje('Tipo inválido'); throw new Error('Tipo inválido'); }
 
             const entrada = tipoConfig.codigo;
             const salida = tipoConfig.codigo;
             const tipoTexto = `${tipoConfig.emoji} ${tipoConfig.label}`;
 
-            if (!_hayEspacioParaRegistros(1)) { notify.mostrarToast('Límite de registros alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite alcanzado'); }
+            if (!_hayEspacioParaRegistros(1)) { notify.avisarFichaje('Límite de registros alcanzado'); throw new Error('Límite alcanzado'); }
 
             const nuevo = _construirRegistro(fecha, entrada, salida);
             registros.push(nuevo);
@@ -1901,8 +1988,7 @@
             HistoryManager.saveState(registros, `agregar ${tipoConfig.label} (${TimeUtils.fechaCorta(fecha)})`);
             const saved = await _guardarConCicloSiHoy(nuevo.id, esHoy);
             if (saved) {
-                notify.mostrarToast(`Registro agregado como ${tipoTexto}`, 'success');
-                notify.flashCampoTipo('success', 'btn-agregar');
+                notify.avisarFichaje(`Registro agregado como ${tipoTexto}`, 'success');
             }
             else { throw new Error('Error al guardar'); }
         }
@@ -2023,8 +2109,7 @@
             HistoryManager.saveState(registros, `salida ${s} (${TimeUtils.fechaCorta(reg.fecha)})`);
             const saved = await _guardarConCicloSiHoy(reg.id, esHoy, 'salida');
             if (!saved) {
-                notify.resetearBoton(btn);
-                notify.flashCampoTipo('error', 'btn-agregar');
+                notify.avisarFichaje(null, 'error', { btn });
                 return;
             }
             PushReminder.cancelarFinDeJornada(reg.fecha);
@@ -2034,8 +2119,7 @@
                     { id: 'salida', fallback: 'Salida', mostrar: true }
                 ]);
             }
-            notify.mostrarToast(_mensajeExitoSalida(reg, usaHoraActual, timerDetenido, s), 'success');
-            notify.flashCampoTipo('success', 'btn-agregar');
+            notify.avisarFichaje(_mensajeExitoSalida(reg, usaHoraActual, timerDetenido, s), 'success');
             notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('salida').value = '';
@@ -2046,14 +2130,15 @@
             const esDiaHabil = TimeUtils.esFechaHabil(hoy, diasHabilesEnFecha(hoy));
             const abierto = esDiaHabil && registros.find(r => r.fecha === hoy && r.entrada && !r.salida);
             const habilitado = PushReminder.getHabilitado();
+            const minutosTF = abierto && !ignorarTiempoFuera && abierto.tiempoFuera ? TimeUtils.horaAMinutos(abierto.tiempoFuera) : 0;
             const nuevoTarget = (habilitado && abierto)
-                ? PushReminder.calcularTarget(abierto.entrada, abierto.objetivoHoras, _bufferSemanalParaPush(hoy))
+                ? PushReminder.calcularTarget(abierto.entrada, objetivoDeRegistro(abierto), _bufferSemanalParaPush(hoy), minutosTF)
                 : null;
             const targetActual = PushReminder.targetProgramadoParaHoy();
             if (nuevoTarget === targetActual) return;
 
             if (abierto && nuevoTarget != null) {
-                PushReminder.programarFinDeJornada(abierto.fecha, abierto.entrada, abierto.objetivoHoras, _bufferSemanalParaPush(hoy));
+                PushReminder.programarFinDeJornada(abierto.fecha, abierto.entrada, objetivoDeRegistro(abierto), _bufferSemanalParaPush(hoy), minutosTF);
             } else if (targetActual != null) {
                 PushReminder.cancelarFinDeJornada(hoy);
             }
@@ -2069,7 +2154,7 @@
             let fecha = fin;
             for (let i = 0; i < 7; i++) {
                 if (TimeUtils.esFechaHabil(fecha, diasHabilesEnFecha(fecha))) {
-                    const reg = registros.find(r => r.fecha === fecha);
+                    const reg = registroPorFecha(fecha);
                     const esEspecial = reg && TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida);
                     if (!esEspecial) return fecha;
                 }
@@ -2088,7 +2173,7 @@
 
         async function _crearNuevoRegistro(f, e, s, usaHoraActual, btn) {
             if (!_hayEspacioParaRegistros(1)) {
-                notify.resetearBoton(btn); notify.mostrarToast('Límite alcanzado', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return;
+                notify.avisarFichaje('Límite alcanzado', 'error', { btn }); return;
             }
             const nuevo = _construirRegistro(f, e, s);
             registros.push(nuevo);
@@ -2098,8 +2183,7 @@
             HistoryManager.saveState(registros, `${detalleAccion} (${TimeUtils.fechaCorta(f)})`);
             const saved = await _guardarConCicloSiHoy(nuevo.id, esHoy, 'entrada');
             if (!saved) {
-                notify.resetearBoton(btn);
-                notify.flashCampoTipo('error', 'btn-agregar');
+                notify.avisarFichaje(null, 'error', { btn });
                 return;
             }
             if (esHoy && !s && TimeUtils.esFechaHabil(f, diasHabilesEnFecha(f))) {
@@ -2113,15 +2197,14 @@
                     { id: 'salida', fallback: 'Salida', mostrar: salidaManual }
                 ]);
             }
-            notify.mostrarToast(usaHoraActual ? 'Registro agregado con hora actual' : 'Registro agregado', 'success');
-            notify.flashCampoTipo('success', 'btn-agregar');
+            notify.avisarFichaje(usaHoraActual ? 'Registro agregado con hora actual' : 'Registro agregado', 'success');
             notify.resetearBoton(btn);
             $('fecha').value = TimeUtils.obtenerFechaHoy();
             $('entrada').value = ''; $('salida').value = '';
         }
 
         async function agregarRegistro() {
-            if (!validarFormulario()) { notify.mostrarToast('Verificá los campos', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return; }
+            if (!validarFormulario()) { notify.avisarFichaje('Verificá los campos'); return; }
 
             const btn = $('btn-agregar');
             btn.disabled = true;
@@ -2131,16 +2214,17 @@
             let s = S.sanitizeString($('salida').value.trim(), 5);
 
             if (_fechaFuturaInvalida(f, e, s)) {
-                notify.resetearBoton(btn); notify.mostrarError('fecha', null);
-                notify.mostrarToast('Fecha futura no permitida en registro regular', 'warning'); notify.flashCampoTipo('warning', 'btn-agregar'); return;
+                notify.mostrarError('fecha', null);
+                notify.avisarFichaje('Fecha futura no permitida en registro regular', 'warning', { btn }); return;
             }
 
-            if (!e) {
-                const { ayerStr: ayer, ayerAbierto } = detectarAyerAbierto(TimeUtils.obtenerFechaHoy(), registros);
-                if (ayerAbierto && !registros.find(r => r.fecha === f)) { f = ayer; $('fecha').value = f; }
+            const hoy = TimeUtils.obtenerFechaHoy();
+            if (!e && f === hoy) {
+                const { ayerStr: ayer, ayerAbierto } = detectarAyerAbierto(hoy, registros);
+                if (ayerAbierto && !existeRegistroEnFecha(hoy)) { f = ayer; $('fecha').value = f; }
             }
 
-            let registroExistente = registros.find(r => r.fecha === f);
+            let registroExistente = registroPorFecha(f);
 
             if (!e && !s) {
                 const horaActual = TimeUtils.obtenerHoraActual();
@@ -2153,8 +2237,8 @@
             }
 
             if (!e && s) {
-                if (registroExistente?.salida) { notify.resetearBoton(btn); notify.mostrarToast('Ya existe un registro completo para esta fecha', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return; }
-                if (!registroExistente?.entrada) { notify.resetearBoton(btn); notify.mostrarToast('Debés fichar una entrada primero', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return; }
+                if (registroExistente?.salida) { notify.avisarFichaje('Ya existe un registro completo para esta fecha', 'error', { btn }); return; }
+                if (!registroExistente?.entrada) { notify.avisarFichaje('Debés fichar una entrada primero', 'error', { btn }); return; }
             }
 
             if (registroExistente?.entrada && !registroExistente.salida && !e && s) {
@@ -2162,9 +2246,8 @@
             }
 
             if (registroExistente) {
-                notify.resetearBoton(btn);
                 if (usaHoraActual) $('entrada').value = '';
-                notify.mostrarToast('Ya existe un registro para esta fecha', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); return;
+                notify.avisarFichaje('Ya existe un registro para esta fecha', 'error', { btn }); return;
             }
 
             await _crearNuevoRegistro(f, e, s, usaHoraActual, btn);
@@ -2175,10 +2258,10 @@
                 const modal = $('modal-editar');
                 const btnEliminar = modal.querySelector('.btn-delete');
                 btnEliminar.disabled = true;
-                const registroABorrar = registros.find(r => r.id === editandoId);
+                const registroABorrar = registroPorId(editandoId);
                 const hoy = TimeUtils.obtenerFechaHoy();
 
-                if (registroABorrar && registroABorrar.fecha === hoy) {
+                if (registroABorrar && registroABorrar === registroParaTiempoFuera(hoy)) {
                     const perfilId = _obtenerPerfilIdActual();
                     const storageKey = STORAGE_KEYS.BREAK_TIME(perfilId);
                     if (StorageHelper.getItem(storageKey)) {
@@ -2205,7 +2288,7 @@
 
         function editarRegistro(id) {
             if (editandoId !== null) return;
-            const r = registros.find(x => x.id === id);
+            const r = registroPorId(id);
             if (!r) return;
 
             editandoId = id;
@@ -2319,7 +2402,7 @@
         }
 
         async function _eliminarRegistroVacioDesdeEdicion(btnGuardar) {
-            const reg = registros.find(r => r.id === editandoId);
+            const reg = registroPorId(editandoId);
             if (reg?.fecha === TimeUtils.obtenerFechaHoy()) {
                 const perfilId = _obtenerPerfilIdActual();
                 StorageHelper.removeItem(STORAGE_KEYS.BREAK_TIME(perfilId));
@@ -2334,7 +2417,7 @@
         }
 
         async function guardarEdicion() {
-            const r = registros.find(x => x.id === editandoId);
+            const r = registroPorId(editandoId);
             if (!r) return;
             const btnGuardar = $('modal-editar').querySelector('.btn-edit');
             btnGuardar.disabled = true;
@@ -2543,13 +2626,13 @@
             const nuevos = registrosImportados.filter(imp => !fechasExistentes.has(imp.fecha));
             const complementarios = registrosImportados.filter(imp => {
                 if (!fechasExistentes.has(imp.fecha)) return false;
-                const local = registros.find(r => r.fecha === imp.fecha);
+                const local = registroPorFecha(imp.fecha);
                 return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
             });
             if (nuevos.length === 0 && complementarios.length === 0) { notify.mostrarToast('No hay días nuevos ni datos para completar', 'info'); return; }
             if (!_hayEspacioParaRegistros(nuevos.length)) { notify.mostrarToast(`Límite alcanzado. Solo se pueden agregar ${S.SECURITY_LIMITS.MAX_REGISTROS - registros.length} registros más`, 'error'); return; }
             complementarios.forEach(imp => {
-                const local = registros.find(r => r.fecha === imp.fecha);
+                const local = registroPorFecha(imp.fecha);
                 if (!local) return;
                 if (!local.salida && imp.salida) local.salida = imp.salida;
                 if (!local.tiempoFuera && imp.tiempoFuera) local.tiempoFuera = imp.tiempoFuera;
@@ -2663,6 +2746,13 @@
             return { ayerStr, regAyer, ayerAbierto };
         }
 
+        function registroParaTiempoFuera(fechaHoy = TimeUtils.obtenerFechaHoy()) {
+            const regHoy = registroPorFecha(fechaHoy) ?? null;
+            if (regHoy?.entrada) return regHoy;
+            const { regAyer, ayerAbierto } = detectarAyerAbierto(fechaHoy, registros);
+            return ayerAbierto ? regAyer : regHoy;
+        }
+
         function calcularBufferPeriodo(desde, hasta, incluirActivoEnVivo = true, minutosBreakActivo = 0, asignacionesPrecalculadas = null) {
             const hoy = TimeUtils.obtenerFechaHoy();
             const registrosRango = registros.filter(r => r.fecha >= desde && r.fecha <= hasta);
@@ -2690,7 +2780,7 @@
                     hechas += r.total;
                     hechas -= _montoCompensadoDeReferencia(r, asignacionesCompensatorio);
                 }
-                if (esRemoto) hechas += objetivoDia;
+                if (esRemoto && esDiaHabil && diaTerminado) hechas += objetivoDia;
 
                 if (incluirActivoEnVivo && !diaTerminado && esDiaHabil && !esEspecial && r && r === regActivo) {
                     const t = calcularHoras(regActivo.entrada, TimeUtils.obtenerHoraActual(), regActivo.tiempoFuera || null, null, true);
@@ -2742,16 +2832,17 @@
 
         async function registrarVacacionesDirecto(desde, hasta, tipo) {
             const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
-            if (!tipoConfig) { notify.mostrarToast('Tipo inválido', 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Tipo inválido'); }
+            if (!tipoConfig) { notify.avisarFichaje('Tipo inválido'); throw new Error('Tipo inválido'); }
             const entrada = tipoConfig.codigo;
             const salida = tipoConfig.codigo;
 
             const fechasARegistrar = TimeUtils.generarRangoFechas(desde, hasta);
 
-            if (fechasARegistrar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) { notify.mostrarToast(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} días por operación.`, 'error', 4000); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite de días excedido'); }
+            if (fechasARegistrar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) { notify.avisarFichaje(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} días por operación.`, 'error', { duracion: 4000 }); throw new Error('Límite de días excedido'); }
 
-            const nuevosRegistros = fechasARegistrar.filter(f => !registros.some(r => r.fecha === f));
-            if (nuevosRegistros.length === 0) { notify.mostrarToast('Todas las fechas ya están registradas', 'warning'); notify.flashCampoTipo('warning', 'btn-agregar'); throw new Error('Sin fechas nuevas'); }
+            const nuevosRegistros = fechasARegistrar.filter(f => !existeRegistroEnFecha(f));
+            if (nuevosRegistros.length === 0) { notify.avisarFichaje('Todas las fechas ya están registradas', 'warning'); throw new Error('Sin fechas nuevas'); }
+            if (!_hayEspacioParaRegistros(nuevosRegistros.length)) { notify.avisarFichaje('Límite de registros alcanzado', 'error'); throw new Error('Límite alcanzado'); }
 
             const idsNuevosParaAnimar = [];
             nuevosRegistros.forEach(fecha => {
@@ -2765,8 +2856,7 @@
             HistoryManager.saveState(registros, `agregar ${tipoConfig.label} (${nuevosRegistros.length} día${TimeUtils.pluralizar(nuevosRegistros.length)})`);
             const saved = await _guardarConCicloSiHoy(idsNuevosParaAnimar, incluyeHoy);
             if (saved) {
-                notify.mostrarToast(nuevosRegistros.length === 1 ? '1 día registrado' : `${nuevosRegistros.length} días registrados`, 'success');
-                notify.flashCampoTipo('success', 'btn-agregar');
+                notify.avisarFichaje(nuevosRegistros.length === 1 ? '1 día registrado' : `${nuevosRegistros.length} días registrados`, 'success');
             } else { throw new Error('Error al guardar'); }
         }
 
@@ -2789,16 +2879,15 @@
                 if (r.fecha < desde || r.fecha > hasta) return false;
                 return !TiposRegistro.esRegistroEspecial(r.entrada, r.salida);
             });
-            if (registrosAEliminar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) { notify.mostrarToast(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} registros por operación. Encontrados: ${registrosAEliminar.length}`, 'error'); notify.flashCampoTipo('error', 'btn-agregar'); throw new Error('Límite excedido'); }
-            if (registrosAEliminar.length === 0) { notify.mostrarToast('No hay registros de jornadas en ese período', 'info'); notify.flashCampoTipo('info', 'btn-agregar'); throw new Error('Sin registros'); }
+            if (registrosAEliminar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) { notify.avisarFichaje(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} registros por operación. Encontrados: ${registrosAEliminar.length}`); throw new Error('Límite excedido'); }
+            if (registrosAEliminar.length === 0) { notify.avisarFichaje('No hay registros de jornadas en ese período', 'info'); throw new Error('Sin registros'); }
 
             registros = registros.filter(r => !registrosAEliminar.includes(r));
             _sincronizarPushHoy();
             HistoryManager.saveState(registros, `eliminar período (${registrosAEliminar.length} registro${TimeUtils.pluralizar(registrosAEliminar.length)})`);
             const saved = await guardarYActualizar();
             if (saved) {
-                notify.mostrarToast(registrosAEliminar.length === 1 ? '1 registro eliminado' : `${registrosAEliminar.length} registros eliminados`, 'success');
-                notify.flashCampoTipo('success', 'btn-agregar');
+                notify.avisarFichaje(registrosAEliminar.length === 1 ? '1 registro eliminado' : `${registrosAEliminar.length} registros eliminados`, 'success');
             } else { throw new Error('Error al guardar'); }
         }
 
@@ -2845,13 +2934,15 @@
 
         function registrarCambioDiasHabiles(nuevosDias) {
             const hoy = TimeUtils.obtenerFechaHoy();
-            if (!Array.isArray(historialDiasHabiles)) historialDiasHabiles = [];
-            const idx = historialDiasHabiles.findIndex(t => t.desde === hoy);
-            if (idx >= 0) {
-                historialDiasHabiles[idx] = { desde: hoy, dias: nuevosDias };
+            const sinHistorial = !Array.isArray(historialDiasHabiles) || historialDiasHabiles.length === 0;
+            const soloTramoBase = !sinHistorial && historialDiasHabiles.length === 1 && historialDiasHabiles[0].desde === '0001-01-01';
+            if (sinHistorial || (soloTramoBase && registros.length === 0)) {
+                historialDiasHabiles = [{ desde: '0001-01-01', dias: nuevosDias }];
             } else {
-                historialDiasHabiles.push({ desde: hoy, dias: nuevosDias });
-                historialDiasHabiles.sort((a, b) => a.desde.localeCompare(b.desde));
+                const idx = historialDiasHabiles.findIndex(t => t.desde === hoy);
+                if (idx >= 0) historialDiasHabiles[idx] = { desde: hoy, dias: nuevosDias };
+                else historialDiasHabiles.push({ desde: hoy, dias: nuevosDias });
+                historialDiasHabiles = _sanitizarHistorialDiasHabiles(historialDiasHabiles) || [{ desde: '0001-01-01', dias: nuevosDias }];
             }
             diasHabiles = nuevosDias;
         }
@@ -2868,7 +2959,8 @@
 
         function _excedenteDeRegistro(r) {
             if (!r || !r.entrada || !r.salida || TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) return 0;
-            const excedente = r.total - objetivoDeRegistro(r);
+            const objetivo = TimeUtils.esFechaHabil(r.fecha, diasHabilesEnFecha(r.fecha)) ? objetivoDeRegistro(r) : 0;
+            const excedente = r.total - objetivo;
             return excedente > 0 ? excedente : 0;
         }
 
@@ -3010,6 +3102,7 @@
         return {
             registros: () => registros, horasSemanales: () => (horasDiarias * diasHabiles.length), diasHabiles: () => diasHabiles,
             horasDiarias: () => horasDiarias, setDiasHabiles: (v) => diasHabiles = v, setHorasDiarias: (v) => horasDiarias = v,
+            registroPorFecha, registroPorId, existeRegistroEnFecha,
             historialDiasHabiles: () => historialDiasHabiles,
             setHistorialDiasHabiles: (v) => {
                 historialDiasHabiles = Array.isArray(v) ? v : [];
@@ -3023,17 +3116,18 @@
             fechaCompensadoDeRegistro: _fechaCompensadoDeRegistro,
             montoCompensadoDeReferencia: _montoCompensadoDeReferencia,
             calcularAsignacionesCompensatorio: _calcularAsignacionesCompensatorio,
-            recalcularTotalesEnMemoria: function () {
+            recalcularTotalesEnMemoria: function (recalcularCreditos = false) {
                 registros.forEach(r => {
                     if (r.entrada && r.salida && !TiposRegistro.esRegistroEspecial(r.entrada, r.salida)) {
-                        _recalcularHorasSiValido(r);
+                        if (recalcularCreditos && r.credito) _recalcularCreditoRegistro(r, objetivoDeRegistro(r));
+                        else _recalcularHorasSiValido(r);
                     }
                 });
             },
             editandoId: () => editandoId, setEditandoId: (id) => editandoId = id, vistaActual: () => vistaActual, setVistaActual: (v) => vistaActual = v,
             cargarConfiguracion, calcularHoras, normalizarRegistrosImportados, guardarYActualizar,
             agregarRegistro, eliminarRegistroActual, editarRegistro, guardarEdicion, pegarReferenciaAutomatica, borrarTodoHistorial, exportarJSON, importarDatos,
-            calcularBufferPeriodo, detectarAyerAbierto, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
+            calcularBufferPeriodo, detectarAyerAbierto, registroParaTiempoFuera, aplicarFiltrosInmediato, limpiarFiltros, obtenerRegistrosFiltrados,
             registrarVacacionesDirecto, borrarPeriodoDirecto, registrarDiaEspecial, editarGrupo, guardarEdicionGrupo,
             eliminarGrupoActual, setGrupoEnEdicion: (val) => grupoEnEdicion = val,
             sincronizarPushHoy: _sincronizarPushHoy,
@@ -3063,7 +3157,19 @@
 
             const EPS = 1e-6;
             const pendientes = [];
+            const excedentes = [];
             let pool = 0, poolGenerado = 0, poolUsado = 0;
+
+            const atribuirPago = (monto) => {
+                for (const ex of excedentes) {
+                    if (monto <= EPS) break;
+                    const disponible = ex.generado - ex.usado;
+                    if (disponible <= EPS) continue;
+                    const parte = Math.min(disponible, monto);
+                    ex.usado += parte;
+                    monto -= parte;
+                }
+            };
 
             for (const isoDate of TimeUtils.generarRangoFechas(lunes, limite)) {
                 const r = registrosMap.get(isoDate);
@@ -3080,7 +3186,10 @@
                 }
                 const deltaDisponible = deltaBruto - montoCompensado;
 
-                if (deltaBruto > EPS) poolGenerado += deltaBruto;
+                if (deltaBruto > EPS) {
+                    poolGenerado += deltaBruto;
+                    excedentes.push({ fecha: isoDate, generado: deltaBruto, usado: Math.min(Math.max(montoCompensado, 0), deltaBruto) });
+                }
                 if (montoCompensado > EPS) poolUsado += montoCompensado;
 
                 if (deltaDisponible > EPS) pool += deltaDisponible;
@@ -3093,10 +3202,11 @@
                     deuda.restante -= pago;
                     pool -= pago;
                     poolUsado += pago;
+                    atribuirPago(pago);
                 }
             }
 
-            return { pendientes, poolGenerado, poolUsado };
+            return { pendientes, excedentes, poolGenerado, poolUsado };
         }
 
         function cubiertoPorSaldo(fecha, asignacionesPrecalculadas = null) {
@@ -3117,21 +3227,25 @@
 
             const asignaciones = asignacionesPrecalculadas || D.calcularAsignacionesCompensatorio();
             let lunes = TimeUtils.obtenerLunesSemanaISO(desde);
-            let poolGenerado = 0, poolUsado = 0;
+            let generado = 0, usado = 0;
 
             while (lunes <= topeReal) {
-                const r = calcularPoolSemana(lunes, topeReal, asignaciones);
-                poolGenerado += r.poolGenerado;
-                poolUsado += r.poolUsado;
+                const { excedentes } = calcularPoolSemana(lunes, hoy, asignaciones);
+                for (const ex of excedentes) {
+                    if (ex.fecha < desde || ex.fecha > topeReal) continue;
+                    generado += ex.generado;
+                    usado += ex.usado;
+                }
                 const siguienteLunes = TimeUtils.parsearFechaLocal(lunes);
                 siguienteLunes.setDate(siguienteLunes.getDate() + 7);
                 lunes = TimeUtils.formatearFechaLocal(siguienteLunes);
             }
 
-            if (poolGenerado <= 1e-6) return null;
+            if (generado <= 1e-6) return null;
             return {
-                porcentaje: Math.round((poolUsado / poolGenerado) * 1000) / 10,
-                horas: poolUsado
+                porcentaje: Math.round((usado / generado) * 1000) / 10,
+                horas: usado,
+                generado
             };
         }
 
@@ -3361,7 +3475,7 @@
                 toastTimeout = setTimeout(() => {
                     toast.classList.remove('show');
                     toastTimeout = null;
-                    setTimeout(() => _procesarToastQueue(), DUR_ANIM() + 50);
+                    _esperarAnim().then(() => _procesarToastQueue());
                 }, duracionFinal);
             }, 10);
         }
@@ -3371,7 +3485,7 @@
             const toast = $('toast');
             if (!toast || !toast.classList.contains('show')) return;
             toast.classList.remove('show');
-            setTimeout(() => _procesarToastQueue(), DUR_ANIM() + 50);
+            _esperarAnim().then(() => _procesarToastQueue());
         }
 
         function _habilitarCierreToast() {
@@ -3401,6 +3515,9 @@
             const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
             if (!raw) return 300;
             return raw.endsWith('ms') ? parseFloat(raw) : parseFloat(raw) * 1000;
+        }
+        function _durSiAnima(varName, el = null) {
+            return (Motion.reducido() || (el && !el.offsetParent)) ? 0 : _getCSSdur(varName);
         }
         const DUR_ANIM = () => _getCSSdur('--dur-anim');
         const DUR_CALENDARIO = () => _getCSSdur('--dur-calendario');
@@ -3447,7 +3564,7 @@
         }
 
         function _animarMutacion(elementos, fn, duracion = null) {
-            const els = (Array.isArray(elementos) ? elementos : [elementos]).filter(Boolean);
+            const els = _aArray(elementos).filter(Boolean);
             const dur = duracion ?? DUR_ANIM();
 
             els.forEach(_finalizarMutacionPendiente);
@@ -3492,7 +3609,7 @@
 
         function _crearFantasmaSiVisible(el) {
             if (!el || Motion.reducido()) return null;
-            if (el.closest('.collapsible:not(.expanded)')) return null;
+            if (_estaColapsado(el)) return null;
             const r = el.getBoundingClientRect();
             if (r.width <= 0 || r.height <= 0) return null;
             if (r.bottom < 0 || r.top > window.innerHeight) return null;
@@ -3501,7 +3618,7 @@
             fantasma.classList.remove('nuevo-registro-animacion', 'mutacion-entrante');
             const limpiar = () => fantasma.remove();
             fantasma.addEventListener('animationend', limpiar, { once: true });
-            setTimeout(limpiar, DUR_ANIM() + 150);
+            _esperarAnim(150).then(limpiar);
             return fantasma;
         }
 
@@ -3542,6 +3659,45 @@
                 entrante.animate([{ transform: `translateY(${70 * sgn}%)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }], opts)
             ];
             _valorAnimEstado.set(el, { texto, anims, timeout: setTimeout(() => _finalizarValorPendiente(el), dur) });
+        }
+
+        const _conteoEstado = new WeakMap();
+
+        function _conteoEnCurso(el) {
+            const est = _conteoEstado.get(el);
+            return est ? est.textoFinal : null;
+        }
+
+        function _cancelarConteo(el) {
+            const est = _conteoEstado.get(el);
+            if (!est) return;
+            est.cancelado = true;
+            _conteoEstado.delete(el);
+        }
+
+        function _animarConteo(el, texto, { duracion = _durSiAnima('--dur-conteo', el) } = {}) {
+            if (!el) return false;
+            _cancelarConteo(el);
+            const textoFinal = texto(1);
+            if (duracion <= 1) {
+                el.textContent = textoFinal;
+                return false;
+            }
+            const estado = { textoFinal, cancelado: false };
+            _conteoEstado.set(el, estado);
+            let ultimo = texto(0);
+            el.textContent = ultimo;
+            const inicio = performance.now();
+            const paso = ahora => {
+                if (estado.cancelado) return;
+                if (el.textContent !== ultimo) { _cancelarConteo(el); return; }
+                const t = Math.min(1, Math.max(0, (ahora - inicio) / duracion));
+                const actual = t >= 1 ? textoFinal : texto(1 - Math.pow(1 - t, 3));
+                if (actual !== ultimo) { el.textContent = actual; ultimo = actual; }
+                if (t < 1) requestAnimationFrame(paso); else _conteoEstado.delete(el);
+            };
+            requestAnimationFrame(paso);
+            return true;
         }
 
         function _animarFadeSwap(el, fn) {
@@ -3728,6 +3884,61 @@
 
         function _flashCampo(...ids) { _flashCampoConClase('campo-flash', ids); }
 
+        function _aArray(valor) {
+            if (valor === null || valor === undefined) return [];
+            return Array.isArray(valor) ? valor : [valor];
+        }
+
+        function _estaColapsado(el) { return !!el.closest('.collapsible:not(.expanded)'); }
+
+        function _scrollA(el, block = 'nearest') {
+            if (el) el.scrollIntoView({ behavior: Motion.scrollBehavior(), block });
+        }
+
+        function _esperarAnim(extra = 50) { return TimeUtils.esperar(DUR_ANIM() + extra); }
+
+        function _esperarFinScroll(objetivo = window, { estable = 120, maximo = 1500 } = {}) {
+            const esVentana = objetivo === window;
+            const origen = esVentana ? document : objetivo;
+            const posicion = () => (esVentana ? window.scrollY : objetivo.scrollTop);
+            return new Promise(resolve => {
+                let terminado = false;
+                const inicio = performance.now();
+                let ultimaPos = posicion();
+                let desde = inicio;
+                const fin = () => {
+                    if (terminado) return;
+                    terminado = true;
+                    origen.removeEventListener('scrollend', fin);
+                    resolve();
+                };
+                origen.addEventListener('scrollend', fin, { once: true });
+                const revisar = (ahora) => {
+                    if (terminado) return;
+                    const pos = posicion();
+                    if (pos !== ultimaPos) { ultimaPos = pos; desde = ahora; }
+                    if (ahora - desde >= estable && ahora - inicio >= estable) return fin();
+                    if (ahora - inicio >= maximo) return fin();
+                    requestAnimationFrame(revisar);
+                };
+                requestAnimationFrame(revisar);
+            });
+        }
+
+        function _scrollHastaVisible(el, { contenedor = null, margenSuperior = 0 } = {}) {
+            if (!el) return Promise.resolve();
+            const r = el.getBoundingClientRect();
+            const c = contenedor ? contenedor.getBoundingClientRect() : null;
+            const limiteSup = c ? c.top : margenSuperior;
+            const limiteInf = c ? c.bottom : window.innerHeight;
+            if (r.top >= limiteSup && r.bottom <= limiteInf) return Promise.resolve();
+
+            if (contenedor) _scrollA(el, 'nearest');
+            else window.scrollTo({ top: window.scrollY + r.top - margenSuperior, behavior: Motion.scrollBehavior() });
+            if (Motion.reducido()) return Promise.resolve();
+            return _esperarFinScroll(contenedor || window);
+        }
+
         const _COLOR_TOAST_POR_TIPO = {
             success: 'var(--c-green)', error: 'var(--c-red)', warning: 'var(--c-red)', info: 'var(--c-blue)'
         };
@@ -3748,6 +3959,12 @@
             if (ids.includes('btn-agregar')) {
                 _vibrarFichar(tipo);
             }
+        }
+
+        function _avisarFichaje(msg, tipo = 'error', { btn = null, duracion } = {}) {
+            if (btn) resetearBoton(btn);
+            if (msg) mostrarToast(msg, tipo, duracion);
+            _flashCampoTipo(tipo, 'btn-agregar');
         }
 
         const _slideAnimEstado = new WeakMap();
@@ -3873,7 +4090,7 @@
             _habilitarCierreToast,
             resetearBoton,
             restaurarBotonGuardarEdicion,
-            _getCSSdur,
+            _durSiAnima,
             DUR_ANIM,
             DUR_CALENDARIO,
             _crearToggleConfig,
@@ -3888,7 +4105,13 @@
             _abrirModalConPadre,
             _cerrarModalConPadre,
             _flashCampo,
-            _flashCampoTipo,
+            _aArray,
+            _estaColapsado,
+            _scrollA,
+            _esperarAnim,
+            _esperarFinScroll,
+            _scrollHastaVisible,
+            _avisarFichaje,
             _flashElemento,
             _finalizarSlidePendiente,
             _animarSlideElemento,
@@ -3896,7 +4119,10 @@
             _animarFadeSwap,
             _animarMutacion,
             _crearFantasmaSiVisible,
-            _animarValor
+            _animarValor,
+            _animarConteo,
+            _conteoEnCurso,
+            _cancelarConteo
         };
     })(SecurityAndUtils, DataManagement);
 
@@ -3904,7 +4130,7 @@
     //                     UI PROFILES MODULE
     // ====================================================================
     const UIPerfiles = (function (S, UICore) {
-        const { mostrarToast, setIconoBtn } = UICore;
+        const { mostrarToast, setIconoBtn, _scrollA } = UICore;
 
         let perfilEnEdicion = null;
 
@@ -4033,7 +4259,7 @@
             renderizarListaPerfiles(true);
             requestAnimationFrame(() => {
                 const ultimo = document.getElementById('lista-perfiles-botones')?.lastElementChild;
-                if (ultimo) { ultimo.classList.add('add-perfil'); ultimo.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'nearest' }); }
+                if (ultimo) { ultimo.classList.add('add-perfil'); _scrollA(ultimo); }
             });
         }
 
@@ -4176,7 +4402,7 @@
     //                     UI CALENDAR MODULE
     // ====================================================================
     const UICalendario = (function (S, D, UICore) {
-        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia, _flashElemento, DUR_CALENDARIO, _crearFantasmaSiVisible } = UICore;
+        const { registrarSwipe, _animarFadeSwap, _animarMutacion, _animarSlideElemento, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, formatoDiferencia, _flashElemento, DUR_CALENDARIO, _crearFantasmaSiVisible, _aArray } = UICore;
 
         function _cerrarSelectorMeses(idResaltar = null) {
             const grid = document.getElementById('calendario-grid');
@@ -4315,7 +4541,7 @@
                 const clase = claseDelDia(fecha);
                 const esHoy = anio === hoy.getFullYear() && mes === hoy.getMonth() && dia === hoy.getDate();
                 const reg = regsPorFecha[fecha];
-                const idsNuevos = idResaltar ? (Array.isArray(idResaltar) ? idResaltar : [idResaltar]) : [];
+                const idsNuevos = _aArray(idResaltar);
                 const esNuevo = reg && idsNuevos.includes(reg.id);
 
                 const cell = document.createElement('div');
@@ -4347,7 +4573,7 @@
             grid.classList.toggle('calendario-filtro-activo', filtroActivo);
 
             if (idResaltar) {
-                const idsAnimados = (Array.isArray(idResaltar) ? idResaltar : [idResaltar]).map(String);
+                const idsAnimados = _aArray(idResaltar).map(String);
                 grid.querySelectorAll('.calendario-dia[data-reg-id]').forEach(celdaVieja => {
                     if (idsAnimados.includes(celdaVieja.dataset.regId)) _crearFantasmaSiVisible(celdaVieja);
                 });
@@ -4456,7 +4682,7 @@
 
             _cerrarPopupCalendario();
 
-            const reg = D.registros().find(r => r.id === registroId);
+            const reg = D.registroPorId(registroId);
             if (!reg) return;
 
             const claveMes = reg.fecha.substring(0, 7);
@@ -4860,17 +5086,23 @@
             setIconoBtn(btn, desdeLista ? '#icon-cancelar' : '#icon-undo');
         }
 
+        function _abrirModalConfigHija(modalId, desdeLista, callback) {
+            _modalAbiertoDesdeLista = desdeLista;
+            if (desdeLista) ModalManager.abrir(modalId, callback);
+            else ModalManager.alternar('modal-config', modalId, null, callback);
+        }
+
         function _cerrarModalConfigHija(modalId) {
-            if (!_modalAbiertoDesdeLista && !document.body.classList.contains('config-onboarding')) {
-                ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
+            if (_modalAbiertoDesdeLista) {
+                _modalAbiertoDesdeLista = false;
+                ModalManager.cerrar(modalId);
+                return;
             }
-            ModalManager.alternar(modalId, _modalAbiertoDesdeLista ? null : 'modal-config');
-            _modalAbiertoDesdeLista = false;
+            ModalManager.alternar(modalId, 'modal-config');
         }
 
         function mostrarImportar(desdeLista = false) {
-            _modalAbiertoDesdeLista = desdeLista;
-            ModalManager.alternar(desdeLista ? null : 'modal-config', 'modal-importar', null, () => {
+            _abrirModalConfigHija('modal-importar', desdeLista, () => {
                 $('file-import').value = '';
 
                 const nombreEl = document.getElementById('nombre-archivo-seleccionado');
@@ -4899,8 +5131,7 @@
         }
 
         function mostrarExportar(desdeLista = false) {
-            _modalAbiertoDesdeLista = desdeLista;
-            ModalManager.alternar(desdeLista ? null : 'modal-config', 'modal-exportar', null, () => {
+            _abrirModalConfigHija('modal-exportar', desdeLista, () => {
                 const tipoSelect = document.getElementById('tipo-exportacion');
                 if (tipoSelect) tipoSelect.value = 'todo';
 
@@ -5207,11 +5438,7 @@
         function cerrarModalGist() {
             _gistAutoSyncTemp = null;
             _gistLimitesTemp = null;
-            _cerrarModalConPadre('modal-gist', (padre) => {
-                if (padre === 'modal-config' && !document.body.classList.contains('config-onboarding')) {
-                    ModalManager.setPadre('modal-config', 'modal-selector-perfiles');
-                }
-            });
+            _cerrarModalConPadre('modal-gist');
             actualizarBotonesHistorico();
         }
 
@@ -5462,6 +5689,9 @@
             if (data._hashNoCoincide) {
                 const continuar = await ModalManager.confirmar('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
                 if (!continuar) return null;
+            } else if (!data.hash) {
+                const continuar = await ModalManager.confirmar('Este Gist no tiene verificación de integridad. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
+                if (!continuar) return null;
             }
             if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
                 mostrarToast(`Gist de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
@@ -5654,7 +5884,8 @@
                     const configCambios = _calcularConfigCambios(data);
                     const resumenEl = document.getElementById('gist-merge-resumen');
                     if (resumenEl) _buildResumenMerge(resumenEl, diff, registrosNormalizados, configCambios);
-                    ModalManager.alternar('modal-gist', 'modal-gist-merge');
+                    if (_gistMergeDesdeModal) ModalManager.alternar('modal-gist', 'modal-gist-merge');
+                    else ModalManager.abrir('modal-gist-merge');
                 }
             });
         }
@@ -5735,7 +5966,7 @@
         const {
             formatoDiferencia, mostrarToast, _setBtnActivo, debounce,
             _actualizarOffsetsStickyMes, _posicionarPopup, _registrarCierrePopup, _crearPopupFlotante, setIconoBtn,
-            _crearFantasmaSiVisible, DUR_ANIM
+            _crearFantasmaSiVisible, DUR_ANIM, _aArray, _estaColapsado, _scrollA
         } = UICore;
 
         let edicionBloqueada = true;
@@ -5836,7 +6067,7 @@
             const item = document.createElement('div');
 
             let className = r.fecha === hoy ? 'registro-item hoy' : 'registro-item';
-            const idsResaltar = idResaltar ? (Array.isArray(idResaltar) ? idResaltar : [idResaltar]) : [];
+            const idsResaltar = _aArray(idResaltar);
             const esNuevo = idsResaltar.includes(r.id);
             if (esNuevo) {
                 className += ' nuevo-registro-animacion';
@@ -6075,7 +6306,7 @@
                     const clave = _claveContenedorLista(cont);
                     if (clave && !clavesPrevias.has(clave)) objetivo = cont;
                 }
-                if (objetivo.closest('.collapsible:not(.expanded)')) return;
+                if (_estaColapsado(objetivo)) return;
                 objetivos.add(objetivo);
             });
             if (objetivos.size > _MAX_BLOQUES_EXPANDIDOS) return;
@@ -6084,7 +6315,7 @@
 
         function _prepararAnimacionLista(lista, idNuevo) {
             const sinAnimacion = { reproducir() { } };
-            const ids = (idNuevo === null || idNuevo === undefined) ? [] : (Array.isArray(idNuevo) ? idNuevo : [idNuevo]);
+            const ids = _aArray(idNuevo);
             if (ids.length === 0 || Motion.reducido() || !lista.offsetParent) return sinAnimacion;
 
             const elementoPorId = new Map();
@@ -6171,7 +6402,7 @@
             let animarGrupo = false;
 
             if (idResaltar) {
-                const idsNuevos = Array.isArray(idResaltar) ? idResaltar : [idResaltar];
+                const idsNuevos = _aArray(idResaltar);
                 const contieneNuevo = grupo.registros.some(r => idsNuevos.includes(r.id));
                 if (contieneNuevo) {
                     animarGrupo = true;
@@ -6354,7 +6585,7 @@
                 const r1 = registros.length > 1 ? registros[1].getBoundingClientRect() : null;
                 const cortado0 = r0.top < margenHeader || r0.bottom > alturaVentana;
                 const cortado1 = r1 && (r1.top < margenHeader || r1.bottom > alturaVentana);
-                if (cortado0 || cortado1) contenedor.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'start' });
+                if (cortado0 || cortado1) _scrollA(contenedor, 'start');
             }, 310);
         }
 
@@ -6791,18 +7022,7 @@
                 regularidadEntrada: '--:--', regularidadJornada: '--:--',
                 bufferPeriodo: null, aprovechamientoSaldo: null
             };
-            if (registrosValidos.length === 0) return vacios;
-
-            const avgMin = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
-            const promedioEntrada = avgMin(registrosValidos.map(r => TimeUtils.horaAMinutos(r.entrada)));
-            const promedioSalida = avgMin(registrosValidos.map(r => TimeUtils.horaAMinutos(r.salida)));
-
-            const totalHorasTrabajadas = registrosValidos.reduce((s, r) => s + r.total, 0);
             const totalHoras = _sumarHorasEfectivas(registrosRango);
-            const promDiario = totalHorasTrabajadas / registrosValidos.length;
-
-            const { regEntrada, regJornada } = _calcularRegularidadRango(registrosValidos, regularidadPorMes);
-
             const horasDiariasObj = D.horasDiarias();
             const hayPeriodo = horasDiariasObj > 0 && opciones.desde && opciones.hasta;
             const asignacionesCompensatorio = hayPeriodo ? D.calcularAsignacionesCompensatorio() : null;
@@ -6812,6 +7032,25 @@
             const aprovechamientoSaldo = hayPeriodo
                 ? SaldoSemanal.calcularAprovechamiento(opciones.desde, opciones.hasta, asignacionesCompensatorio)
                 : null;
+
+            if (registrosValidos.length === 0) {
+                if (registrosRango.length === 0) return vacios;
+                return {
+                    ...vacios,
+                    tiempoFueraTotal: tiempoFueraTotalMinutos > 0 ? TimeUtils.horasATexto(tiempoFueraTotalMinutos / 60, 'short') : '--:--',
+                    tiempoTotal: totalHoras > 0 ? TimeUtils.horasATexto(totalHoras, 'short') : '--:--',
+                    bufferPeriodo, aprovechamientoSaldo
+                };
+            }
+
+            const avgMin = arr => Math.round(arr.reduce((s, v) => s + v, 0) / arr.length);
+            const promedioEntrada = avgMin(registrosValidos.map(r => TimeUtils.horaAMinutos(r.entrada)));
+            const promedioSalida = avgMin(registrosValidos.map(r => TimeUtils.horaAMinutos(r.salida)));
+
+            const totalHorasTrabajadas = registrosValidos.reduce((s, r) => s + r.total, 0);
+            const promDiario = totalHorasTrabajadas / registrosValidos.length;
+
+            const { regEntrada, regJornada } = _calcularRegularidadRango(registrosValidos, regularidadPorMes);
 
             return {
                 entradaPromedio: TimeUtils.minutosAHora(promedioEntrada),
@@ -7436,6 +7675,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <title>Reporte de horas — ${S.escapeHtml(periodoLabel)}</title>
 <style>${REPORTE_ESTILOS}</style>
 </head>
@@ -7552,8 +7792,7 @@
 
                 const stats = _ultimosStatsRenderizados;
                 if (stats && stats.aprovechamientoSaldo) {
-                    const { horas: horasUtil } = stats.aprovechamientoSaldo;
-                    const saldoGenerado = (stats.bufferPeriodo || 0) + horasUtil;
+                    const { horas: horasUtil, generado: saldoGenerado } = stats.aprovechamientoSaldo;
                     descExtra += `<hr class="stat-popup-sep">`
                         + `<div class="stat-popup-metric"><span>Generado</span><strong>${S.escapeHtml(TimeUtils.horasATexto(saldoGenerado, 'short'))}</strong></div>`
                         + `<div class="stat-popup-metric"><span>Utilizado</span><strong>${S.escapeHtml(TimeUtils.horasATexto(horasUtil, 'short'))}</strong></div>`;
@@ -7714,9 +7953,10 @@
     const UITarjetaFichaje = (function (D) {
         const {
             formatoDiferencia, mostrarToast, resetearBoton, restaurarBotonGuardarEdicion,
-            _setBtnActivo, _setBtnDisabled, _flashCampo, _flashCampoTipo, registrarSwipe, _animarFadeSwap,
-            _animarMutacion, _animarSlideElemento, toggleSeccionGen, DUR_ANIM, _crearOpcion, setIconoBtn,
-            aplicarFeedbackCampos
+            _setBtnActivo, _setBtnDisabled, _flashCampo, _avisarFichaje, registrarSwipe, _animarFadeSwap,
+            _animarMutacion, _animarSlideElemento, toggleSeccionGen, _crearOpcion, setIconoBtn,
+            aplicarFeedbackCampos, _esperarAnim, _scrollHastaVisible,
+            _animarConteo, _conteoEnCurso, _cancelarConteo, _durSiAnima
         } = UICore;
 
         let modoLoteActivo = false;
@@ -8262,7 +8502,7 @@
                 } else {
                     const faltoTexto = _fraseCantidad(Math.abs(dif), 'Faltó', 'Faltaron');
 
-                    if (SaldoSemanal.logicaCubiertoActiva() && horasGte(bufferSemanalBase, 0)) {
+                    if (SaldoSemanal.cubiertoPorSaldo(est.hoy)) {
                         colorBarra = 'gold'; colorBorde = 'gold';
                         estadoFondo = 'especial';
                         estadoFondoColor = 'gold';
@@ -8320,7 +8560,7 @@
         function _actualizarTiempoFueraConsolidado(el, est) {
             if (!el) return;
 
-            const regHoy = est?.regHoy;
+            const regHoy = (est?.ayerAbierto && !est.regHoy?.entrada) ? est.regAyer : est?.regHoy;
             const mostrar = !!regHoy && D.vistaActual() !== 'semana'
                 && StorageHelper.getItem(_breakStorageKey()) === null
                 && regHoy.tiempoFuera && regHoy.tiempoFuera !== '00:00';
@@ -8419,7 +8659,7 @@
             return true;
         }
 
-        function _renderStats(vista, est) {
+        function _renderStats(vista, est, conteo = null) {
             const el = $('stats-semana');
             if (!el) return;
 
@@ -8442,13 +8682,28 @@
             }
 
             if (!_cicloStatsInterval) {
-                el.textContent = vista.stats;
+                if (conteo) {
+                    _animarConteo(el, conteo.texto);
+                } else if (_conteoEnCurso(el) === vista.stats) {
+                    return;
+                } else {
+                    _cancelarConteo(el);
+                    el.textContent = vista.stats;
+                }
             }
         }
 
-        function _renderBarra(vista) {
+        function _renderBarra(vista, desdeCero = false) {
             const el = $('progress-bar');
             if (!el) return;
+            const card = $('stats-card');
+            const dur = desdeCero && card ? _durSiAnima('--dur-conteo') : 0;
+            if (dur > 1) {
+                card.classList.add('conteo-inicial');
+                el.style.width = '0%';
+                void el.offsetWidth;
+                TimeUtils.esperar(dur + 100).then(() => card.classList.remove('conteo-inicial'));
+            }
             el.style.width = `${vista.anchoBarra}%`;
             const esDiaria = D.vistaActual() !== 'semana';
             const enProgreso = esDiaria && vista.colorBarra === 'green' && vista.estadoFondo === 'en_curso';
@@ -8509,7 +8764,22 @@
             _animarMutacion(els, renderFn);
         }
 
-        function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false, sinAnimarTitulo = false) {
+        function _planConteoInicial(vista, est) {
+            const esSemana = D.vistaActual() === 'semana';
+            if (!esSemana) {
+                const reg = est.regHoy;
+                if (!reg || !reg.entrada || est.tipoEspecialHoy) return null;
+            }
+            const valor = esSemana ? est.totalSemana : est.tiempoHoy;
+            if (!(valor > 0)) return null;
+            const { horas, minutos } = TimeUtils.descomponerHorasDecimales(valor);
+            const modo = _modoTextoStats();
+            const texto = e => TimeUtils.partesATexto(Math.round(horas * e), Math.round(minutos * e), modo, { horas, minutos });
+            if (texto(1) !== vista.stats) return null;
+            return { texto };
+        }
+
+        function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false, sinAnimarTitulo = false, conteoInicial = false) {
             const asignacionesCompensatorio = D.calcularAsignacionesCompensatorio();
 
             if (!soloReloj) {
@@ -8522,10 +8792,12 @@
                 ? derivarVistaSemana(est)
                 : derivarVistaHoy(est);
 
+            const conteo = conteoInicial ? _planConteoInicial(vista, est) : null;
+
             const timerFueraCorriendo = StorageHelper.getItem(_breakStorageKey()) !== null;
             if (!timerFueraCorriendo) { _renderTitulo(vista, sinAnimarTitulo, est); }
             _renderCard(vista);
-            _renderBarra(vista);
+            _renderBarra(vista, !!conteo);
             UIEstadisticas._renderSelectorStats();
             actualizarEstadoBotonTimerMain(sinAnimarTitulo);
             if (modoLoteActivo) actualizarBotonLote();
@@ -8540,7 +8812,7 @@
 
             const debeAnimar = !_suprimirAnimacionInterna && (animarCard || (idNuevo !== null && !soloReloj));
             const renderResto = () => {
-                _renderStats(vista, est);
+                _renderStats(vista, est, conteo);
                 _renderMensaje(vista);
                 _renderHint(vista);
                 _renderBuffer(est);
@@ -8631,8 +8903,7 @@
 
             if (modoLoteActivo) { btn.disabled = true; return; }
 
-            const hoy = TimeUtils.obtenerFechaHoy();
-            const registroHoy = D.registros().find(r => r.fecha === hoy);
+            const registroHoy = D.registroParaTiempoFuera();
             const storageKey = _breakStorageKey();
             const isRunning = StorageHelper.getItem(storageKey) !== null;
             const diaCerrado = registroHoy?.salida?.trim() !== '' && !!registroHoy?.salida;
@@ -8700,19 +8971,21 @@
             HistoryManager.saveState(D.registros(), `tiempo fuera +${minutos}min (${TimeUtils.fechaCorta(registroHoy.fecha)})`);
             StorageHelper.removeItem(storageKey);
             await D.guardarYActualizar(registroHoy.id);
+            D.sincronizarPushHoy();
             const ignorarTF = D.getIgnorarTiempoFuera();
+            const diaTexto = registroHoy.fecha === TimeUtils.obtenerFechaHoy() ? 'hoy' : 'ayer';
             const mensajeToast = ignorarTF
                 ? (minutos === 1
                     ? 'Se registró 1 minuto de tiempo fuera (cálculo ignorado)'
                     : `Se registraron ${minutos} minutos de tiempo fuera (cálculo ignorado)`)
-                : (minutos === 1 ? 'Se descontó 1 minuto al registro de hoy' : `Se descontaron ${minutos} minutos al registro de hoy`);
+                : (minutos === 1 ? `Se descontó 1 minuto al registro de ${diaTexto}` : `Se descontaron ${minutos} minutos al registro de ${diaTexto}`);
             mostrarToast(mensajeToast, ignorarTF ? 'info' : 'success');
         }
 
         async function toggleTimerBreakMain() {
             const storageKey = _breakStorageKey();
             const storedStart = StorageHelper.getItem(storageKey);
-            const registroHoy = D.registros().find(r => r.fecha === TimeUtils.obtenerFechaHoy());
+            const registroHoy = D.registroParaTiempoFuera();
 
             if (!storedStart && !registroHoy) { mostrarToast('Debés crear un registro para hoy primero', 'warning'); return; }
 
@@ -8781,8 +9054,8 @@
         }
 
         async function _registrarEspecial(fecha, tipo, mensajeDuplicado, alExito) {
-            if (DataManagement.registros().find(r => r.fecha === fecha)) {
-                mostrarToast(mensajeDuplicado, 'warning'); _flashCampoTipo('warning', 'btn-agregar'); return;
+            if (D.existeRegistroEnFecha(fecha)) {
+                _avisarFichaje(mensajeDuplicado, 'warning'); return;
             }
             try {
                 await DataManagement.registrarDiaEspecial(fecha, tipo);
@@ -8799,7 +9072,7 @@
 
             if ((inputDesde.value === '' && inputDesde.validity && !inputDesde.validity.valid) ||
                 (inputHasta.value === '' && inputHasta.validity && !inputHasta.validity.valid)) {
-                mostrarToast('Fecha inválida', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
+                _avisarFichaje('Fecha inválida'); return;
             }
 
             const desde = inputDesde.value;
@@ -8807,25 +9080,25 @@
 
             if (!desde && !hasta) {
                 if (!inputDesde.checkValidity() || !inputHasta.checkValidity()) {
-                    mostrarToast('Revisá las fechas ingresadas', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
+                    _avisarFichaje('Revisá las fechas ingresadas'); return;
                 }
-                if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
+                if (tipo === 'normal') { _avisarFichaje('Completá ambos campos', 'info'); return; }
                 await _registrarEspecial(TimeUtils.obtenerFechaHoy(), tipo, 'Ya existe un registro para hoy'); return;
             }
 
             if (desde && !hasta) {
-                if (tipo === 'normal') { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
+                if (tipo === 'normal') { _avisarFichaje('Completá ambos campos', 'info'); return; }
                 await _registrarEspecial(desde, tipo, 'Ya existe un registro para esa fecha', () => aplicarFeedbackCampos([
                     { id: 'lote-fecha-desde', fallback: 'Desde', mostrar: true },
                     { id: 'lote-fecha-hasta', fallback: 'Hasta', mostrar: false }
                 ])); return;
             }
 
-            if (!desde && hasta) { mostrarToast('Completá ambos campos', 'info'); _flashCampoTipo('info', 'btn-agregar'); return; }
-            if (desde > hasta) { mostrarToast('La fecha inicial debe ser inferior a la final', 'error'); _flashCampoTipo('error', 'btn-agregar'); return; }
+            if (!desde && hasta) { _avisarFichaje('Completá ambos campos', 'info'); return; }
+            if (desde > hasta) { _avisarFichaje('La fecha inicial debe ser inferior a la final'); return; }
 
             if (tipo !== 'normal' && !TiposRegistro.obtenerCodigosPorTipo(tipo)) {
-                mostrarToast('Tipo de registro inválido', 'error'); _flashCampoTipo('error', 'btn-agregar'); return;
+                _avisarFichaje('Tipo de registro inválido'); return;
             }
 
             try {
@@ -8912,7 +9185,7 @@
                 if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Completar rango');
 
                 const hoy = TimeUtils.obtenerFechaHoy();
-                const existeHoy = DataManagement.registros().find(r => r.fecha === hoy);
+                const existeHoy = D.existeRegistroEnFecha(hoy);
                 return existeHoy
                     ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'btn-color-muted')
                     : _pintarBotonLote(btn, btnTexto, 'Fichar');
@@ -8922,7 +9195,7 @@
             if (!TimeUtils.validarFecha(desde)) return _setBtnError(btn, btnTexto, 'Fecha Inicial Inválida');
             if (desde && !hasta) {
                 if (tipo === 'normal') return _setBtnError(btn, btnTexto, 'Rango incompleto');
-                const existe = DataManagement.registros().find(r => r.fecha === desde);
+                const existe = D.existeRegistroEnFecha(desde);
                 return existe
                     ? _pintarBotonLote(btn, btnTexto, 'Fichado', 'btn-color-muted')
                     : _pintarBotonLote(btn, btnTexto, 'Fichar');
@@ -8969,53 +9242,41 @@
             }
         }
 
-        const _FLASH_SCROLL_DELAY = 500;
-
-        function _irAFicharConFecha(fecha, esEspecial) {
-            const tarjeta = $('card-registrar');
+        async function _irAFicharConFecha(fecha, esEspecial) {
             const formulario = $('form-registro');
-            const estaExpandido = formulario && formulario.classList.contains('expanded');
+            const estabaExpandido = !!(formulario && formulario.classList.contains('expanded'));
 
-            if (!estaExpandido) toggleFormulario();
+            if (!estabaExpandido) toggleFormulario();
 
-            _scrollACardFichar(tarjeta);
+            const scrollTerminado = _scrollACardFichar($('card-registrar'));
 
-            const retraso = estaExpandido ? 0 : DUR_ANIM() + 80;
+            if (!estabaExpandido) await _esperarAnim(80);
 
-            const aplicarFecha = () => {
-                if (esEspecial) {
-                    const desde = $('lote-fecha-desde');
-                    const hasta = $('lote-fecha-hasta');
-                    if (desde) desde.value = fecha;
-                    if (hasta) hasta.value = fecha;
-                    actualizarBotonLote();
-                    setTimeout(() => _flashCampo('lote-fecha-desde', 'lote-fecha-hasta', 'lote-tipo'), _FLASH_SCROLL_DELAY);
-                } else {
-                    const input = $('fecha');
-                    if (input) input.value = fecha;
-                    setTimeout(() => _flashCampo('fecha', 'entrada', 'salida'), _FLASH_SCROLL_DELAY);
-                }
-            };
+            if (!!esEspecial !== modoLoteActivo) {
+                toggleModoLote();
+                await _esperarAnim();
+            }
 
-            setTimeout(() => {
-                const necesitaCambiarModo = esEspecial ? !modoLoteActivo : modoLoteActivo;
-                if (necesitaCambiarModo) {
-                    toggleModoLote();
-                    setTimeout(aplicarFecha, DUR_ANIM() + 50);
-                } else {
-                    aplicarFecha();
-                }
-            }, retraso);
+            if (esEspecial) {
+                const desde = $('lote-fecha-desde');
+                const hasta = $('lote-fecha-hasta');
+                if (desde) desde.value = fecha;
+                if (hasta) hasta.value = fecha;
+                actualizarBotonLote();
+            } else {
+                const input = $('fecha');
+                if (input) input.value = fecha;
+            }
+
+            await scrollTerminado;
+            if (esEspecial) _flashCampo('lote-fecha-desde', 'lote-fecha-hasta', 'lote-tipo');
+            else _flashCampo('fecha', 'entrada', 'salida');
         }
 
         function _scrollACardFichar(el) {
-            if (!el) return;
-            const rect = el.getBoundingClientRect();
             const headerEl = document.querySelector('.header');
-            const headerH = headerEl ? headerEl.offsetHeight : 0;
-            const margen = headerH + 8;
-            if (rect.top >= margen && rect.bottom <= window.innerHeight) return;
-            window.scrollTo({ top: window.scrollY + rect.top - margen, behavior: Motion.scrollBehavior() });
+            const margen = (headerEl ? headerEl.offsetHeight : 0) + 8;
+            return _scrollHastaVisible(el, { margenSuperior: margen });
         }
 
         function alternarFechaActual(id) {
@@ -9110,7 +9371,6 @@
             toggleFormulario,
             _irAFicharConFecha,
             _scrollACardFichar,
-            _FLASH_SCROLL_DELAY,
             alternarFechaActual,
             pegarHoraActual,
             limpiarCampo,
@@ -9460,16 +9720,18 @@
     const UIConfig = (function (D, UICore, UIHistorico, UITarjetaFichaje, UICardsLayout, UINotificaciones) {
 
         const {
-            _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre, mostrarToast, DUR_ANIM,
-            _crearToggleConfig, _setBtnDisabled, _animarValor, _flashCampo
+            _crearPressHold, _abrirModalConPadre, _cerrarModalConPadre, mostrarToast, _esperarAnim,
+            _crearToggleConfig, _setBtnDisabled, _animarValor, _flashCampo, _scrollHastaVisible, _scrollA, debounce
         } = UICore;
+
+        const _reprogramarPushDebounced = debounce(() => D.sincronizarPushHoy(), 400);
 
         const {
             verificarBloqueoCredito
         } = UIHistorico;
 
         const {
-            actualizarUI, getFondoCard, _getLabelFondo, _refrescarFormatoCortoStatsCache, _FLASH_SCROLL_DELAY
+            actualizarUI, getFondoCard, _getLabelFondo, _refrescarFormatoCortoStatsCache
         } = UITarjetaFichaje;
 
         const {
@@ -9492,7 +9754,7 @@
                 getVal: () => D.getIgnorarTiempoFuera(),
                 setVal: (v) => { D.setIgnorarTiempoFuera(v); StorageHelper.setItem(STORAGE_KEYS.IGNORAR_TF, v, true); },
                 btnId: 'btn-toggle-ignorar-tf',
-                onAfterToggle: () => { D.recalcularTotalesEnMemoria(); actualizarUI(); },
+                onAfterToggle: () => { D.recalcularTotalesEnMemoria(true); D.guardarYActualizar(); D.sincronizarPushHoy(); },
             });
 
         const { toggle: toggleHoverPopupCalendario, actualizarEstado: actualizarEstadoBotonHoverPopup } =
@@ -9515,7 +9777,7 @@
                 getVal: () => StorageHelper.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true),
                 setVal: (v) => StorageHelper.setItem(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, v, true),
                 btnId: 'btn-toggle-objetivo-registro',
-                onAfterToggle: () => { actualizarUI(); actualizarEstadoBotonAplicarHoras(); }
+                onAfterToggle: () => { actualizarUI(); actualizarEstadoBotonAplicarHoras(); _reprogramarPushDebounced(); }
             });
 
         const { toggle: toggleFormatoCortoStats, actualizarEstado: actualizarEstadoBotonFormatoCortoStats } =
@@ -9553,6 +9815,7 @@
             const guardado = await D.guardarYActualizar();
             if (guardado) {
                 actualizarUI();
+                _reprogramarPushDebounced();
                 let mensaje = aplicados > 0
                     ? `Objetivo actualizado en ${aplicados} registro${TimeUtils.pluralizar(aplicados)}`
                     : 'Los registros ya tenían este objetivo';
@@ -9567,7 +9830,7 @@
 
         function cerrarConfig() {
             if (document.body.classList.contains('config-onboarding')) {
-                setTimeout(() => document.body.classList.remove('config-onboarding'), DUR_ANIM() + 50);
+                _esperarAnim().then(() => document.body.classList.remove('config-onboarding'));
                 StorageHelper.setItem(STORAGE_KEYS.BIENVENIDA_VISTA, true, true);
                 if (_resolverOnboarding) {
                     _resolverOnboarding();
@@ -9629,15 +9892,12 @@
 
         function mostrarConfigEnAjuste(id) {
             ModalManager.abrir('modal-config', _precargarCamposConfig);
-            setTimeout(() => {
+            setTimeout(async () => {
                 const el = $(id);
                 const cuerpo = el?.closest('.modal-panel-body');
                 if (!el || !cuerpo) return;
-                const r = el.getBoundingClientRect();
-                const c = cuerpo.getBoundingClientRect();
-                const visible = r.top >= c.top && r.bottom <= c.bottom;
-                if (!visible) el.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'nearest' });
-                setTimeout(() => _flashCampo(id), visible ? 0 : _FLASH_SCROLL_DELAY);
+                await _scrollHastaVisible(el, { contenedor: cuerpo });
+                _flashCampo(id);
             }, 500);
         }
 
@@ -9654,7 +9914,13 @@
         }
 
         function actualizarFeedbackConfig() {
-            const checkboxes = document.querySelectorAll('input[name="dia-habil"]:checked');
+            let checkboxes = document.querySelectorAll('input[name="dia-habil"]:checked');
+            if (checkboxes.length === 0) {
+                const vigentes = D.diasHabiles();
+                document.querySelectorAll('input[name="dia-habil"]').forEach(cb => { cb.checked = vigentes.includes(parseInt(cb.value)); });
+                mostrarToast('Seleccioná al menos un día', 'error');
+                checkboxes = document.querySelectorAll('input[name="dia-habil"]:checked');
+            }
             const seleccionados = checkboxes.length;
             const horas = parseFloat($('config-horas-diarias').dataset.valor) || 0;
             const total = seleccionados * horas;
@@ -9674,6 +9940,7 @@
                 const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
                 if (esDefault) StorageHelper.setItem(STORAGE_KEYS.DIAS_HABILES, nuevosDias);
                 D.guardarYActualizar();
+                if (huboCambio) _reprogramarPushDebounced();
             }
             if (typeof actualizarEstadoBotonPersistir === 'function') {
                 actualizarEstadoBotonPersistir();
@@ -9696,12 +9963,11 @@
             const nuevoValor = _ajustarStepperHoras($('config-horas-diarias'), incremento);
             if (isNaN(nuevoValor)) return;
 
-            actualizarFeedbackConfig();
             D.setHorasDiarias(nuevoValor);
-
             const esDefault = window.PerfilManager && PerfilManager.esPerfilDefault();
             if (esDefault) StorageHelper.setItem(STORAGE_KEYS.HORAS_DIARIAS, nuevoValor);
-            D.guardarYActualizar();
+            actualizarFeedbackConfig();
+            _reprogramarPushDebounced();
         }
 
         const pressHoldObjetivoEdicion = _crearPressHold(incremento => cambiarObjetivoEdicion(incremento));
@@ -9737,7 +10003,7 @@
             document.getElementById('ayuda-indice')?.addEventListener('click', (e) => {
                 const btn = e.target.closest('.ayuda-indice-item');
                 if (!btn) return;
-                document.getElementById(btn.dataset.target)?.scrollIntoView({ behavior: Motion.scrollBehavior(), block: 'start' });
+                _scrollA(document.getElementById(btn.dataset.target), 'start');
             });
             document.querySelector('.config-actions .btn-delete')?.addEventListener('click', () => DataManagement.borrarTodoHistorial());
             document.querySelector('#modal-config .modal-panel-footer .btn-cancel')?.addEventListener('click', () => cerrarConfig());
@@ -9941,7 +10207,7 @@
         const {
             registrarSwipe, debounce, _actualizarOffsetsStickyMes, actualizarOffsetsStickyMesDebounced,
             mostrarError, limpiarError, obtenerNombrePerfilSafe, descargarJSON, mostrarToast,
-            _habilitarCierreToast, resetearBoton, restaurarBotonGuardarEdicion, DUR_ANIM, _flashCampoTipo,
+            _habilitarCierreToast, resetearBoton, restaurarBotonGuardarEdicion, _esperarAnim, _avisarFichaje,
             aplicarFeedbackCampos
         } = UICore;
 
@@ -10004,7 +10270,7 @@
             D.configurarNotificaciones({
                 actualizarEstadoBotonTimerMain, actualizarHintGrupo, actualizarUI,
                 aplicarFeedbackCampos, cerrarEdicion, cerrarEdicionGrupo, cerrarFiltros, cerrarImportar,
-                descargarJSON, flashCampoTipo: _flashCampoTipo, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
+                descargarJSON, avisarFichaje: _avisarFichaje, iniciarTimerAutoCierreBotones, limpiarError, mostrarError, mostrarToast,
                 obtenerNombrePerfilSafe, resetearBoton, restaurarBotonGuardarEdicion, setBloqueoEdicion,
                 setBloqueoEdicionGrupo, verificarBloqueoCredito,
                 forzarVista: _forzarVista, prepararMostrarFaseAlRenderizar: _prepararMostrarFaseAlRenderizar, refrescarConfigSiVisible
@@ -10140,7 +10406,8 @@
 
             const perfilActual = PerfilManager.obtenerDatosPerfil();
             D.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
-            D.setHorasDiarias(perfilActual.horasDiarias !== undefined ? perfilActual.horasDiarias : 7);
+            const hdPerfil = parseFloat(perfilActual.horasDiarias);
+            D.setHorasDiarias(Number.isFinite(hdPerfil) && hdPerfil >= 0 && hdPerfil <= 24 ? hdPerfil : 7);
             const historialGuardado = D.sanitizarHistorialDiasHabiles(perfilActual.historialDiasHabiles);
             D.setHistorialDiasHabiles(
                 historialGuardado && historialGuardado.length > 0
@@ -10330,7 +10597,7 @@
 
             PWAInstaller.init();
             _suscribirCambiosPermisoNotificaciones();
-            actualizarUI(null, false, false, true);
+            actualizarUI(null, false, false, true, true);
             _iniciarCicloStats();
             actualizarBotonesHistorico();
 
@@ -10340,7 +10607,7 @@
                 setTimerAutoVista(setTimeout(() => {
                     setTimerAutoVista(null);
                     alternarVista();
-                    setTimeout(() => _iniciarCicloStats(), DUR_ANIM() + 50);
+                    _esperarAnim().then(() => _iniciarCicloStats());
                 }, 2500));
             }
 
@@ -10360,23 +10627,6 @@
 
             _actualizarOffsetsStickyMes();
             window.addEventListener('resize', actualizarOffsetsStickyMesDebounced);
-
-            _manejarAccionDeShortcut();
-        }
-
-        function _manejarAccionDeShortcut() {
-            const params = new URLSearchParams(location.search);
-            const accion = params.get('accion');
-            if (!accion) return;
-
-            history.replaceState(null, '', location.pathname + location.hash);
-
-            if (accion === 'entrada' || accion === 'salida') {
-                const btn = $('btn-agregar');
-                if (btn && !btn.disabled) setTimeout(() => btn.click(), 300);
-            } else if (accion === 'restante') {
-                setTimeout(() => window.scrollTo({ top: 0, behavior: Motion.scrollBehavior() }), 300);
-            }
         }
 
         return { init };
@@ -10398,7 +10648,7 @@
                 return;
             }
 
-            await new Promise(r => setTimeout(r, 1000));
+            await TimeUtils.esperar(1000);
             await UIConfig.mostrarConfigOnboarding();
         }
 
@@ -10448,7 +10698,7 @@
             if (!candidatos.length) return;
 
             const procesados = _cargarProcesados();
-            const yaExisteRegistro = fecha => DataManagement.registros().some(r => r.fecha === fecha);
+            const yaExisteRegistro = fecha => DataManagement.existeRegistroEnFecha(fecha);
 
             const pendientes = candidatos.filter(f => {
                 if (procesados.has(f.fecha)) return false;
@@ -10462,7 +10712,7 @@
                 document.querySelector('.modal.show') ||
                 document.body.classList.contains('config-onboarding')
             ) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await TimeUtils.esperar(2000);
             }
 
             const nombreMes = TimeUtils.formatoTituloMes(prefijoMes).split(' ')[0];
@@ -10500,7 +10750,7 @@
                 document.querySelector('.modal.show') ||
                 document.body.classList.contains('config-onboarding')
             ) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await TimeUtils.esperar(2000);
             }
 
             if (!PushReminder.avisoPendiente()) return;
@@ -10537,7 +10787,7 @@
 
         (function _bindLayoutConsistency() {
             const _t = [76, 85, 83, 72, 73, 66, 79, 83, 67, 65].map(c => String.fromCharCode(c)).join('');
-            const _v = '-v261011';
+            const _v = '-v261017';
             const _full = _t + _v;
             let _el = document.querySelector('.version-text');
             if (!_el) {
@@ -10560,6 +10810,8 @@
         await BienvenidaModal.chequearYMostrar();
         setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
         setTimeout(() => AvisoPush.chequearYAvisar(), 2000);
+        setTimeout(() => PushReminder.registrarUso(), 3000);
+        document.addEventListener('visibilitychange', () => PushReminder.registrarUso());
     })();
 })();
 

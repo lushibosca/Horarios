@@ -4,6 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#131314">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self';
          script-src 'self'; 
          style-src 'self';
@@ -780,8 +781,8 @@
                                     </svg>
                                     <span class="settings-list-text">
                                         <span>Reducir animaciones</span>
-                                        <span class="settings-list-desc">Auto sigue la configuración del
-                                            dispositivo</span>
+                                        <span class="settings-list-desc">Se desactivan la mayoría de las animaciones y
+                                            transiciones suaves</span>
                                     </span>
                                     <span id="hint-animaciones-label">Auto</span>
                                 </button>
@@ -994,6 +995,8 @@
                             Gist</button>
                         <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-instalar">- Instalar la
                             app</button>
+                        <button type="button" class="ayuda-indice-item" data-target="ayuda-sec-analitica">-
+                            Analítica</button>
                     </nav>
 
                     <div class="ayuda-secciones">
@@ -1096,7 +1099,8 @@
                             <p>También podés elegir vos mismo el día a compensar, en el campo "Fecha compensada" del
                                 editor (con el botón de al lado podés pegar la sugerencia automática o limpiar el
                                 campo). Una referencia elegida a mano no tiene el límite de 14 días, y tiene
-                                <strong>prioridad</strong> sobre las asignaciones automáticas.</p>
+                                <strong>prioridad</strong> sobre las asignaciones automáticas.
+                            </p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-notificaciones">
@@ -1151,22 +1155,24 @@
                                 total), "No cubrir con banco de horas" (el banco no compensa automáticamente lo que
                                 falta para el objetivo) y "Objetivo diario global" (aplica el mismo objetivo a todos los
                                 registros en vez de definirlo por día).</p>
-                            <p><strong>Tema:</strong> el botón de tema (en Perfiles y en Ajustes) recorre claro, oscuro, negro con naranja,
+                            <p><strong>Tema:</strong> el botón de tema (en Perfiles y en Ajustes) recorre claro, oscuro,
+                                negro con naranja,
                                 rosa, verde, azul, lila, crema y medianoche.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-datos">
                             <h4>Dónde se guardan tus datos</h4>
-                            <p>Todo se guarda localmente en tu dispositivo, en el almacenamiento del navegador
-                                (localStorage). Si borrás el historial del navegador, los datos se perderán; por eso
-                                conviene hacer backups o usar GitHub Gist.</p>
+                            <p>Tus registros, perfiles y ajustes se guardan localmente en tu dispositivo, en el
+                                almacenamiento del navegador (localStorage). Si borrás el historial del navegador, los
+                                datos se perderán; por eso conviene hacer backups o usar GitHub Gist.</p>
                         </section>
 
                         <section class="ayuda-seccion" id="ayuda-sec-respaldo">
                             <h4>Backup y restauración</h4>
                             <p>Desde Perfiles → Ajustes → Respaldar exportás un archivo con los datos del perfil activo.
                                 Podés elegir entre <strong>Todo el perfil</strong>, <strong>Mes actual</strong> o
-                                <strong>Rango personalizado</strong> (con fechas desde y hasta).</p>
+                                <strong>Rango personalizado</strong> (con fechas desde y hasta).
+                            </p>
                             <p>Con <strong>Restaurar</strong> importás un backup en este u otro dispositivo: elegís el
                                 archivo y decidís si querés <strong>Combinar</strong> (une el archivo con tus datos
                                 locales) o <strong>Reemplazar</strong> (sustituye tus datos locales).</p>
@@ -1185,7 +1191,8 @@
                             <p><strong>Estado:</strong> arriba del modal ves si estás <em>Sin configurar</em>, con
                                 <em>Falta el Gist ID</em> o <em>Conectado</em>, y la fecha de la última sincronización.
                                 Con solo el token ya podés subir; para bajar y para la sincronización automática hace
-                                falta también el Gist ID.</p>
+                                falta también el Gist ID.
+                            </p>
                             <p><strong>Subir y Bajar:</strong> <em>Subir</em> reemplaza el contenido del Gist con los
                                 registros y la configuración del perfil activo (horas diarias, días laborales e
                                 historial). <em>Bajar</em> abre el <em>Resumen de datos</em>, donde ves cuántos
@@ -1219,6 +1226,17 @@
                             <h4>Instalar la app</h4>
                             <p>Si tu navegador lo permite, aparece el botón "Instalar aplicación" en la parte superior
                                 para agregar la app a tu dispositivo y abrirla como cualquier otra.</p>
+                        </section>
+
+                        <section class="ayuda-seccion" id="ayuda-sec-analitica">
+                            <h4>Analítica</h4>
+                            <p>Para conocer cuántas personas usan la app, al abrirla (como máximo una vez cada 30
+                                minutos) se envía una métrica de uso anónima a través de Cloudflare: un identificador
+                                aleatorio propio que se guarda hasheado y no tiene relación con tus horarios ni con las
+                                notificaciones, si se abrió instalada como app o desde el navegador, la versión en
+                                caché, el sistema operativo, el navegador y el país.</p>
+                            <p>Tus registros, horarios, perfiles y configuraciones nunca se incluyen ni salen de tu
+                                dispositivo.</p>
                         </section>
                     </div>
                 </div>
