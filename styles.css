@@ -1539,10 +1539,16 @@ button:disabled .toggle-switch {
     overflow: visible;
 }
 
+/* Días no laborables sin registro (según los días laborales vigentes en cada fecha) */
+.calendario-dia.dia-sin-registro.no-laborable {
+    opacity: 0.5;
+}
+
 /* ─── COLORES COMPARTIDOS ────────────────────────────────────────────────────── */
 
 .registro-total.green-text,
 .calendario-dia.dia-normal,
+.cal-semana-punto--green,
 .cal-popup-badge--green,
 .progress-fill.green {
     background: var(--c-green);
@@ -1552,12 +1558,14 @@ button:disabled .toggle-switch {
 .calendario-dia.dia-incompleto,
 .calendario-dia.dia-especial-red,
 .progress-fill.red,
+.cal-semana-punto--red,
 .cal-popup-badge--red {
     background: var(--c-red);
 }
 
 .registro-total.purple-text,
 .calendario-dia.dia-especial-purple,
+.cal-semana-punto--purple,
 .cal-popup-badge--purple,
 .progress-fill.purple {
     background: var(--c-purple);
@@ -1565,6 +1573,7 @@ button:disabled .toggle-switch {
 
 .registro-total.orange-text,
 .calendario-dia.dia-especial-orange,
+.cal-semana-punto--orange,
 .cal-popup-badge--orange,
 .progress-fill.orange {
     background: var(--c-orange);
@@ -1573,6 +1582,7 @@ button:disabled .toggle-switch {
 .calendario-dia.dia-cubierto,
 .registro-total.gold-text,
 .calendario-dia.dia-especial-gold,
+.cal-semana-punto--gold,
 .cal-popup-badge--gold,
 .progress-fill.gold {
     background: var(--c-gold);
@@ -1581,6 +1591,7 @@ button:disabled .toggle-switch {
 .calendario-dia.dia-especial-blue,
 .registro-total.blue-text,
 .calendario-dia.dia-en-curso,
+.cal-semana-punto--blue,
 .cal-popup-badge--blue,
 .progress-fill.blue {
     background: var(--c-blue);
@@ -1826,11 +1837,34 @@ button:disabled .toggle-switch {
 }
 
 .calendario-grid {
+    position: relative;
+    isolation: isolate;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: var(--space-xs);
     margin-top: var(--space-md);
     grid-template-rows: auto repeat(6, 1fr);
+}
+
+/* Banda de la semana actual: absoluta dentro de la fila de la grilla, detrás de las celdas */
+.calendario-semana-actual {
+    position: absolute;
+    inset: -2px -6px;
+    border-radius: 50px;
+    background: var(--input-bg);
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.calendario-semana-actual.abierta-izq {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.calendario-semana-actual.abierta-der {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
 }
 
 .calendario-dia-nombre {
@@ -1885,6 +1919,20 @@ button:disabled .toggle-switch {
 .calendario-dia.dia-sin-registro,
 .stat-value {
     color: var(--text-muted);
+}
+
+.stat-label {
+    color: var(--text-muted);
+}
+
+.stat-value {
+    color: var(--text-main);
+    font-size: var(--text-base);
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-number {
+    font-variant-numeric: tabular-nums;
 }
 
 .stat-value.saldo-positivo {
@@ -2988,6 +3036,18 @@ button.campo-flash-color {
     }
 }
 
+/* ─── MÓVIL (max-width: 600px): los modales pueden ocupar todo el alto ─────── */
+
+@media (max-width: 600px) {
+    .modal {
+        padding: max(var(--space-xs), env(safe-area-inset-top)) max(var(--space-xs), env(safe-area-inset-right)) max(var(--space-xs), env(safe-area-inset-bottom)) max(var(--space-xs), env(safe-area-inset-left));
+    }
+
+    .modal-scrollable>.modal-content {
+        max-height: 100%;
+    }
+}
+
 /* ─── ESCRITORIO (min-width: 1024px) ─────────────────────────────────────────── */
 
 @media (min-width: 1024px) {
@@ -3145,4 +3205,70 @@ button.campo-flash-color {
 /* El brillo es un ::after visible de por sí: sin animación quedaría fijo */
 :root[data-motion="reduce"] .progress-fill.shimmer::after {
     display: none;
+}
+
+/* ─── POPUP DE LA SEMANA (long press / click secundario sobre el calendario) ─── */
+
+.calendario-grid {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.cal-popup.cal-popup-semana {
+    min-width: 250px;
+    max-width: min(340px, calc(100vw - 16px));
+}
+
+.cal-semana-total {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.cal-popup-semana .registro-total {
+    padding: var(--space-2xs) var(--space-smd);
+}
+
+.cal-semana-lista {
+    /* punto | día | horario | total | diferencia: una sola grilla para alinear todas las filas */
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto;
+    align-items: center;
+    gap: var(--space-sm) var(--space-md, 0.75rem);
+    font-size: var(--text-sm);
+}
+
+.cal-semana-lista > * {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cal-semana-punto {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.cal-semana-punto--neutro {
+    background: var(--text-muted);
+}
+
+.cal-semana-dia,
+.cal-semana-hs {
+    color: var(--text-main);
+}
+
+.cal-semana-dia {
+    font-weight: var(--fw-semibold);
+    min-width: 3.4em;
+}
+
+.cal-semana-hs,
+.cal-semana-diff {
+    text-align: right;
+}
+
+.cal-semana-diff {
+    font-weight: var(--fw-semibold);
 }
