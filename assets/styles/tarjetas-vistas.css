@@ -1,0 +1,1461 @@
+/* ==========================================================================
+   3. TARJETAS Y VISTAS — Fichaje, estadísticas, histórico, calendario y popups
+   ========================================================================== */
+/* ─── TARJETA DE ESTADÍSTICAS ────────────────────────────────────────────────── */
+
+.stats-card {
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
+    transition: transform var(--dur-fast) ease-out, opacity var(--dur-fast) ease-out, box-shadow var(--transition-ui), border-color var(--transition-ui);
+    height: 16rem;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-card-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    transition: transform calc(var(--dur-anim)*5) ease;
+}
+
+.stats-card-bg--zoom {
+    transform: scale(1.1);
+}
+
+.stats-card-bg__layer {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity calc(var(--dur-anim)*2) ease;
+}
+
+.stats-card-bg__layer.visible {
+    opacity: 1;
+}
+
+.stats-card-bg svg {
+    width: 100%;
+    height: 100%;
+}
+
+.stats-card-content {
+    position: relative;
+    z-index: 1;
+    transition: var(--transition-anim);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+#toggle-hint {
+    margin-top: auto;
+}
+
+.stats-card.border-blue {
+    border-left-color: var(--c-blue);
+}
+
+.stats-card.border-green {
+    border-left-color: var(--c-green);
+}
+
+.stats-card.border-red,
+#stats-card.timer-running {
+    border-left-color: var(--c-red);
+}
+
+.stats-card.border-purple {
+    border-left-color: var(--c-purple);
+}
+
+.stats-card.border-gold {
+    border-left-color: var(--c-gold);
+}
+
+.stats-card.border-orange {
+    border-left-color: var(--c-orange);
+}
+
+.stats-card.border-transparent {
+    border-left-color: transparent;
+}
+
+.stats-number,
+.card-anim,
+#modo-normal,
+#modo-lote {
+    transition: var(--transition-anim);
+}
+
+.stats-number {
+    font-size: var(--text-xl);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-bold);
+    margin: var(--space-sm) 0;
+    line-height: var(--lh-tight);
+    min-height: 1.2em;
+    display: flex;
+    align-items: center;
+}
+
+.stats-inner {
+    min-height: 30rem;
+    display: flex;
+    flex-direction: column;
+    transition: min-height var(--dur-collapse) ease-out;
+}
+
+.stats-inner .btn-group {
+    margin-top: auto;
+}
+
+.stats-inner .btn-agregar {
+    width: 50%;
+    margin: 0 auto;
+}
+
+/* ─── BARRA DE PROGRESO ──────────────────────────────────────────────────────── */
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: transparent;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+/* El número de arriba lleva su propio margen inferior y más aire interno que el mensaje de abajo: el margen inferior de la pista
+   suma esa diferencia (medida: 12 px) para que la distancia visual de la barra a ambos textos sea la misma */
+.progress-pista {
+    --ajuste-optico: 0.75rem;
+    position: relative;
+    margin: var(--space-lg) 0 calc(var(--space-lg) + var(--ajuste-optico));
+}
+
+.progress-punto {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 14px;
+    height: 14px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 3px solid var(--c-blue);
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease, border-color var(--dur-slow) ease, background var(--dur-slow) ease;
+}
+
+.progress-punto.visible {
+    opacity: 1;
+}
+
+.progress-punto[data-color="green"] { border-color: var(--c-green); }
+.progress-punto[data-color="red"] { border-color: var(--c-red); }
+.progress-punto[data-color="purple"] { border-color: var(--c-purple); }
+.progress-punto[data-color="orange"] { border-color: var(--c-orange); }
+.progress-punto[data-color="gold"] { border-color: var(--c-gold); }
+.progress-punto[data-color="blue"] { border-color: var(--c-blue); }
+/* Remate sobre una franja vacía (vista semanal): neutro, como la pista */
+.progress-punto[data-color="vacio"] { border-color: color-mix(in srgb, var(--text-muted) 45%, var(--bg-card)); }
+
+.progress-punto.cerrado {
+    border: none;
+}
+
+.progress-punto.cerrado[data-color="green"] { background: linear-gradient(var(--c-green), var(--c-green)), var(--bg-card); }
+.progress-punto.cerrado[data-color="red"] { background: linear-gradient(var(--c-red), var(--c-red)), var(--bg-card); }
+.progress-punto.cerrado[data-color="purple"] { background: linear-gradient(var(--c-purple), var(--c-purple)), var(--bg-card); }
+.progress-punto.cerrado[data-color="orange"] { background: linear-gradient(var(--c-orange), var(--c-orange)), var(--bg-card); }
+.progress-punto.cerrado[data-color="gold"] { background: linear-gradient(var(--c-gold), var(--c-gold)), var(--bg-card); }
+.progress-punto.cerrado[data-color="vacio"] { background: linear-gradient(color-mix(in srgb, var(--text-muted) 45%, var(--bg-card)), color-mix(in srgb, var(--text-muted) 45%, var(--bg-card))), var(--bg-card); }
+.progress-punto.cerrado[data-color="blue"] { background: linear-gradient(var(--c-blue), var(--c-blue)), var(--bg-card); }
+
+.progress-fill {
+    height: 100%;
+    background: var(--bg-card);
+    border-radius: var(--radius-full);
+    transition: width var(--dur-slow), background-color var(--dur-slow) ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill.shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    animation: shimmer 5s ease-in-out infinite;
+    will-change: transform;
+}
+
+#progress-bar {
+    width: 0%;
+}
+
+/* El último tramo de la parte llena se degrada hacia el color del remate */
+.stats-card .progress-fill.con-remate {
+    background: linear-gradient(90deg, var(--color-barra) calc(100% - 2rem), var(--color-remate));
+}
+
+/* Conteo inicial del valor: la barra llena con la misma duración y curva que el número */
+.stats-card.conteo-inicial .progress-fill {
+    transition: width var(--dur-conteo) var(--ease-conteo), background-color var(--dur-slow) ease;
+}
+
+/* ─── LÍNEA DEL DÍA: entrada, salida estimada y salida con buffer ───────────── */
+
+.toggle-hint:empty {
+    display: none;
+}
+
+.progress-pista {
+    transition: margin var(--dur-slow) var(--ease-conteo);
+}
+
+/* Hint integrado: la pista reserva el alto de la línea (vista diaria o semanal) */
+.progress-pista.reserva-linea,
+.progress-pista.con-linea {
+    margin: calc(var(--space-lg) + 1.2rem) 0 calc(var(--space-lg) + 1.2rem + var(--ajuste-optico));
+}
+
+/* Al aparecer (display none → block) los elementos de la línea entran con fundido; el estado final es el natural de cada uno */
+@keyframes linea-aparece {
+    from { opacity: 0; }
+}
+
+@keyframes linea-etiqueta-aparece {
+    from { opacity: 0; translate: 0 0.35rem; }
+}
+
+.progress-pista.con-linea::before {
+    animation: linea-aparece var(--dur-slow) ease backwards;
+}
+
+.progress-pista.con-linea .linea-banda {
+    animation: linea-aparece var(--dur-slow) ease 0.25s backwards;
+}
+
+.progress-pista.con-linea .linea-tick {
+    animation: linea-aparece var(--dur-slow) ease 0.15s backwards;
+}
+
+.progress-pista.con-linea .linea-tick--buffer {
+    animation-delay: 0.3s;
+}
+
+.progress-pista.con-linea .linea-etiqueta {
+    animation: linea-etiqueta-aparece var(--dur-slow) var(--ease-conteo) 0.3s backwards;
+}
+
+.progress-pista.con-linea .linea-etiqueta--arriba {
+    animation-delay: 0.45s;
+}
+
+.progress-pista.con-linea::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+}
+
+.progress-pista.con-linea .progress-bar {
+    position: relative;
+}
+
+.progress-pista.con-linea .progress-fill.segmentado {
+    background-image: linear-gradient(90deg, var(--seg-1) 0 var(--seg-a), var(--seg-2) var(--seg-a) var(--seg-b), var(--seg-3) var(--seg-b) 100%);
+    background-size: var(--ancho-pista, 100%) 100%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+}
+
+.linea-banda,
+.linea-tick,
+.linea-etiqueta {
+    display: none;
+    position: absolute;
+    pointer-events: none;
+}
+
+.progress-pista.con-linea .linea-banda,
+.progress-pista.con-linea .linea-tick,
+.progress-pista.con-linea .linea-etiqueta {
+    display: block;
+}
+
+/* Vista semanal: se ocultan los elementos de la línea del día; los hitos de cada día (clase "dia") viven dentro de #linea-semana */
+.linea-semana { display: none; }
+
+.progress-pista.linea-semanal .linea-semana { display: contents; }
+
+.progress-pista.linea-semanal > .linea-banda,
+.progress-pista.linea-semanal > .linea-tick,
+.progress-pista.linea-semanal > .linea-etiqueta {
+    display: none;
+}
+
+.linea-etiqueta--arriba.dia { font-weight: 400; }
+
+/* Sigla que no entra: queda solo el punto de anclaje sobre la barra */
+.linea-etiqueta--oculta { display: none !important; }
+.linea-tick.solo-punto .hito-flecha { display: none; }
+
+.linea-banda {
+    top: 0;
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: var(--banda-color, transparent);
+    opacity: 0.35;
+    transition: left var(--dur-slow), width var(--dur-slow), background var(--dur-slow) ease;
+}
+
+/* Marca en "T" con flecha: sale de la barra hacia el lado de su etiqueta y se curva libremente hasta apuntar a su centro.
+   El dibujo (svg) es el de la marca de salida con la etiqueta a la izquierda; las demás variantes son espejos. */
+.linea-tick {
+    --tick-color: var(--text-muted);
+    --alto-conector: calc(0.8rem + var(--text-sm) / 2);
+    top: 100%;
+    width: 26px;
+    height: var(--alto-conector);
+    margin-left: -24px;
+    transform-origin: 24px 50%;
+    color: var(--tick-color);
+    z-index: 1;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease;
+}
+
+.linea-tick svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: color var(--dur-slow) ease;
+}
+
+/* Contorno del punto de anclaje (en el sprite no puede ir como atributo style: la CSP no permite estilos en línea) */
+#hito-ancla circle {
+    stroke: var(--bg-card);
+    stroke-width: 1.2;
+}
+
+.linea-tick--buffer {
+    top: auto;
+    bottom: 100%;
+    transform: scaleY(-1);
+}
+
+.linea-tick.espejado { transform: scaleX(-1); }
+.linea-tick--buffer.espejado { transform: scale(-1, -1); }
+
+.linea-tick--buffer.positivo { --tick-color: var(--c-green); }
+.linea-tick--buffer.negativo { --tick-color: var(--c-red); }
+
+.linea-etiqueta {
+    font-size: var(--text-sm);
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease;
+}
+
+.linea-etiqueta--abajo { top: calc(100% + 0.8rem); }
+.linea-etiqueta--abajo.linea-etiqueta--entrada-arriba { top: auto; bottom: calc(100% + 0.8rem); }
+.linea-etiqueta--arriba { bottom: calc(100% + 0.8rem); font-weight: 600; }
+.linea-etiqueta--arriba.positivo { color: var(--c-green); }
+.linea-etiqueta--arriba.negativo { color: var(--c-red); }
+
+.stats-card.conteo-inicial .progress-punto {
+    transition: left var(--dur-conteo) var(--ease-conteo), opacity var(--dur-fast) ease, border-color var(--dur-slow) ease, background var(--dur-slow) ease;
+}
+
+/* ─── REGISTROS ──────────────────────────────────────────────────────────────── */
+
+.registro-item {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    cursor: pointer;
+    background: var(--input-bg);
+    content-visibility: auto;
+    contain-intrinsic-size: 85px;
+}
+
+.registro-item.hoy::before {
+    content: "HOY";
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    border: 2px solid var(--text-main);
+    color: var(--text-main);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-bold);
+    padding: var(--space-2xs) var(--space-lg);
+    border-radius: var(--radius-md);
+    letter-spacing: 0.05em;
+}
+
+.registro-fecha {
+    font-weight: var(--fw-semibold);
+    margin-bottom: var(--space-xs);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.registro-fecha-texto {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.registro-comentario {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xsm);
+    font-weight: var(--fw-normal);
+    min-width: 0;
+    max-width: 65%;
+}
+
+.icon-comentario,
+.cal-popup-caja-icono {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.registro-comentario-texto {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.registro-horas,
+.registro-comentario,
+.cal-popup-3l,
+.cal-popup-caja,
+.btn-perfil-detalle {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.registro-total {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--c-white);
+    display: inline-block;
+    border-radius: var(--radius-full);
+    padding: var(--space-2xs) var(--space-lg);
+}
+
+.registro-total.neutro-text {
+    color: var(--text-muted);
+    padding: var(--space-2xs) 0;
+}
+
+.registro-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+}
+
+.registro-mes-container {
+    margin: 0;
+    scroll-margin-top: 5rem;
+}
+
+.registro-mes-header {
+    color: var(--text-muted);
+    font-size: var(--text-md);
+    transition: color var(--dur-fast);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-lg);
+    position: sticky;
+    top: var(--sticky-mes-top);
+    z-index: 5;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+}
+
+.registro-mes-detalle .registro-mes-header {
+    top: calc(var(--sticky-mes-top) + var(--mes-header-h));
+    z-index: 4;
+}
+
+.registro-mes-detalle.expanded>.detalle-inner {
+    overflow: visible;
+}
+
+/* Días no laborables sin registro (según los días laborales vigentes en cada fecha) */
+.calendario-dia.dia-sin-registro.no-laborable {
+    opacity: 0.5;
+}
+
+/* ─── COLORES COMPARTIDOS ────────────────────────────────────────────────────── */
+
+.registro-total.green-text,
+.calendario-dia.dia-normal,
+.cal-semana-punto--green,
+.cal-popup-badge--green,
+.progress-fill.green {
+    background: var(--c-green);
+}
+
+.registro-total.red-text,
+.calendario-dia.dia-incompleto,
+.calendario-dia.dia-especial-red,
+.progress-fill.red,
+.cal-semana-punto--red,
+.cal-popup-badge--red {
+    background: var(--c-red);
+}
+
+.registro-total.purple-text,
+.calendario-dia.dia-especial-purple,
+.cal-semana-punto--purple,
+.cal-popup-badge--purple,
+.progress-fill.purple {
+    background: var(--c-purple);
+}
+
+.registro-total.orange-text,
+.calendario-dia.dia-especial-orange,
+.cal-semana-punto--orange,
+.cal-popup-badge--orange,
+.progress-fill.orange {
+    background: var(--c-orange);
+}
+
+.calendario-dia.dia-cubierto,
+.registro-total.gold-text,
+.calendario-dia.dia-especial-gold,
+.cal-semana-punto--gold,
+.cal-popup-badge--gold,
+.progress-fill.gold {
+    background: var(--c-gold);
+}
+
+.calendario-dia.dia-especial-blue,
+.registro-total.blue-text,
+.calendario-dia.dia-en-curso,
+.cal-semana-punto--blue,
+.cal-popup-badge--blue,
+.progress-fill.blue {
+    background: var(--c-blue);
+}
+
+
+/* ─── CALENDARIO ─────────────────────────────────────────────────────────────── */
+
+#calendario-selector-meses {
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    align-content: start;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+.btn-mes-calendario {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-weight: var(--fw-semibold);
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+    height: var(--touch-target);
+    font-size: var(--text-sm);
+}
+
+.btn-mes-calendario.activo {
+    border-color: var(--c-active);
+    background: var(--c-blue);
+    color: var(--c-white);
+}
+
+.selector-meses-anio-header {
+    grid-column: 1 / -1;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-bold);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: var(--space-xsm) var(--space-xs) var(--space-2xs);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-2xs);
+}
+
+.calendario-grid {
+    position: relative;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: var(--space-xs);
+    margin-top: var(--space-md);
+    grid-template-rows: auto repeat(6, 1fr);
+}
+
+/* Banda de la semana actual: absoluta dentro de la fila de la grilla, detrás de las celdas */
+.calendario-semana-actual {
+    position: absolute;
+    inset: 6px -6px;
+    border-radius: var(--radius-full);
+    background: var(--input-bg);
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.calendario-semana-actual.abierta-izq {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.calendario-semana-actual.abierta-der {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.calendario-dia-nombre {
+    text-align: center;
+    font-weight: var(--fw-semibold);
+    color: var(--text-main);
+    padding: var(--space-xs) 0;
+    font-size: var(--text-sm);
+}
+
+.calendario-dia {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    position: relative;
+    transition: opacity var(--dur-fast);
+}
+
+.calendario-dia.dia-filtrado,
+.calendario-filtro-activo .calendario-dia.dia-sin-registro {
+    opacity: 0.25;
+}
+
+.calendario-dia.vacio {
+    visibility: hidden;
+    cursor: default;
+}
+
+.calendario-dia.hoy {
+    outline: 2px solid var(--text-muted);
+    outline-offset: -2px;
+    font-weight: var(--fw-bold);
+}
+
+.calendario-dia.tiene-comentario::after {
+    content: '';
+    position: absolute;
+    top: calc(6% - 2.5px);
+    right: calc(6% - 2.5px);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--text-main);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.calendario-dia.dia-sin-registro {
+    color: var(--text-muted);
+}
+
+/* Entrada inicial (una sola vez al cargar): pop escalonado en los días con registro,
+   el número sube un instante después y el remate (punto y hoy) cierra la secuencia.
+   Las clases las pone y las saca Calendario.animarEntradaInicial(); solo transform/opacity. */
+.calendario-grid {
+    --cal-fin: calc(var(--dur-cal-espera) + var(--cal-n, 0) * var(--cal-paso, 0ms) + var(--dur-cal-entrada));
+}
+
+.calendario-dia.cal-entrada {
+    animation-name: calendarioEntradaDia;
+    animation-duration: var(--dur-cal-entrada);
+    animation-timing-function: var(--ease-pop);
+    animation-delay: calc(var(--dur-cal-espera) + var(--i, 0) * var(--cal-paso, 0ms));
+    animation-fill-mode: backwards;
+}
+
+.calendario-dia.cal-entrada .calendario-dia-num {
+    display: inline-block;
+    animation-name: calendarioEntradaNumero;
+    animation-duration: var(--dur-cal-numero);
+    animation-timing-function: ease-out;
+    animation-delay: calc(var(--dur-cal-espera) + var(--i, 0) * var(--cal-paso, 0ms) + 100ms);
+    animation-fill-mode: backwards;
+}
+
+.calendario-dia.cal-entrada.tiene-comentario::after {
+    animation-name: calendarioEntradaDia;
+    animation-duration: var(--dur-anim);
+    animation-timing-function: var(--ease-pop);
+    animation-delay: var(--cal-fin);
+    animation-fill-mode: backwards;
+}
+
+.calendario-dia.cal-entrada-remate {
+    animation-name: calendarioEntradaDia;
+    animation-duration: var(--dur-cal-entrada);
+    animation-timing-function: var(--ease-pop);
+    animation-delay: var(--cal-fin);
+    animation-fill-mode: backwards;
+}
+
+.stat-label {
+    color: var(--text-muted);
+}
+
+.stat-value {
+    color: var(--text-main);
+    font-size: var(--text-base);
+    font-variant-numeric: tabular-nums;
+}
+
+
+.stat-value.saldo-positivo {
+    color: var(--c-green);
+}
+
+.stat-value.saldo-negativo {
+    color: var(--c-red);
+}
+
+.stat-value.saldo-neutro {
+    color: var(--text-main);
+}
+
+.calendario-titulo {
+    font-size: var(--text-base);
+    font-weight: var(--fw-semibold);
+    color: var(--text-main);
+    text-transform: capitalize;
+    cursor: pointer;
+    padding-left: var(--space-lg);
+}
+
+.calendario-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-sm);
+    min-height: var(--touch-target);
+}
+
+.calendario-nav button {
+    background: none;
+    flex-shrink: 0;
+    width: var(--touch-target);
+    height: var(--touch-target);
+    padding: var(--space-xs);
+    padding-left: var(--space-lg);
+    font-size: var(--text-base);
+    text-transform: capitalize;
+    transition: filter var(--transition-ui);
+}
+
+.cal-popup,
+.stat-popup,
+.filtro-popup {
+    position: fixed;
+    z-index: var(--z-popup);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+    transform: scale(0.15);
+    opacity: 0;
+    transform-origin: center center;
+    transition: var(--transition-pop-out);
+    will-change: transform, opacity;
+}
+
+.cal-popup.show,
+.stat-popup.show,
+.filtro-popup.show {
+    transform: scale(1);
+    opacity: 1;
+    transition: var(--transition-pop-in);
+}
+
+.cal-popup {
+    min-width: 160px;
+    max-width: 220px;
+    gap: var(--space-xsm);
+}
+
+.cal-popup.listo,
+.stat-popup.listo,
+.filtro-popup.listo {
+    pointer-events: all;
+}
+
+.cal-popup-fecha {
+    font-weight: var(--fw-bold);
+    color: var(--text-muted);
+}
+
+.cal-popup-info {
+    font-size: var(--text-base);
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+}
+
+.cal-popup-badge {
+    display: inline-block;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--c-white);
+    border-radius: var(--radius-full);
+    padding: var(--space-2xs) var(--space-smd);
+    width: fit-content;
+}
+
+.cal-popup-caja {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-xsm);
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xsm) var(--space-sm);
+    margin-top: var(--space-2xs);
+    word-break: break-word;
+    line-height: var(--lh-normal);
+}
+
+.cal-popup-caja-icono {
+    margin-top: 2px;
+}
+
+.cal-popup-caja-texto {
+    flex: 1;
+}
+
+.cal-popup-btn-edit {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--c-gray-btn);
+    font-size: var(--text-sm);
+}
+
+.cal-popup-info--blue {
+    color: var(--c-blue);
+}
+
+.cal-popup-info--green {
+    color: var(--c-green);
+}
+
+.cal-popup-info--gold {
+    color: var(--c-gold);
+}
+
+.cal-popup-info--red {
+    color: var(--c-red);
+}
+
+.cal-popup-sin-reg {
+    font-size: var(--text-sm);
+    color: var(--text-disabled);
+    font-style: italic;
+}
+
+.cal-popup-btn-accion {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-2xs);
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    border-radius: var(--radius-full);
+    width: 100%;
+    text-align: left;
+    transition: opacity var(--dur-anim) var(--ease-anim);
+}
+
+.cal-popup-btn-accion--normal,
+.cal-popup-btn-accion--especial {
+    color: var(--text-main);
+}
+
+/* ─── POPUP DE ESTADÍSTICA ───────────────────────────────────────────────────── */
+
+.stat-item {
+    cursor: pointer;
+}
+
+.stat-popup {
+    min-width: 160px;
+    max-width: 240px;
+    gap: var(--space-xs);
+}
+
+.stat-popup-titulo {
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+}
+
+.stat-popup-desc {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    line-height: var(--lh-normal);
+}
+
+.stat-popup-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-smd) 0;
+}
+
+.stat-popup-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+.stat-popup-metric span {
+    color: var(--text-muted);
+}
+
+.stat-popup-metric strong {
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.stat-popup-metric+.stat-popup-metric {
+    margin-top: var(--space-xs);
+}
+
+/* ─── FILTRO POPUP ───────────────────────────────────────────────────────────── */
+
+.filtro-popup {
+    width: 250px;
+    max-width: calc(100vw - 16px);
+    gap: 0;
+}
+
+.filtro-popup-titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xsm);
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+    margin-bottom: var(--space-md);
+}
+
+.filtro-popup .form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* ─── SECCIONES COLAPSABLES ──────────────────────────────────────────────────── */
+
+#botones-historico {
+    transition: var(--transition-collapse), padding var(--dur-anim) ease-out, margin var(--dur-anim) ease-out, visibility 0s linear var(--vis-delay);
+    padding-top: 0;
+    margin-bottom: 0;
+}
+
+#botones-historico.expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    padding-top: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+/* ─── ANIMACIONES ────────────────────────────────────────────────────────────── */
+
+.nuevo-registro-animacion {
+    transform-origin: center;
+    z-index: 3;
+    position: relative;
+    animation: mutacionEntrada var(--dur-anim) ease-out;
+}
+
+.animated-card {
+    animation: slideDownFade var(--dur-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
+}
+
+#calendario-grid,
+#lista-registros,
+#vista-calendario-historico,
+#calendario-selector-meses {
+    transition: var(--transition-collapse);
+}
+
+.mutacion-saliente {
+    animation: mutacionSalida var(--dur-anim) ease forwards;
+}
+
+.mutacion-entrante {
+    animation: mutacionEntrada var(--dur-anim) ease forwards;
+}
+
+#lista-registros {
+    overflow: visible;
+}
+
+/* ─── COMPONENTES VARIOS ─────────────────────────────────────────────────────── */
+
+.card-header-clickable {
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    position: relative;
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: transform var(--transition-ui);
+}
+
+.card-header-clickable * {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+}
+
+.chevron {
+    transition: transform var(--transition-ui);
+    position: absolute;
+    right: 0;
+}
+
+.chevron.rotated,
+.chevron-mes.rotated {
+    transform: rotate(180deg);
+}
+
+.chevron-mes {
+    width: 1em;
+    height: 1em;
+    fill: currentColor;
+    stroke: none;
+    stroke-width: 0;
+    flex-shrink: 0;
+    transition: transform var(--transition-ui);
+    order: 1;
+}
+
+.timer-btn.running {
+    color: var(--c-red);
+    border-color: var(--c-red);
+
+}
+
+.timer-btn.running:not(:disabled) {
+    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+}
+
+.toggle-hint,
+.config-hint-text,
+.version-text {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    text-align: right;
+    display: block;
+    margin-top: var(--space-xs);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem var(--space-lg);
+    color: var(--text-muted);
+}
+
+
+.empty-state__btn-restaurar {
+    width: auto;
+    margin: var(--space-lg) auto 0;
+    font-size: var(--text-sm);
+}
+
+.empty-state--calendario {
+    grid-column: span 3;
+    padding: var(--space-lg);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+    margin-top: var(--space-lg);
+}
+
+#stats-mensaje {
+    color: var(--text-muted);
+}
+
+.stats-periodo-row select,
+.flex-1,
+.registro-info {
+    flex: 1;
+}
+
+
+.botones-historico-group {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+/* El texto del buffer ocupa una sola línea: la parte principal ("... faltantes") se recorta con puntos suspensivos si hace falta,
+   y " esta semana" se muestra solo si entra a continuación (si no entra pasa a una segunda línea que queda recortada) */
+#stats-buffer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    font-size: var(--text-base);
+    line-height: var(--lh-normal);
+    min-height: 1.2rem;
+    max-height: calc(1em * var(--lh-normal));
+    overflow: hidden;
+}
+
+#stats-buffer .buffer-semanal-texto:not(.buffer-semanal-sufijo) {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#stats-buffer .buffer-semanal-sufijo {
+    margin-left: 0.3em;
+    white-space: nowrap;
+}
+
+.card-registrar-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
+}
+
+.card-registrar-header * {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+}
+
+#btn-timer-main {
+    padding: var(--space-sm);
+    position: absolute;
+    left: 0;
+    touch-action: manipulation;
+    transition: opacity var(--transition-ui), visibility var(--transition-ui);
+}
+
+#btn-timer-main * {
+    touch-action: manipulation;
+}
+
+#btn-timer-main:disabled {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#icon-indicator-form {
+    position: absolute;
+    right: 0;
+    cursor: pointer;
+}
+
+.btn-toggle-periodo {
+    width: 100px;
+    height: var(--input-height);
+    padding: var(--space-xs) 0;
+    font-size: var(--text-sm);
+    gap: var(--space-xs);
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.btn-toggle-periodo .icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.botones-historico-inner {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: 0 var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.buffer-semanal-punto {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: var(--space-xsm);
+}
+
+.buffer-semanal-punto.positivo {
+    background-color: var(--c-green);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.buffer-semanal-punto.negativo {
+    background-color: var(--c-red);
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+.push-permiso-estado {
+    display: flex;
+    align-items: center;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.buffer-semanal-punto.neutral {
+    background-color: var(--c-orange);
+    border-radius: 50%;
+}
+
+.buffer-semanal-texto {
+    font-weight: var(--fw-medium);
+}
+
+.buffer-semanal-texto.positivo {
+    color: var(--c-green);
+}
+
+.buffer-semanal-texto.negativo {
+    color: var(--c-red);
+}
+
+.hint-buffer-color {
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.hint-buffer-color::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: currentColor;
+    flex-shrink: 0;
+}
+
+.hint-buffer-color--green::before {
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.hint-buffer-color--red::before {
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+.hint-buffer-color--green {
+    color: var(--c-green);
+}
+
+.hint-buffer-color--red {
+    color: var(--c-red);
+}
+
+.break-counter-label {
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--c-red);
+    margin-left: var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2em;
+}
+
+.break-counter-label .icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.tf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    background: var(--c-red);
+    color: var(--c-white);
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    padding: var(--space-2xs) var(--space-smd);
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+}
+
+.tf-badge .icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.tf-badge .break-counter-label {
+    color: inherit;
+    margin-left: 0.2em;
+}
+
+.estado-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    padding: var(--space-2xs) var(--space-smd);
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+}
+
+.estado-badge--en-curso {
+    background: var(--c-blue);
+    color: var(--c-white);
+    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+}
+
+/* Objetivo diario cumplido con la jornada todavía abierta: el mismo parpadeo, más rápido */
+.estado-badge--en-curso.estado-badge--cumplido {
+    animation-duration: 1.2s;
+}
+
+.estado-badge--finalizado {
+    color: var(--c-white);
+}
+
+.estado-badge--finalizado.estado-badge--green {
+    background: var(--c-green);
+}
+
+.estado-badge--finalizado.estado-badge--red {
+    background: var(--c-red);
+}
+
+.estado-badge--finalizado.estado-badge--gold {
+    background: var(--c-gold);
+}
+
+
+/* ─── POPUP DE LA SEMANA (long press / click secundario sobre el calendario) ─── */
+
+
+.cal-popup.cal-popup-semana {
+    min-width: 250px;
+    max-width: min(340px, calc(100vw - 16px));
+}
+
+.cal-semana-total {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.cal-popup-semana .registro-total {
+    padding: var(--space-2xs) var(--space-smd);
+}
+
+.cal-semana-lista {
+    /* punto | día | horario | total | diferencia: una sola grilla para alinear todas las filas */
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto;
+    align-items: center;
+    gap: var(--space-sm) var(--space-md, 0.75rem);
+    font-size: var(--text-sm);
+}
+
+.cal-semana-lista > * {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cal-semana-punto {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.cal-semana-punto--neutro {
+    background: var(--text-muted);
+}
+
+.cal-semana-dia,
+.cal-semana-hs {
+    color: var(--text-main);
+}
+
+.cal-semana-dia {
+    font-weight: var(--fw-semibold);
+    min-width: 3.4em;
+}
+
+.cal-semana-hs {
+    text-align: right;
+}
+
+.cal-semana-diff {
+    text-align: right;
+    font-weight: var(--fw-semibold);
+}
+
