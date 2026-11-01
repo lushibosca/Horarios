@@ -269,11 +269,21 @@ function _renderBarra(vista, desdeCero = false) {
     el.classList.toggle('con-remate', !conLinea && !conSemana && vista.estadoFondo === 'en_curso' && !!punto && punto.classList.contains('visible'));
 }
 
-function _renderMensaje(vista) {
+// Último mensaje renderizado, para reevaluar si entra en una línea al cambiar el ancho (rotar, redimensionar)
+let _mensajeActual = null;
+
+// Muestra el mensaje completo y, solo si se parte en dos líneas, la variante corta. Cada render parte del texto completo,
+// así que si en el minuto siguiente entra, vuelve solo; sin variante corta (o con el formato corto activo) no cambia nada.
+function _renderMensaje(vista = _mensajeActual) {
     const el = $('stats-mensaje');
-    if (!el) return;
-    el.textContent = vista.mensaje;
+    if (!el || !vista) return;
+    _mensajeActual = vista;
     el.style.display = vista.mostrarMensaje ? 'block' : 'none';
+    el.textContent = vista.mensaje;
+    if (!vista.mostrarMensaje || !vista.mensajeCorto || vista.mensajeCorto === vista.mensaje) return;
+    const estilo = getComputedStyle(el);
+    const alto = parseFloat(estilo.lineHeight) || parseFloat(estilo.fontSize) * 1.2;
+    if (el.scrollHeight > alto * 1.5) el.textContent = vista.mensajeCorto;
 }
 
 function _renderCard(vista) {
@@ -437,6 +447,7 @@ function bindEventos() {
             resizeTimer = setTimeout(() => {
                 crearObserver();
                 BarraHitos.redibujar();
+                _renderMensaje();
             }, 200);
         });
     })();

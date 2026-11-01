@@ -35,8 +35,23 @@ EventosApp.on('config:hint-integrado', () => {
     _hintIntegrado = Almacenamiento.getBoolean(STORAGE_KEYS.HINT_INTEGRADO, DEFAULTS.HINT_INTEGRADO);
 });
 
+// Solo se activa mientras se deriva la variante corta del mensaje de la tarjeta (ver _conMensajeCorto): no toca la opción del usuario
+let _forzarCorto = false;
+
 function _modoTextoStats() {
-    return _formatoCortoStatsCache ? 'short' : 'long';
+    return _formatoCortoStatsCache || _forzarCorto ? 'short' : 'long';
+}
+
+// Agrega vista.mensajeCorto (el mismo mensaje con el tiempo abreviado: "2h 26m") para que el render la use solo si el largo no entra en una línea.
+// Con el formato corto ya activo el mensaje ya es corto y no hace falta variante.
+function _conMensajeCorto(derivar) {
+    return (est) => {
+        const vista = derivar(est);
+        if (_formatoCortoStatsCache || !vista.mostrarMensaje) return vista;
+        _forzarCorto = true;
+        try { vista.mensajeCorto = derivar(est).mensaje; } finally { _forzarCorto = false; }
+        return vista;
+    };
 }
 
 // Con la jornada recién abierta el reloj marca 0 minutos: se muestra un texto en lugar del cero
@@ -445,8 +460,8 @@ function derivarVistaHoy(est) {
 }
 
 export const TarjetaFichajeVista = {
-    derivarVistaSemana,
-    derivarVistaHoy,
+    derivarVistaSemana: _conMensajeCorto(derivarVistaSemana),
+    derivarVistaHoy: _conMensajeCorto(derivarVistaHoy),
     _cantidadHoras,
     _modoTextoStats,
     _hintIntegradoActivo: () => _hintIntegrado,
