@@ -22,7 +22,7 @@ const {
     _renderConFirma, _conRendersSinAnimar, _rendersSinAnimarActivos, _animarFadeSwap,
     _animarMutacion, _animarConteo, _conteoEnCurso, _cancelarConteo, _durSiAnima
 } = Animaciones;
-const { _cantidadHoras, _modoTextoStats, _hintIntegradoActivo } = TarjetaFichajeVista;
+const { _cantidadHoras, _cantidadHorasCorta, _modoTextoStats, _hintIntegradoActivo } = TarjetaFichajeVista;
 
 const { setProgressBarColor, toggleFondoCard, actualizarFondoCard } = TarjetaFondos;
 const {
@@ -302,7 +302,10 @@ function _renderHint(vista) {
     else el.textContent = vista.hint;
 }
 
-function _renderBuffer(est) {
+// Último estado renderizado, para reevaluar si entra en una línea al cambiar el ancho (rotar, redimensionar)
+let _bufferActual = null;
+
+function _dibujarBuffer(est, corto) {
     const el = $('stats-buffer');
     if (!el) return;
     el.innerHTML = '';
@@ -314,16 +317,26 @@ function _renderBuffer(est) {
         punto.className = `buffer-semanal-punto ${claseColor}`;
         const span = document.createElement('span');
         span.className = `buffer-semanal-texto ${claseColor}`;
-        const { texto: textoBuffer, singular } = _cantidadHoras(Math.abs(bufferSemanal));
+        const { texto: textoBuffer, singular } = (corto ? _cantidadHorasCorta : _cantidadHoras)(Math.abs(bufferSemanal));
         const adjetivo = esPositivo ? (singular ? 'extra' : 'extras') : (singular ? 'faltante' : 'faltantes');
         span.textContent = `${textoBuffer} ${adjetivo}`;
         span.insertBefore(punto, span.firstChild);
-        // " esta semana" va aparte: si no entra en la misma línea, se oculta (ver #stats-buffer)
+        // " esta semana" va aparte: si ni con el tiempo abreviado entra en la misma línea, se oculta (ver #stats-buffer)
         const sufijo = document.createElement('span');
         sufijo.className = `buffer-semanal-texto buffer-semanal-sufijo ${claseColor}`;
         sufijo.textContent = 'esta semana';
         el.append(span, sufijo);
     }
+}
+
+// Muestra el tiempo completo y, solo si " esta semana" no entra en la línea, lo abrevia ("2h 48m"). Cada render parte del texto completo,
+// así que si luego entra, vuelve solo.
+function _renderBuffer(est = _bufferActual) {
+    const el = $('stats-buffer');
+    if (!el || !est) return;
+    _bufferActual = est;
+    _dibujarBuffer(est, false);
+    if (el.scrollHeight > el.clientHeight + 1) _dibujarBuffer(est, true);
 }
 
 function _animarCambioCard(renderFn) {
@@ -448,6 +461,7 @@ function bindEventos() {
                 crearObserver();
                 BarraHitos.redibujar();
                 _renderMensaje();
+                _renderBuffer();
             }, 200);
         });
     })();

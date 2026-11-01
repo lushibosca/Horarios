@@ -42,6 +42,13 @@ function _modoTextoStats() {
     return _formatoCortoStatsCache || _forzarCorto ? 'short' : 'long';
 }
 
+// Igual que _cantidadHoras pero con el tiempo abreviado ("2h 48m"), sin depender de la opción del usuario
+function _cantidadHorasCorta(horasDecimales) {
+    if (_formatoCortoStatsCache) return _cantidadHoras(horasDecimales);
+    _forzarCorto = true;
+    try { return _cantidadHoras(horasDecimales); } finally { _forzarCorto = false; }
+}
+
 // Agrega vista.mensajeCorto (el mismo mensaje con el tiempo abreviado: "2h 26m") para que el render la use solo si el largo no entra en una línea.
 // Con el formato corto ya activo el mensaje ya es corto y no hace falta variante.
 function _conMensajeCorto(derivar) {
@@ -463,6 +470,7 @@ export const TarjetaFichajeVista = {
     derivarVistaSemana: _conMensajeCorto(derivarVistaSemana),
     derivarVistaHoy: _conMensajeCorto(derivarVistaHoy),
     _cantidadHoras,
+    _cantidadHorasCorta,
     _modoTextoStats,
     _hintIntegradoActivo: () => _hintIntegrado,
     _refrescarFormatoCortoStatsCache
