@@ -1,93 +1,66 @@
-# Barra semanal adaptable a los registros (idea no implementada)
+# Barra semanal adaptable a los registros
 
-Estado: **probada y revertida** (2026-10-31). Este documento guarda el diseño por si se retoma.
-Se probó la variante B (ver abajo), funcionaba y pasaba los tests, pero se prefirió dejar el modelo actual de franjas fijas.
+Estado: **implementada** (commit `5ecea20`, 2026-10-31). Una primera prueba de la variante B con pesos por objetivo se revirtió; este es el diseño que quedó, que reparte la barra por **horas trabajadas** sobre el objetivo semanal.
 
-## Contexto: cómo es hoy la barra semanal
+## Dónde vive
 
-Con el *hint integrado* activo, la barra de la vista semanal (`src/ui/tarjeta-fichaje-vista.js`, `_franjasSemana`) usa **franjas fijas por día**:
+- **Datos** (tramos, hitos, fracciones, descripciones, prioridad): `_franjasSemana` en `src/ui/tarjeta-fichaje-vista.js`.
+- **Dibujo** de los hitos (DOM, posiciones, lado de cada etiqueta, badge de hoy): `src/ui/barra-hitos.js` (`_renderSemana`).
+- **Geometría pura** de las etiquetas: `src/core/geometria-etiquetas.js`.
+- **Estado de cada día** (`diasSemana`): `calcularEstadoCard` en `src/services/estado-tarjeta.js`. Un elemento por día con `fecha`, `objetivo`, `total`, `activo`, `estado` (constantes `ESTADO_DIA`: `cerrado` | `activo` | `especial` | `sin-salida` | `sin-registro` | `futuro`), `especial` (color del tipo) y `cumplimiento` (`CUMPLIMIENTO`, solo en días cerrados: cumplido | cubierto | faltante).
+- El hint integrado debe estar activo para ver los hitos (activo por defecto).
 
-- Cada día laborable de la semana (o con registro) ocupa una franja de la **pista completa**, proporcional a su objetivo.
-  Con 5 días de 7 h, cada franja es 1/5 de la barra.
-- Lo trabajado rellena la franja con el color del estado del día (verde cumplió, rojo faltó, dorado cubierto por saldo, azul en curso, color del tipo si es especial). Un día sin registro o futuro deja la franja vacía.
-- Hay un hito por día al final de su franja, con flecha curva y sigla (`lun`, `mar`, ...). Los días seguidos del mismo tipo sin horas (sin registro, futuros, especiales del mismo color) se fusionan en un solo hito con rango (`lun–mié`).
-- Si dos siglas del mismo lado no entran, la sigla prueba el otro lado y, si tampoco entra, queda solo el punto de anclaje (prioridad: días con horas, luego especiales, luego sin registro).
-- Los datos salen de `diasSemana`, que arma `calcularEstadoCard` (`src/services/estado-tarjeta.js`): un elemento por día con `fecha`, `objetivo`, `total`, `activo`, `estado` (`cerrado` | `activo` | `especial` | `sin-registro` | `futuro`) y `especial` (color del tipo).
+## El modelo
 
-### Qué no cierra del modelo actual
+La barra se adapta a lo que se trabajó en lugar de repartirse en franjas fijas por día (el modelo anterior, `2710aa5` y `925c15d`, dejaba la mayor parte vacía en semanas con pocos registros y apilaba los hitos).
 
-En una semana con pocos registros la mayor parte de la barra queda como pista vacía (días futuros) y los hitos de los días ya pasados se apilan. Sirvió de disparador de esta idea, en especial una semana con varios días sin registro y uno especial, donde las siglas se encimaban.
+1. **La pista completa es el objetivo semanal.**
+2. **Cada día ocupa un tramo proporcional a las horas que trabajó** (`d.total`), relleno entero con el color de su estado: verde cumplió, rojo faltó, dorado cubierto por saldo, azul en curso, color del tipo si es especial. Un día corto no deja hueco: queda más angosto.
+3. **Lo que falta de la semana es el espacio vacío al final.** La parte llena termina donde termina el último tramo (`franjas.fin`), de modo que la barra sigue mostrando el avance.
+4. **Con más horas que el objetivo** la pista se estira hasta lo trabajado: todo entra y la barra queda llena, con los días anteriores algo más angostos. No puede crecer más que la tarjeta, así que el exceso solo se lee en el texto ("Vas X de más").
+5. **Días sin horas** (especial, sin salida, sin registro, o con registro pero 0 h): un tramo fijo y chico, `_PESO_DIA_SIN_HORAS = 1` (1 h), para poder marcarlos. Los especiales se rellenan con su color; los demás quedan vacíos.
+6. **Escala:** `total = max(objetivoSemana, horasTrabajadas) + tramos fijos`. Si se cumple el objetivo con días sin horas de por medio, la barra queda justo llena.
 
-## La idea
+### Qué días entran
 
-Que la barra se **adapte a los registros que hay**: si solo existen lunes y martes (con lunes a viernes configurados como laborables), la barra se divide entre esos dos días y no deja lugar a los días futuros.
+Todos menos `futuro`, **salvo hoy**, que entra aunque no tenga registro todavía (tramo fijo, sin relleno). Así el badge de hoy aparece desde el principio del día. Los demás futuros no entran: ese espacio es lo que falta del objetivo.
 
-Hay dos formas de repartir el ancho:
+### Hitos
 
-| | Ancho de cada día | Relleno | Con lunes y martes |
-|---|---|---|---|
-| **A** | Proporcional a las **horas trabajadas** | Siempre llena | Lunes 7 h y martes 3 h: 70% / 30%, todo relleno |
-| **B** | Proporcional a su **objetivo**, solo de los días con registro | Horas / objetivo de cada día | Cada uno 50%; el martes con 3 h de 7 h rellena 43% de su mitad |
+- Un hito por día, al final de su tramo, con flecha y etiqueta.
+- **Fusión:** los días seguidos `sin-registro` o especiales del mismo color forman un solo hito con rango (`lun–mié`). `sin-salida` no se fusiona. **Hoy nunca se fusiona.**
+- **Etiquetas:** cada hito trae la `sigla` de tres letras (`lun`, `mar`, `mié`, ...) y la `inicial` (`L`, `M`, `X`, `J`, `V`, `S`, `D`; rango `L–X`). `barra-hitos.js` usa la inicial solo en móviles (`matchMedia('(max-width: 600px)')`, el corte del CSS responsivo; el resize ya redibuja) y la sigla en pantallas más anchas.
+- **Descripción** para lectores de pantalla: siempre con la sigla de tres letras (una "M" sola sería ambigua) y `(hoy)` en el día actual, por ejemplo `mié (hoy) día especial`.
+- **Prioridad** si no entran todas las etiquetas en un lado (la resuelve `repartirLados`): hoy (3), días con registro (2), especiales y sin salida (1), sin registro (0). La que no entra queda como punto de anclaje.
+- **Badge de hoy:** la etiqueta de hoy lleva la clase `linea-etiqueta--hoy`: fondo `--text-main` y texto `--bg-card`, neutros e invertidos en cada tema para no confundirse con los colores de estado. La clase se pone antes de medir la etiqueta, porque el badge cambia su ancho.
 
-### Variante A (literal a lo pedido)
+### Remates
 
-La barra se divide según las horas de cada día y siempre ocupa el 100%.
-- Contra: un día corto parece "pequeño" aunque haya cumplido, y uno largo parece más importante. Pierde la información de cuánto faltó en cada día.
+El del comienzo toma el color de la primera franja (`vacio` si está vacía); el del final, el del último tramo con relleno.
 
-### Variante B (la que se probó y se recomendó)
+## Ejemplo
 
-Mantiene el relleno por día contra su objetivo, pero solo reparte la barra entre los días que existen. Es el modelo actual **filtrando los días futuros**, más dos ajustes de peso.
+Objetivo 35 h; lunes 7 h cumplido, martes 3,5 h faltante, miércoles especial, jueves y viernes sin registro, sábado futuro. Pista = 35 + 3 tramos fijos = 38 h:
 
-## Diseño de la B
+| Tramo | Color | Desde → hasta |
+|---|---|---|
+| lun | verde | 0 → 7/38 |
+| mar | rojo | 7/38 → 10,5/38 |
+| mié | color del tipo | 10,5/38 → 11,5/38 |
+| jue–vie | vacío (un hito fusionado) | hasta 13,5/38 |
 
-1. **Qué días entran:** todos menos `futuro` (cerrados, en curso, especiales y laborables pasados sin registro).
-2. **Peso de la franja:**
-   - Día con horas (`cerrado` o `activo`): su objetivo (o `horasDiarias` si el objetivo es 0).
-   - Día especial o sin registro: un peso fijo y chico, `_PESO_DIA_SIN_HORAS = 1` (1 h). Así no se llevan casi toda la barra cuando hay varios.
-3. **Relleno:** igual que hoy. `min(1, total / peso)` con el color del estado; el especial rellena la franja entera.
-4. **Hitos y fusión:** igual que hoy, al final de cada franja. Se fusionan días seguidos `sin-registro` o especiales del mismo color (`lun–mié`). Ya no hace falta el tipo `futuro` en la fusión.
-5. **Ancho de la parte llena:** termina donde termina el último relleno (`franjas.fin`), como hoy. La pista cubre el 100% de los días que entran.
-6. **Remates:** el del comienzo toma el color de la primera franja (`vacio` si está vacía); el del final, el color del último tramo con relleno. Sin cambios.
+El resto de la pista (más del 60 %) es lo que falta. La parte llena mide 11,5/38.
 
-### Cambios de código (referencia)
+## Tests
 
-Solo `_franjasSemana` en `src/ui/tarjeta-fichaje-vista.js`; el servicio, el render y el CSS no cambian.
+`tests/domain.test.mjs`, bloque de franjas: la semana de ejemplo de arriba, dos días con el objetivo sin cumplir (tramos 7/35 y 10,5/35, ancho 30 %), hoy con badge sin fusionar y entrando sin registro, día sin salida (tramo fijo, no se fusiona, sin relleno), semana con exceso (pista estirada, hito final en 1) y el remate de inicio `vacio` con la primera franja vacía.
 
-```js
-const _PESO_DIA_SIN_HORAS = 1;
+## Limitaciones conocidas
 
-function _franjasSemana(todosLosDias, horasDiarias) {
-    const diasSemana = (todosLosDias ?? []).filter(d => d.estado !== 'futuro');
-    if (!diasSemana.length || !(horasDiarias > 0)) return null;
-    const conHoras = d => d.estado === 'cerrado' || d.estado === 'activo';
-    const pesos = diasSemana.map(d => conHoras(d) ? (d.objetivo > 0 ? d.objetivo : horasDiarias) : _PESO_DIA_SIN_HORAS);
-    const total = pesos.reduce((a, b) => a + b, 0);
-    // ...resto igual: relleno = especial ? 1 : conHoras(d) ? min(1, d.total / pesos[i]) : 0
-    // tipoFusion: 'sin-registro' o `especial-${color}`; prioridad: conHoras(d) ? 2 : especial ? 1 : 0
-}
-```
-
-Para la **variante A** el cambio es el peso de los días con horas: usar `d.total` en vez de `d.objetivo`, y el relleno pasa a ser siempre 1 (el color sigue siendo el del estado).
-
-### Tests que cambian (`tests/domain.test.mjs`, bloque de franjas)
-
-- Semana de ejemplo con pesos `7 + 7 + 1 + 1 + 1 = 17` (lun cumplido, mar con 3,5 h, mié especial, jue y vie sin registro, sáb futuro): tramos `[0, 7/17]`, `[7/17, 10,5/17]` y `[14/17, 15/17]`; hitos `lun 7/17`, `mar 14/17`, `mié 15/17`, `jue–vie 1`; `anchoBarra = 15/17·100`.
-- Caso nuevo "solo lunes y martes": hitos `lun 0,5` y `mar 1`; `anchoBarra = 100`.
-- Se mantiene la aserción del remate de inicio `vacio` cuando la primera franja está vacía.
-
-## Contras y riesgos (a decidir antes de retomarlo)
-
-- **La barra deja de mostrar el avance de la semana.** Con la barra repartida solo entre días existentes, una semana con un único día cumplido se ve completa. Lo que falta de la semana queda solo en el texto de abajo ("Faltan …"). Hoy el espacio vacío cuenta cuánto falta.
-- **Los hitos se reacomodan** cada vez que se suma un registro y, con el día abierto, a medida que crece su relleno. Las transiciones de `left` lo vuelven un deslizamiento suave, pero se mueve. La variante A además reacomoda por cada minuto trabajado; la B solo al cambiar la cantidad de días.
-- **Comparabilidad entre semanas:** al cambiar el ancho de cada franja según cuántos días hay, una misma jornada no mide lo mismo a lo largo de la semana.
-- **Días sin registro:** hay que seguir marcándolos (se pidió explícitamente). Por eso la B les da un peso mínimo en lugar de excluirlos.
-
-## Alternativa para conservar el avance
-
-Si se retoma y se quiere no perder la lectura de "cuánto falta": repartir como en la B, pero agregar una marca de **fin de semana esperado** o un trazo tenue de lo que resta hasta el objetivo semanal, o mostrar el porcentaje del objetivo junto al total. No se diseñó en detalle.
-
-## Datos de contexto
-
-- El hint integrado debe estar activo para ver cualquier hito (activo por defecto desde `86085b2`).
-- Commit del modelo actual: `2710aa5` (franjas fijas) y `925c15d` (fusión por tipo consecutivo).
-- Capturas que motivaron la idea: semanas con varios días sin registro y uno especial, donde las siglas se apilaban en el primer tercio de la barra.
+- **Comparabilidad entre semanas:** el ancho de cada día depende de las horas, así que una misma jornada no mide lo mismo en semanas distintas ni según el total.
+- **Exceso poco visible:** una semana con horas de más se ve igual de llena que una justa. Opciones si hace falta: una marca en el objetivo cuando se supera, o mostrar el porcentaje junto al total. No se diseñó.
+- **Hitos que se mueven:** al sumar un día, o al crecer el día en curso una vez superado el objetivo, los hitos se reacomodan. Las transiciones de `left` lo vuelven un deslizamiento suave.
+- **Tramo fijo de 1 h:** con una pista de unos 300 px mide unos 9 px; si queda justo para el punto y la flecha, se ajusta en `_PESO_DIA_SIN_HORAS`.
+- **Badge y flecha:** el padding vertical del badge hace la etiqueta unos 4 px más alta, así que la flecha de hoy puede apuntar apenas fuera del centro.
+- **Hoy sin ficharse aún** lo marca `futuro` el servicio. El badge igualmente aparece (ver "Qué días entran"), pero sin relleno.
+- **Sin tramos:** si ningún día entra con color (todo sin registro, sin horas), `_franjasSemana` devuelve `null` y la vista cae al progreso clásico.

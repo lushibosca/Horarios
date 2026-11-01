@@ -3,10 +3,12 @@
 // ====================================================================
 // Cada marca de la barra es una "T" con flecha: sale hacia su lado y termina en el medio de su etiqueta.
 // La etiqueta queda a la izquierda del conector; si no entra, se espeja a la derecha.
-export const ANCHO_CONECTOR = 21;        // de la marca a la punta de la flecha
-export const SEPARACION_ETIQUETA = 4;    // de la punta de la flecha a la etiqueta
+export const ANCHO_CONECTOR = 19;        // de la marca al final de la línea diagonal
+export const SEPARACION_ETIQUETA = 2;    // del final de la línea a la etiqueta
 export const MARGEN_HORAS = 12;          // separación mínima entre horas del mismo lado antes de reubicar la entrada
 export const MARGEN_SIGLAS = 8;          // separación mínima entre siglas del mismo lado en la vista semanal
+export const ANCHO_DIAGONAL = 16;        // de la marca al extremo de la sigla rotada (línea diagonal más separación)
+export const ANCHO_PASO_DIAGONAL = 24;   // ancho de pista que ocupa cada sigla en diagonal (paralelas entre sí)
 const MEDIO_ANCHO_MARCA = 3;
 
 /**
@@ -25,6 +27,27 @@ export function geometriaConector(x, w, margen = 0) {
         left,
         desde: espejado ? x - MEDIO_ANCHO_MARCA : left - margen / 2,
         hasta: espejado ? left + w + margen / 2 : x + MEDIO_ANCHO_MARCA
+    };
+}
+
+/**
+ * Vista semanal con la sigla en diagonal: la línea sale de la marca a 45° (hacia abajo/arriba y a la izquierda) y la sigla, rotada a 45°,
+ * sigue la misma recta con su extremo pegado al final de la línea. Si a la izquierda no hay lugar para la sigla rotada, todo se espeja a la derecha.
+ * `left` es el borde izquierdo de la etiqueta sin rotar (el giro es sobre el extremo que toca la línea); `desde`/`hasta` es el tramo de pista que ocupa:
+ * como las siglas quedan paralelas, dos del mismo lado no se pisan mientras sus marcas estén separadas lo que ocupa una (`ANCHO_PASO_DIAGONAL`).
+ * @param {number} x
+ * @param {number} w ancho de la etiqueta sin rotar
+ * @param {number} h alto de la etiqueta sin rotar
+ * @param {number} [margen]
+ */
+export function geometriaDiagonal(x, w, h, margen = 0) {
+    const alcance = ANCHO_DIAGONAL + Math.SQRT1_2 * (w + h / 2);
+    const espejado = x - alcance < 0;
+    return {
+        espejado,
+        left: espejado ? x + ANCHO_DIAGONAL : x - ANCHO_DIAGONAL - w,
+        desde: x - ANCHO_PASO_DIAGONAL / 2 - margen / 2,
+        hasta: x + ANCHO_PASO_DIAGONAL / 2 + margen / 2
     };
 }
 

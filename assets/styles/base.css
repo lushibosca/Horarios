@@ -39,7 +39,6 @@ body {
 
 .header {
     background: var(--bg-header);
-    backdrop-filter: blur(10px);
     padding: var(--space-smd);
     box-shadow: var(--shadow);
     position: sticky;

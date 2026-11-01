@@ -91,6 +91,21 @@
     }
 }
 
+/* Latido del remate de la barra, sincronizado con el paso del brillo (ver "shimmer"): sube mientras el brillo lo cruza y vuelve despacio */
+@keyframes remate-latido {
+    0%, 11.4% { scale: 1; }
+    14% { scale: 1.1; }
+    22%, 100% { scale: 1; }
+}
+
+/* Onda que sale del remate con el latido */
+@keyframes remate-onda {
+    0%, 12.6% { scale: 1; opacity: 0; }
+    13.4% { scale: 1; opacity: 0.55; }
+    25% { scale: 2; opacity: 0; }
+    100% { scale: 2; opacity: 0; }
+}
+
 @keyframes campo-flash {
 
     0%,
@@ -520,6 +535,19 @@ button.campo-flash-color {
     display: none;
 }
 
+/* Sin brillo no hay latido del remate (el selector repite el del latido para ganarle en especificidad) */
+:root[data-motion="reduce"] .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado),
+:root[data-motion="reduce"] .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
+    animation: none;
+}
+
+
+/* Con un modal abierto el brillo y el latido de la barra quedan detrás del overlay: se pausan para no mantener el pipeline de frames (ni el desenfoque del overlay) trabajando por algo que no se ve */
+body.modal-open .progress-fill.shimmer::after,
+body.modal-open .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado),
+body.modal-open .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
+    animation-play-state: paused;
+}
 
 /* Reducir animaciones: la barra indeterminada del toast de progreso queda quieta */
 :root[data-motion="reduce"] .toast-progreso:indeterminate {

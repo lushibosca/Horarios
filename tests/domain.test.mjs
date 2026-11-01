@@ -350,14 +350,14 @@ test('TarjetaFichajeVista: derivarVistaHoy y derivarVistaSemana marcan estado ce
     });
     assert.equal(vistaSemanaEnCurso.cerrado, false);
 
-    // Franjas por día: cada día ocupa una porción fija de la barra (por su objetivo) y lo trabajado la rellena con el color de su estado
+    // Franjas por día: la pista es el objetivo semanal y cada día ocupa un tramo proporcional a las horas que trabajó, relleno entero con el color de su estado
     const base = { totalSemana: 14, totalSemanaProgreso: 14, objetivoSemana: 35, semanaAbierta: true, horasDiarias: 7, todosEspeciales: false };
     const dia = (fecha, estado, extra = {}) => ({ fecha, objetivo: 7, total: 0, activo: false, estado, ...extra });
     const vistaFranjas = TarjetaFichajeVista.derivarVistaSemana({
         ...base,
         diasSemana: [
-            dia('2026-10-26', 'cerrado', { total: 7, cumplimiento: 'cumplido' }),   // lun: cumplió -> franja entera verde
-            dia('2026-10-27', 'cerrado', { total: 3.5, cumplimiento: 'faltante' }),   // mar: faltó -> mitad de la franja
+            dia('2026-10-26', 'cerrado', { total: 7, cumplimiento: 'cumplido' }),   // lun: cumplió
+            dia('2026-10-27', 'cerrado', { total: 3.5, cumplimiento: 'faltante' }),   // mar: faltó, pero su tramo es más angosto y va entero rojo
             dia('2026-10-28', 'especial', { objetivo: 0, especial: 'purple' }),
             dia('2026-10-29', 'sin-registro'),
             dia('2026-10-30', 'sin-registro'),
@@ -366,20 +366,21 @@ test('TarjetaFichajeVista: derivarVistaHoy y derivarVistaSemana marcan estado ce
     });
     // el relleno solo existe si el hint integrado está activo (por defecto lo está)
     assert.ok(vistaFranjas.tramosSemana, 'con el hint integrado hay franjas');
-    const sextos = n => n / 6;
+    // pista = objetivo (35) + 3 tramos fijos de 1 h (mié, jue, vie) = 38; el futuro (sáb) no entra
+    const f = n => Number((n / 38).toFixed(4));
     assert.deepEqual(vistaFranjas.tramosSemana.map(t => [t.color, Number(t.desde.toFixed(4)), Number(t.hasta.toFixed(4))]), [
-        ['green', 0, Number(sextos(1).toFixed(4))],
-        [vistaFranjas.tramosSemana[1].color, Number(sextos(1).toFixed(4)), Number((sextos(1) + sextos(1) / 2).toFixed(4))],
-        ['purple', Number(sextos(2).toFixed(4)), Number(sextos(3).toFixed(4))]
+        ['green', 0, f(7)],
+        ['red', f(7), f(10.5)],
+        ['purple', f(10.5), f(11.5)]
     ]);
-    // los días seguidos del mismo tipo se fusionan: jue–vie (sin registro) es un solo hito; el futuro (sáb) es otro
-    assert.deepEqual(vistaFranjas.hitosSemana.map(h => [h.sigla, Number(h.fraccion.toFixed(4))]), [
-        ['lun', Number(sextos(1).toFixed(4))], ['mar', Number(sextos(2).toFixed(4))], ['mié', Number(sextos(3).toFixed(4))],
-        ['jue–vie', Number(sextos(5).toFixed(4))], ['sáb', 1]
+    // los días seguidos del mismo tipo se fusionan: jue–vie (sin registro) es un solo hito; cada hito trae también su inicial para móviles (L M X J V S D)
+    assert.deepEqual(vistaFranjas.hitosSemana.map(h => [h.sigla, h.inicial, Number(h.fraccion.toFixed(4))]), [
+        ['lun', 'L', f(7)], ['mar', 'M', f(10.5)], ['mié', 'X', f(11.5)], ['jue–vie', 'J–V', f(13.5)]
     ]);
-    // cada hito lleva su descripción para lectores de pantalla
-    assert.deepEqual(vistaFranjas.hitosSemana.map(h => h.descripcion), ['lun cumplido', 'mar con faltante', 'mié día especial', 'jue–vie sin registro', 'sáb pendiente']);
+    // cada hito lleva su descripción para lectores de pantalla (con el nombre abreviado del día, no la inicial)
+    assert.deepEqual(vistaFranjas.hitosSemana.map(h => h.descripcion), ['lun cumplido', 'mar con faltante', 'mié día especial', 'jue–vie sin registro']);
     assert.equal(vistaFranjas.colorInicioSemana, 'green');
+    assert.equal(typeof vistaFranjas.siglasCortas, 'boolean', 'la vista informa si el formato de tiempo corto pide las iniciales');
     // si la primera franja está vacía, el remate del comienzo es neutro aunque más adelante haya rellenos
     const vistaPrimeraVacia = TarjetaFichajeVista.derivarVistaSemana({
         ...base,
@@ -388,8 +389,49 @@ test('TarjetaFichajeVista: derivarVistaHoy y derivarVistaSemana marcan estado ce
     assert.equal(vistaPrimeraVacia.colorInicioSemana, 'vacio');
     assert.equal(vistaPrimeraVacia.colorFinSemana, 'orange');
     assert.equal(vistaFranjas.colorFinSemana, 'purple');
-    // la parte llena termina donde termina el último relleno
-    assert.ok(Math.abs(vistaFranjas.anchoBarra - sextos(3) * 100) < 1e-6);
+    // la parte llena termina donde termina el último relleno: lo que falta del objetivo queda vacío al final
+    assert.ok(Math.abs(vistaFranjas.anchoBarra - f(11.5) * 100) < 0.01);
+
+    // solo lunes y martes con el objetivo sin cumplir: sus tramos son proporcionales a las horas y el resto de la pista queda vacío
+    const vistaDosDias = TarjetaFichajeVista.derivarVistaSemana({
+        ...base,
+        diasSemana: [dia('2026-10-26', 'cerrado', { total: 7, cumplimiento: 'cumplido' }), dia('2026-10-27', 'cerrado', { total: 3.5, cumplimiento: 'faltante' }), dia('2026-10-28', 'futuro')]
+    });
+    assert.deepEqual(vistaDosDias.hitosSemana.map(h => [h.sigla, Number(h.fraccion.toFixed(6))]), [['lun', 0.2], ['mar', 0.3]]);
+    assert.ok(Math.abs(vistaDosDias.anchoBarra - 30) < 1e-6);
+
+    // hoy lleva el badge, no se fusiona con el día anterior del mismo tipo y entra aunque todavía no tenga registro (los demás futuros no)
+    const vistaHoy = TarjetaFichajeVista.derivarVistaSemana({
+        ...base,
+        hoy: '2026-10-28',
+        diasSemana: [dia('2026-10-26', 'especial', { objetivo: 0, especial: 'purple' }), dia('2026-10-27', 'especial', { objetivo: 0, especial: 'purple' }),
+            dia('2026-10-28', 'especial', { objetivo: 0, especial: 'purple' }), dia('2026-10-29', 'futuro')]
+    });
+    assert.deepEqual(vistaHoy.hitosSemana.map(h => [h.sigla, !!h.hoy]), [['lun–mar', false], ['mié', true]]);
+    assert.equal(vistaHoy.hitosSemana[1].descripcion, 'mié (hoy) día especial');
+    const vistaHoySinRegistro = TarjetaFichajeVista.derivarVistaSemana({
+        ...base,
+        hoy: '2026-10-28',
+        diasSemana: [dia('2026-10-26', 'cerrado', { total: 7, cumplimiento: 'cumplido' }), dia('2026-10-27', 'cerrado', { total: 7, cumplimiento: 'cumplido' }), dia('2026-10-28', 'futuro'), dia('2026-10-29', 'futuro')]
+    });
+    assert.deepEqual(vistaHoySinRegistro.hitosSemana.map(h => [h.sigla, !!h.hoy]), [['lun', false], ['mar', false], ['mié', true]]);
+    assert.equal(vistaHoySinRegistro.hitosSemana[2].prioridad, 3);
+
+    // un día sin salida pesa un tramo fijo, no se fusiona y no se rellena
+    const vistaSinSalida = TarjetaFichajeVista.derivarVistaSemana({
+        ...base,
+        diasSemana: [dia('2026-10-26', 'sin-salida'), dia('2026-10-27', 'sin-salida'), dia('2026-10-28', 'cerrado', { total: 7, cumplimiento: 'cumplido' })]
+    });
+    assert.deepEqual(vistaSinSalida.hitosSemana.map(h => [h.sigla, h.prioridad]), [['lun', 1], ['mar', 1], ['mié', 2]]);
+    assert.equal(vistaSinSalida.colorInicioSemana, 'vacio');
+
+    // con más horas que el objetivo la pista se estira hasta lo trabajado: la barra queda llena y el último hito llega al final
+    const vistaDeMas = TarjetaFichajeVista.derivarVistaSemana({
+        ...base, objetivoSemana: 10,
+        diasSemana: [dia('2026-10-26', 'cerrado', { total: 8, cumplimiento: 'cumplido' }), dia('2026-10-27', 'cerrado', { total: 8, cumplimiento: 'cumplido' })]
+    });
+    assert.deepEqual(vistaDeMas.hitosSemana.map(h => [h.sigla, h.fraccion]), [['lun', 0.5], ['mar', 1]]);
+    assert.equal(vistaDeMas.anchoBarra, 100);
 
     // Día cerrado (con salida registrada)
     const vistaDiaCerrado = TarjetaFichajeVista.derivarVistaHoy({

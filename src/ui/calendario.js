@@ -332,11 +332,13 @@ function _buildInfoHtmlRegistro(reg, asignaciones = null) {
     const diffClase = { cumplido: 'cal-popup-info--green', cubierto: 'cal-popup-info--gold', incompleto: 'cal-popup-info--red' }[est.estado] || '';
     const totalConDiff = TiempoUtils.horasATexto(reg.total || 0, 'short') + (est.diffText ? ` (${est.diffText})` : '');
     const cubiertoLineaHtml = est.estado === 'cubierto' ? html`<span class="cal-popup-badge cal-popup-badge--gold">Cubierto</span>` : '';
+    const salidaTempranaLineaHtml = reg.credito && reg.credito !== '00:00' ? html`<span class="cal-popup-badge cal-popup-badge--blue">Salida temprana</span>` : '';
     const compensadoLineaHtml = est.fechaCompensado
         ? html`<span class="cal-popup-badge cal-popup-badge--purple">→ ${TiempoUtils.fechaCorta(est.fechaCompensado)}</span>`
         : '';
     return html`<div class="cal-popup-info${diffClase ? ' ' + diffClase : ''}">${totalConDiff}</div>
         ${cubiertoLineaHtml}
+        ${salidaTempranaLineaHtml}
         ${compensadoLineaHtml}
         <div class="cal-popup-3l">${reg.entrada} → ${reg.salida}</div>
         ${tfStr ? _cajaPopupHtml('#icon-exit', tfStr) : ''}`;

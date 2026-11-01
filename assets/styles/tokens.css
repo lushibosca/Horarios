@@ -17,7 +17,7 @@
     --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
     --bg-body: #f5f6fa;
     --bg-card: #ffffff;
-    --bg-header: #f5f6faee;
+    --bg-header: #f5f6fa;
     --text-main: #1f1f1f;
     --text-muted: #444746;
     --text-disabled: #444746a2;
@@ -113,7 +113,7 @@ html.dark-mode body,
 body.dark-mode {
     --bg-body: #131314;
     --bg-card: #1e1f20;
-    --bg-header: #131314f6;
+    --bg-header: #131314;
     --text-main: #e3e3e3;
     --text-muted: #b4b4b4;
     --text-disabled: #b4b4b4a2;
@@ -131,7 +131,7 @@ html[data-theme="pink"] body,
 body[data-theme="pink"] {
     --bg-body: #fdf1f6;
     --bg-card: #ffffff;
-    --bg-header: #fdf1f6ee;
+    --bg-header: #fdf1f6;
     --text-main: #4a2c39;
     --text-muted: #8a6572;
     --text-disabled: #8a657299;
@@ -150,7 +150,7 @@ html[data-theme="crema"] body,
 body[data-theme="crema"] {
     --bg-body: #fbf6ee;
     --bg-card: #ffffff;
-    --bg-header: #fbf6eeee;
+    --bg-header: #fbf6ee;
     --text-main: #423223;
     --text-muted: #85705d;
     --text-disabled: #85705d99;
@@ -169,7 +169,7 @@ html[data-theme="green"] body,
 body[data-theme="green"] {
     --bg-body: #f0f8f2;
     --bg-card: #ffffff;
-    --bg-header: #f0f8f2ee;
+    --bg-header: #f0f8f2;
     --text-main: #24402c;
     --text-muted: #53755c;
     --text-disabled: #628a6d99;
@@ -188,7 +188,7 @@ html[data-theme="blue"] body,
 body[data-theme="blue"] {
     --bg-body: #eef4fc;
     --bg-card: #ffffff;
-    --bg-header: #eef4fcee;
+    --bg-header: #eef4fc;
     --text-main: #223449;
     --text-muted: #5f7691;
     --text-disabled: #5f769199;
@@ -206,7 +206,7 @@ html[data-theme="lilac"] body,
 body[data-theme="lilac"] {
     --bg-body: #f6f3fc;
     --bg-card: #ffffff;
-    --bg-header: #f6f3fcee;
+    --bg-header: #f6f3fc;
     --text-main: #3a2e4f;
     --text-muted: #7b6894;
     --text-disabled: #7b689499;
@@ -225,7 +225,7 @@ html[data-theme="medianoche"] body,
 body[data-theme="medianoche"] {
     --bg-body: #0b1120;
     --bg-card: #131c2e;
-    --bg-header: #0b1120f6;
+    --bg-header: #0b1120;
     --text-main: #e2e8f0;
     --text-muted: #94a3b8;
     --text-disabled: #94a3b8a2;

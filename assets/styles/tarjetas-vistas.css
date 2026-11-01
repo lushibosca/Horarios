@@ -104,7 +104,7 @@
 }
 
 .stats-inner {
-    min-height: 30rem;
+    min-height: 31rem;
     display: flex;
     flex-direction: column;
     transition: min-height var(--dur-collapse) ease-out;
@@ -156,6 +156,24 @@
 
 .progress-punto.visible {
     opacity: 1;
+}
+
+/* Latido del remate cuando el brillo de la barra lo alcanza.
+   Mismo ciclo (5 s) que el brillo, y arranca junto con él (se activa con la clase .shimmer): el brillo llega al remate a ~11 % del ciclo y lo deja a ~15 %; el latido sube con él y vuelve hasta ~22 %. */
+.progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado) {
+    animation: remate-latido 5s ease-in-out infinite;
+}
+
+.progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    box-sizing: border-box;
+    border: 2px solid;
+    border-color: inherit;
+    border-radius: 50%;
+    opacity: 0;
+    animation: remate-onda 5s ease-out infinite;
 }
 
 .progress-punto[data-color="green"] { border-color: var(--c-green); }
@@ -221,6 +239,7 @@
 }
 
 .progress-pista {
+    --centro-etiqueta: 17.5px;   /* distancia del borde de la barra al centro de las etiquetas de la vista diaria (donde termina la línea diagonal) */
     transition: margin var(--dur-slow) var(--ease-conteo);
 }
 
@@ -309,9 +328,40 @@
 
 .linea-etiqueta--arriba.dia { font-weight: 400; }
 
+/* Vista semanal: la sigla va en diagonal, siguiendo la línea de su marca (ver geometriaDiagonal). Abajo la línea sube hacia la derecha (-45°) y arriba baja (+45°).
+   El giro es sobre el extremo que toca la línea, que queda a ~13 px de la barra; espejada (sin lugar a la izquierda) gira sobre el otro extremo. */
+.linea-etiqueta.dia {
+    transform-origin: 100% 50%;
+}
+
+.linea-etiqueta--abajo.dia {
+    top: calc(100% + 13px - var(--text-sm) / 2);
+    transform: rotate(-45deg);
+}
+
+.linea-etiqueta--arriba.dia {
+    bottom: calc(100% + 13px - var(--text-sm) / 2);
+    transform: rotate(45deg);
+}
+
+.linea-etiqueta--espejada.dia { transform-origin: 0 50%; }
+.linea-etiqueta--espejada.linea-etiqueta--abajo.dia { transform: rotate(45deg); }
+.linea-etiqueta--espejada.linea-etiqueta--arriba.dia { transform: rotate(-45deg); }
+
+/* Línea diagonal de las marcas de la vista semanal: fina */
+.hito-diagonal {
+    stroke-width: 1.3;
+}
+
+/* Hoy: la sigla resaltada (neutra: no se confunde con los colores de estado de la barra) */
+.linea-etiqueta--hoy.dia {
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+}
+
 /* Sigla que no entra: queda solo el punto de anclaje sobre la barra */
 .linea-etiqueta--oculta { display: none !important; }
-.linea-tick.solo-punto .hito-flecha { display: none; }
+.linea-tick.solo-punto .hito-diagonal { display: none; }
 
 .linea-banda {
     top: 0;
@@ -322,14 +372,13 @@
     transition: left var(--dur-slow), width var(--dur-slow), background var(--dur-slow) ease;
 }
 
-/* Marca en "T" con flecha: sale de la barra hacia el lado de su etiqueta y se curva libremente hasta apuntar a su centro.
-   El dibujo (svg) es el de la marca de salida con la etiqueta a la izquierda; las demás variantes son espejos. */
+/* Marca de la barra: punto sobre la barra y una línea diagonal a 45° que sale hacia el lado de su etiqueta (abajo o arriba) y termina a su costado.
+   El dibujo (svg de 26 x 20, con el punto en x=24) es el de la etiqueta a la izquierda; las demás variantes son espejos. */
 .linea-tick {
     --tick-color: var(--text-muted);
-    --alto-conector: calc(0.8rem + var(--text-sm) / 2);
     top: 100%;
     width: 26px;
-    height: var(--alto-conector);
+    height: 20px;   /* igual al viewBox del svg: escala 1:1 */
     margin-left: -24px;
     transform-origin: 24px 50%;
     color: var(--tick-color);
@@ -377,9 +426,10 @@
     transition: left var(--dur-slow), opacity var(--dur-fast) ease;
 }
 
-.linea-etiqueta--abajo { top: calc(100% + 0.8rem); }
-.linea-etiqueta--abajo.linea-etiqueta--entrada-arriba { top: auto; bottom: calc(100% + 0.8rem); }
-.linea-etiqueta--arriba { bottom: calc(100% + 0.8rem); font-weight: 600; }
+/* El centro de la etiqueta queda a la altura donde termina la línea diagonal de su marca */
+.linea-etiqueta--abajo { top: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); }
+.linea-etiqueta--abajo.linea-etiqueta--entrada-arriba { top: auto; bottom: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); }
+.linea-etiqueta--arriba { bottom: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); font-weight: 600; }
 .linea-etiqueta--arriba.positivo { color: var(--c-green); }
 .linea-etiqueta--arriba.negativo { color: var(--c-red); }
 

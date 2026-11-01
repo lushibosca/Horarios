@@ -89,7 +89,8 @@ function _conAvisoAyer(vista, avisoAyerHint) {
     return avisoAyerHint ? { ...vista, ...avisoAyerHint } : vista;
 }
 
-const _SIGLAS_DIA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+const _SIGLAS_DIA = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];   // las que se ven en la barra y se leen en pantalla
+const _INICIALES_DIA = ['D', 'L', 'M', 'X', 'J', 'V', 'S'];   // versión angosta para móviles (la elige barra-hitos.js según el ancho)
 
 // Color del tramo de un día, con el mismo criterio que la vista diaria: en curso azul; cerrado verde si cumplió, dorado si lo cubre el saldo, rojo si faltó
 // (el resultado de cada día cerrado lo calcula el servicio: d.cumplimiento)
@@ -112,16 +113,28 @@ function _palabraEstadoDia(d) {
     }
 }
 
-// Barra semanal con hint integrado: cada día tiene una franja fija de la barra (proporcional a su objetivo) y lo trabajado la rellena con el color del estado del día.
-// Un día especial rellena su franja entera con el color de su tipo; uno sin registro, sin salida o futuro la deja vacía. Los días seguidos del mismo tipo (sin registro, futuros o especiales del mismo color) se fusionan en un solo hito con rango (lun–mié).
-function _franjasSemana(diasSemana, horasDiarias) {
-    if (!diasSemana?.length || !(horasDiarias > 0)) return null;
-    const pesos = diasSemana.map(d => d.objetivo > 0 ? d.objetivo : horasDiarias);
-    const total = pesos.reduce((a, b) => a + b, 0);
-    const sigla = d => _SIGLAS_DIA[TiempoUtils.parsearFechaLocal(d.fecha).getDay()];
-    const tipoFusion = d => d.estado === ESTADO_DIA.SIN_REGISTRO || d.estado === ESTADO_DIA.FUTURO ? d.estado
-        : d.estado === ESTADO_DIA.ESPECIAL ? `${ESTADO_DIA.ESPECIAL}-${d.especial}` : null;
-    const conHoras = d => d.estado === ESTADO_DIA.ACTIVO || d.estado === ESTADO_DIA.CERRADO;
+// Barra semanal con hint integrado. La pista completa es el objetivo semanal y cada día ocupa un tramo proporcional a las horas que trabajó, relleno entero con el color de su estado:
+// un día corto no deja hueco (queda más angosto) y lo que falta de la semana es el espacio vacío al final. Si se trabajó más que el objetivo, la pista se estira hasta lo trabajado (todo entra y la barra queda llena).
+// Los días futuros no entran, salvo hoy aunque todavía no tenga registro. Los días sin horas (especial, sin salida, sin registro) ocupan un tramo fijo y chico para poder marcarlos;
+// los seguidos del mismo tipo (sin registro o especiales del mismo color) se fusionan en un solo hito con rango (L–X). Hoy nunca se fusiona: lleva el badge.
+// Cada hito trae su sigla (lun, mar...) y su inicial (L, M, X...) para que el dibujo use la que entre mejor.
+const _PESO_DIA_SIN_HORAS = 1;   // en horas
+function _franjasSemana(todosLosDias, horasDiarias, objetivoSemana, hoy) {
+    const diasSemana = (todosLosDias ?? []).filter(d => d.estado !== ESTADO_DIA.FUTURO || d.fecha === hoy);
+    if (!diasSemana.length || !(horasDiarias > 0)) return null;
+    const diaSemana = d => TiempoUtils.parsearFechaLocal(d.fecha).getDay();
+    const inicial = d => _INICIALES_DIA[diaSemana(d)];
+    const nombre = d => _SIGLAS_DIA[diaSemana(d)];
+    const conRegistro = d => d.estado === ESTADO_DIA.ACTIVO || d.estado === ESTADO_DIA.CERRADO;
+    const conHoras = d => conRegistro(d) && d.total > 0;
+    const esHoy = d => d.fecha === hoy;
+    const tipoFusion = d => esHoy(d) ? null
+        : d.estado === ESTADO_DIA.SIN_REGISTRO || d.estado === ESTADO_DIA.FUTURO ? d.estado
+            : d.estado === ESTADO_DIA.ESPECIAL ? `${ESTADO_DIA.ESPECIAL}-${d.especial}` : null;
+    const pesos = diasSemana.map(d => conHoras(d) ? d.total : _PESO_DIA_SIN_HORAS);
+    const horasTrabajadas = diasSemana.reduce((acc, d, i) => acc + (conHoras(d) ? pesos[i] : 0), 0);
+    const fijos = diasSemana.reduce((acc, d, i) => acc + (conHoras(d) ? 0 : pesos[i]), 0);
+    const total = Math.max(objetivoSemana > 0 ? objetivoSemana : 0, horasTrabajadas) + fijos;
 
     const tramos = [];
     const hitos = [];
@@ -130,25 +143,25 @@ function _franjasSemana(diasSemana, horasDiarias) {
     let colorPrimera = 'vacio';
     diasSemana.forEach((d, i) => {
         const fin = inicio + pesos[i] / total;
-        const relleno = d.estado === ESTADO_DIA.ESPECIAL ? 1 : conHoras(d) ? Math.min(1, Math.max(0, d.total / pesos[i])) : 0;
-        const color = d.estado === ESTADO_DIA.ESPECIAL ? d.especial : d.estado === ESTADO_DIA.ACTIVO ? 'blue' : d.estado === ESTADO_DIA.CERRADO ? _colorEstadoDia(d) : null;
-        if (relleno > 0.0001 && color) tramos.push({ desde: inicio, hasta: inicio + (fin - inicio) * relleno, color });
-        if (i === 0) colorPrimera = relleno > 0.0001 && color ? color : 'vacio';   // el remate del comienzo está sobre la primera franja, aunque esté vacía
+        const color = d.estado === ESTADO_DIA.ESPECIAL ? d.especial : conHoras(d) ? (d.estado === ESTADO_DIA.ACTIVO ? 'blue' : _colorEstadoDia(d)) : null;
+        if (color) tramos.push({ desde: inicio, hasta: fin, color });
+        if (i === 0) colorPrimera = color ?? 'vacio';   // el remate del comienzo está sobre la primera franja, aunque esté vacía
 
         const tipo = tipoFusion(d);
         if (previo && tipo && previo.tipo === tipo) {
             // día seguido del mismo tipo: el hito anterior se extiende hasta el final de esta franja y su sigla pasa a rango
             previo.hito.fraccion = fin;
-            previo.hito.sigla = `${previo.primera}–${sigla(d)}`;
+            previo.hito.sigla = `${previo.primera}–${nombre(d)}`;
+            previo.hito.inicial = `${previo.inicialPrimera}–${inicial(d)}`;
             previo.hito.descripcion = `${previo.hito.sigla} ${_palabraEstadoDia(d)}`;
         } else {
             const hito = {
-                fecha: d.fecha, sigla: sigla(d), fraccion: fin,
-                descripcion: `${sigla(d)} ${_palabraEstadoDia(d)}`,
-                prioridad: conHoras(d) ? 2 : d.estado === ESTADO_DIA.ESPECIAL || d.estado === ESTADO_DIA.SIN_SALIDA ? 1 : 0   // si no entran todas las siglas se conservan primero las de días con horas
+                fecha: d.fecha, sigla: nombre(d), inicial: inicial(d), fraccion: fin, hoy: esHoy(d),
+                descripcion: `${nombre(d)}${esHoy(d) ? ' (hoy)' : ''} ${_palabraEstadoDia(d)}`,
+                prioridad: esHoy(d) ? 3 : conRegistro(d) ? 2 : d.estado === ESTADO_DIA.ESPECIAL || d.estado === ESTADO_DIA.SIN_SALIDA ? 1 : 0   // si no entran todas las siglas se conservan primero hoy y los días con horas
             };
             hitos.push(hito);
-            previo = { tipo, hito, primera: hito.sigla };
+            previo = { tipo, hito, primera: hito.sigla, inicialPrimera: hito.inicial };
         }
         inicio = fin;
     });
@@ -166,7 +179,7 @@ function _textoStatsSemana(total, est, semanaAbierta) {
 }
 
 function derivarVistaSemana(est) {
-    const { totalSemana: tot, totalSemanaProgreso, objetivoSemana, semanaAbierta, horasDiarias, todosEspeciales } = est;
+    const { totalSemana: tot, totalSemanaProgreso, objetivoSemana, semanaAbierta, horasDiarias, todosEspeciales, hoy } = est;
     const prog = totalSemanaProgreso ?? tot;
 
     const progreso = _calcularProgreso(prog, objetivoSemana);
@@ -210,7 +223,7 @@ function derivarVistaSemana(est) {
     }
 
     const cerrado = !semanaAbierta && !todosEspeciales && horasDiarias > 0;
-    const franjas = _hintIntegrado && horasDiarias > 0 && !todosEspeciales ? _franjasSemana(est.diasSemana, horasDiarias) : null;
+    const franjas = _hintIntegrado && horasDiarias > 0 && !todosEspeciales ? _franjasSemana(est.diasSemana, horasDiarias, objetivoSemana, hoy) : null;
 
     return {
         titulo: `${icono('#icon-calendar-simple')} Esta Semana`,
@@ -224,6 +237,7 @@ function derivarVistaSemana(est) {
         hintEsHTML: false,
         ...(franjas ? {
             hitosSemana: franjas.hitos, tramosSemana: franjas.tramos,
+            siglasCortas: _formatoCortoStatsCache,   // con el formato de tiempo corto, en móviles los días van con su inicial (L, M, X...)
             colorInicioSemana: franjas.colorPrimera, colorFinSemana: franjas.tramos[franjas.tramos.length - 1].color
         } : {}),
     };
