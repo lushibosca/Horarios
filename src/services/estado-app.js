@@ -288,7 +288,6 @@ export const EstadoApp = {
     getGrupoEnEdicion: () => grupoEnEdicion,
     setGrupoEnEdicion: (val) => { grupoEnEdicion = val; },
     ordenarRegistros,
-    _ordenarRegistros: ordenarRegistros,
     registroPorFecha,
     registroPorId,
     existeRegistroEnFecha,

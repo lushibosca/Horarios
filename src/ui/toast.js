@@ -1,4 +1,5 @@
 import { $ } from '../core/dom.js';
+import { TOAST_MS } from '../core/constantes.js';
 import { SeguridadYUtils as S } from '../core/seguridad.js';
 import { Animaciones } from './animaciones.js';
 import { registrarSwipe } from './gestos.js';
@@ -16,17 +17,17 @@ let _toastAccionActual = null;
 const MAX_TOAST_QUEUE = 4;
 
 // Toast con barra de progreso (p. ej. descarga de una actualización): entra en la cola como cualquier otro y se queda en pantalla hasta que
-// termina; los toasts que lleguen mientras tanto esperan su turno detrás. Si algo se cuelga, se retira solo pasado un tiempo.
+// termina (tocarlo o deslizarlo no lo cierra); los toasts que lleguen mientras tanto esperan su turno detrás. Si algo se cuelga, se retira solo pasado un tiempo.
 const PROGRESO_MAX_MS = 45000;
 let _timerProgreso = null;
 /** @type {{ mensaje: string, porcentaje: number | null } | null} */
 let _progreso = null;
 let _progresoVisible = false;
 
-/** @param {any} [detalle] @param {any} [accion] */
-export function mostrarToast(mensaje, tipo = 'info', duracion = 3000, detalle = null, accion = null) {
+/** @param {string} mensaje @param {string} [tipo] @param {number} [duracion] @param {any} [detalle] @param {any} [accion] */
+export function mostrarToast(mensaje, tipo = 'info', duracion = TOAST_MS.NORMAL, detalle = null, accion = null) {
     const texto = detalle ? `${mensaje}, ${detalle}` : mensaje;
-    const textoLimpio = S.sanitizeString(texto, 200);
+    const textoLimpio = S.limpiarTexto(texto, 200, { saltos: true });
     const ultimo = _toastQueue[_toastQueue.length - 1];
     const actual = _toastRunning ? $('toast')?.textContent : null;
     if ((ultimo && ultimo.mensaje === textoLimpio) || actual === textoLimpio) return;
@@ -114,7 +115,7 @@ function _ocultarProgreso() {
 
 /** Muestra un toast con barra de progreso (indeterminada hasta que se informe un porcentaje). @param {string} mensaje */
 export function iniciarToastProgreso(mensaje) {
-    _progreso = { mensaje: S.sanitizeString(mensaje, 200), porcentaje: null };
+    _progreso = { mensaje: S.limpiarTexto(mensaje, 200, { saltos: true }), porcentaje: null };
     if (!_toastRunning) _mostrarProgreso();
 }
 
@@ -134,11 +135,8 @@ export function finalizarToastProgreso() {
 }
 
 export function _cerrarToastActual() {
-    if (_progresoVisible) {
-        // tocar o deslizar el toast de progreso lo descarta; la descarga sigue y el aviso final sí se muestra
-        _descartarProgreso();
-        return;
-    }
+    // el toast de progreso (descarga de una actualización) no se cierra al tocarlo ni al deslizarlo: se retira solo al terminar
+    if (_progresoVisible) return;
     if (toastTimeout) { clearTimeout(toastTimeout); toastTimeout = null; }
     const toast = $('toast');
     if (!toast || !toast.classList.contains('show')) return;

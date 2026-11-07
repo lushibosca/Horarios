@@ -1,5 +1,8 @@
 import { $ } from '../core/dom.js';
-import { geometriaConector, geometriaDiagonal, repartirLados, entradaDebeSubir } from '../core/geometria-etiquetas.js';
+import {
+    geometriaConector, geometriaDiagonal, holguraHaciaDerecha, repartirLados, entradaDebeSubir,
+    holguraDescripcion, nivelDescripcion, MARGEN_DESCRIPCION_DERECHA
+} from '../core/geometria-etiquetas.js';
 import { SaldoSemanal } from '../services/saldo-semanal.js';
 import { Animaciones } from './animaciones.js';
 
@@ -30,7 +33,113 @@ function _colocarEtiquetaConector(et, tick, pct, ancho) {
     if (!et) return;
     const { espejado, left } = geometriaConector((pct / 100) * ancho, et.offsetWidth);
     tick.classList.toggle('espejado', espejado);
+    et.classList.toggle('linea-etiqueta--espejada', espejado);   // la descripción del foco se despliega hacia el lado contrario
     et.style.left = `${left}px`;
+}
+
+// Cada etiqueta lleva su hora en .linea-et-hora y, aparte, su descripción (.linea-et-desc, absoluta: no cambia el ancho de la etiqueta ni su posición)
+const _horaDe = et => /** @type {HTMLElement} */ (et.querySelector('.linea-et-hora'));
+
+// Elige la versión de la descripción que entra en el lugar libre (completa, abreviada o ninguna) y deja en la etiqueta lo que necesita el CSS:
+// el texto, data-desc y el ancho que ocupa desplegada (--desc-ancho). Sin descripción (ninguna) la píldora del foco queda solo alrededor de la hora.
+function _elegirDescripcion(et, [larga, corta], holgura) {
+    const desc = et.querySelector('.linea-et-desc');
+    if (!desc) return null;
+    const medir = texto => { desc.textContent = texto; return desc.scrollWidth + 1; };
+    const anchoLarga = medir(larga);
+    const anchoCorta = corta === larga ? Infinity : medir(corta);
+    const nivel = nivelDescripcion(holgura, anchoLarga, anchoCorta);
+    return {
+        nivel,
+        texto: nivel === 'corta' ? corta : larga,
+        ancho: nivel === 'larga' ? anchoLarga : nivel === 'corta' ? anchoCorta : 0
+    };
+}
+
+function _aplicarDescripcion(et, d) {
+    const desc = et.querySelector('.linea-et-desc');
+    if (!desc || !d) return;
+    desc.textContent = d.texto;
+    et.dataset.desc = d.nivel;
+    et.style.setProperty('--desc-ancho', `${d.ancho}px`);
+}
+
+function _ponerDescripcion(et, textos, holgura) {
+    _aplicarDescripcion(et, _elegirDescripcion(et, textos, holgura));
+}
+
+// Despliegue a la derecha: si la descripción no entra completa a la izquierda de la hora (lado natural) pero a la derecha sí (o entra una versión más completa),
+// mientras dura el foco la hora no se mueve y la descripción se abre hacia la derecha; al terminar vuelve al lado natural.
+// `_despliegues` guarda por etiqueta ambos estados ya resueltos al medir; `desplegarADerecha` solo los intercambia.
+const _NIVELES = { ninguna: 0, corta: 1, larga: 2 };
+/** @type {WeakMap<HTMLElement, { natural: any, derecha: any, activo: boolean, timer?: ReturnType<typeof setTimeout> }>} */
+const _despliegues = new WeakMap();
+
+function _prepararDespliegueDerecha(et, textos, holgura, descNatural) {
+    clearTimeout(_despliegues.get(et)?.timer);
+    _despliegues.delete(et);
+    if (!descNatural || descNatural.nivel === 'larga' || et.classList.contains('linea-etiqueta--espejada')) return;
+    const derecha = _elegirDescripcion(et, textos, holgura);
+    _aplicarDescripcion(et, descNatural);   // _elegirDescripcion deja puesto el texto de la última medición
+    if (derecha && _NIVELES[derecha.nivel] > _NIVELES[descNatural.nivel]) _despliegues.set(et, { natural: descNatural, derecha, activo: false });
+}
+
+/**
+ * Abre la descripción hacia la derecha de la hora (`activo`) o la devuelve al lado natural; sin una versión mejor a la derecha no hace nada.
+ * @param {HTMLElement} et
+ * @param {boolean} activo
+ */
+function desplegarADerecha(et, activo) {
+    const v = _despliegues.get(et);
+    if (!v) return;
+    clearTimeout(v.timer);
+    if (v.activo === activo) return;
+    const aplicar = () => {
+        v.activo = activo;
+        et.classList.toggle('linea-etiqueta--espejada', activo);   // el CSS despliega hacia la derecha las etiquetas espejadas
+        _aplicarDescripcion(et, activo ? v.derecha : v.natural);
+    };
+    if (activo) { aplicar(); return; }
+    // al volver, la píldora y la descripción primero se pliegan donde estaban; recién entonces la descripción cambia de lado
+    // (si no, salta de lado al instante y la píldora, que sigue animándose, queda desacoplada del texto)
+    v.timer = setTimeout(aplicar, _msPlegado(et));
+}
+
+// Lo que tarda en apagarse la píldora del foco (casi 0 con el movimiento reducido, que deja las transiciones en 1 ms)
+function _msPlegado(et) {
+    const [dur] = getComputedStyle(et, '::after').transitionDuration.split(',');
+    return Math.ceil((parseFloat(dur) || 0) * 1000) + 30;
+}
+
+// La descripción de cada hora se despliega hacia la izquierda (hacia la derecha si la marca está espejada; la entrada, que está pegada al comienzo, siempre a la derecha).
+// Solo cuenta el espacio de la pista: mientras una hora está enfocada las demás están atenuadas, así que su píldora puede tapar a las vecinas.
+function _ajustarDescripciones(L, ancho, { etEntrada, etSalida, etBuffer, tickSalida, tickBuffer }) {
+    const izq = et => parseFloat(et.style.left) || 0;
+    const finEntrada = izq(etEntrada) + etEntrada.offsetWidth;
+    const limiteDerecho = ancho + MARGEN_DESCRIPCION_DERECHA;
+
+    // entrada: siempre hacia la derecha
+    _ponerDescripcion(etEntrada, ['Entrada', 'Entrada'], holguraDescripcion('derecha', finEntrada, limiteDerecho));
+
+    // salida y buffer: a la izquierda hasta el comienzo de la pista; espejadas, a la derecha hasta el final
+    const hacia = (et, espejada, limiteIzquierdo) => espejada
+        ? holguraDescripcion('derecha', izq(et) + et.offsetWidth, limiteDerecho)
+        : holguraDescripcion('izquierda', izq(et), limiteIzquierdo);
+    const espejadaSalida = !L.cerrado && tickSalida.classList.contains('espejado');
+    /** @type {[string, string]} */
+    const textosSalida = L.cerrado ? ['Salida', 'Salida'] : ['Salida estimada', 'S. estimada'];
+    const descSalida = _elegirDescripcion(etSalida, textosSalida, hacia(etSalida, espejadaSalida, 0));
+    _aplicarDescripcion(etSalida, descSalida);
+    _prepararDespliegueDerecha(etSalida, textosSalida, holguraHaciaDerecha(izq(etSalida), etSalida.offsetWidth, ancho), descSalida);
+    if (L.hayBanda) {
+        /** @type {[string, string]} */
+        const textosBuffer = ['Salida ajustada', 'S. ajustada'];
+        const descBuffer = _elegirDescripcion(etBuffer, textosBuffer, hacia(etBuffer, tickBuffer.classList.contains('espejado'), 0));
+        _aplicarDescripcion(etBuffer, descBuffer);
+        _prepararDespliegueDerecha(etBuffer, textosBuffer, holguraHaciaDerecha(izq(etBuffer), etBuffer.offsetWidth, ancho), descBuffer);
+    } else {
+        _despliegues.delete(etBuffer);
+    }
 }
 
 // Cambia la hora de entrada de lado (abajo/arriba de la barra): la copia sale en el lugar anterior y la etiqueta real reaparece en el nuevo
@@ -90,26 +199,35 @@ function _renderLinea(vista, pista, fill) {
     const etEntrada = $('linea-et-entrada');
     const etSalida = $('linea-et-salida');
     const etBuffer = $('linea-et-buffer');
-    etEntrada.textContent = L.horaEntrada;
-    etSalida.textContent = L.horaSalida;
-    etBuffer.textContent = L.horaBuffer;
+    _horaDe(etEntrada).textContent = L.horaEntrada;
+    _horaDe(etSalida).textContent = L.horaSalida;
+    _horaDe(etBuffer).textContent = L.horaBuffer;
     etBuffer.style.opacity = L.hayBanda ? '1' : '0';
     etBuffer.classList.toggle('positivo', L.bufferPositivo);
     etBuffer.classList.toggle('negativo', !L.bufferPositivo);
     _colocarEtiquetaLinea(etEntrada, 0, ancho);
     // cerrada no hay conector (queda solo la hora, centrada bajo el remate)
-    if (L.cerrado) _colocarEtiquetaLinea(etSalida, pMarca, ancho);
-    else _colocarEtiquetaConector(etSalida, tickSalida, pMarca, ancho);
+    if (L.cerrado) {
+        _colocarEtiquetaLinea(etSalida, pMarca, ancho);
+        etSalida.classList.remove('linea-etiqueta--espejada');
+    } else {
+        _colocarEtiquetaConector(etSalida, tickSalida, pMarca, ancho);
+    }
     _colocarEtiquetaConector(etBuffer, tickBuffer, pBuffer ?? pSalida, ancho);
     // si la hora de salida (abierta o cerrada) pisa o queda pegada a la de entrada, esta pasa arriba de la barra,
     // salvo que arriba esté la etiqueta del buffer en ese mismo tramo (sin ancho medido no se decide nada)
-    _ponerEntradaArriba(etEntrada, entradaDebeSubir({
+    const entradaArriba = entradaDebeSubir({
         ancho,
         entradaLeft: parseFloat(etEntrada.style.left),
         entradaAncho: etEntrada.offsetWidth,
         salidaLeft: parseFloat(etSalida.style.left),
         bufferLeft: L.hayBanda ? parseFloat(etBuffer.style.left) : null
-    }));
+    });
+    _ponerEntradaArriba(etEntrada, entradaArriba);
+    // sin ancho medido (pista oculta) no hay con qué decidir qué versión de la descripción entra
+    if (ancho > 0) _ajustarDescripciones(L, ancho, { etEntrada, etSalida, etBuffer, tickSalida, tickBuffer });
+    // un re-render con el foco activo recalcula todo en su lado natural: se vuelve a desplegar a la derecha lo que corresponda
+    if (ancho > 0) [etSalida, etBuffer].forEach(et => { if (et.classList.contains('foco')) desplegarADerecha(et, true); });
 
     // relleno: azul hasta la primera salida, color del tramo entre ambas y verde al superar la última
     if (!L.cerrado) {
@@ -252,6 +370,7 @@ function redibujar() {
 }
 
 export const BarraHitos = {
+    desplegarADerecha,
     render,
     redibujar,
     escalaLinea: _escalaLinea,

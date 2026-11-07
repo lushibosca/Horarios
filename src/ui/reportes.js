@@ -472,7 +472,6 @@ function confirmarGenerarReporte() {
 
 
 export const Reportes = {
-    generarReporte,
     abrirModalReporteSecciones,
     cerrarModalReporteSecciones,
     toggleSeccionReporte,

@@ -17,18 +17,18 @@ Para iniciar el servidor local de desarrollo:
 
 * **Linux / macOS:**
   ```bash
-  ./iniciar.sh [puerto]
+  ./iniciar.sh [puerto] [interfaz]
   ```
 * **Windows:**
   Doble clic en `iniciar.bat`, o desde la terminal (CMD / PowerShell):
   ```cmd
-  iniciar.bat [puerto]
+  iniciar.bat [puerto] [interfaz]
   ```
   También puedes usar el script de PowerShell:
   ```powershell
-  .\iniciar.ps1 [-Port puerto]
+  .\iniciar.ps1 [-Port puerto] [-Bind interfaz]
   ```
-  *(Por defecto utiliza el puerto 8001)*
+  *(Por defecto utiliza el puerto 8001 y la interfaz 127.0.0.1. Para escuchar en todas las interfaces usa `0.0.0.0`)*
 
 ## 🧪 Desarrollo
 

@@ -1,4 +1,4 @@
-import { APP_STORAGE_PREFIX, STORAGE_KEYS } from './constantes.js';
+import { APP_STORAGE_PREFIX, STORAGE_KEYS, CARDS } from './constantes.js';
 import { SeguridadYUtils } from './seguridad.js';
 
 // ====================================================================
@@ -19,6 +19,8 @@ const BASES_POR_PERFIL_HORARIOS = [
     STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO,
     STORAGE_KEYS.FONDO_CARD,
     STORAGE_KEYS.ORDEN_CARDS,
+    STORAGE_KEYS.ORDEN_CARDS_MOVIL,
+    STORAGE_KEYS.COLUMNAS_CARDS,
     STORAGE_KEYS.HISTORY,
     STORAGE_KEYS.BIENVENIDA_VISTA,
     STORAGE_KEYS.FERIADOS_PROCESADOS,
@@ -29,16 +31,14 @@ const BASES_POR_PERFIL_HORARIOS = [
     STORAGE_KEYS.PUSH_INFO_ACTIVA,
     STORAGE_KEYS.PUSH_AVISOS_RESTANTES,
     'breakStartTime',
-    'cardVisible_registrar',
-    'cardVisible_estadisticas',
-    'cardVisible_historico'
+    ...CARDS.map(STORAGE_KEYS.CARD_VISIBLE)
 ];
 
 const PATRONES_DINAMICOS_HORARIOS = [
     /^gistSyncLimite_(subir|bajar)$/,
     /^mes-\d{4}-\d{1,2}-expandido$/,
     /^anio-\d{4}-expandido$/,
-    /^cardVisible_(registrar|estadisticas|historico)(_(default|perfil_[a-zA-Z0-9_-]+))?$/,
+    new RegExp(`^cardVisible_(${CARDS.join('|')})(_(default|perfil_[a-zA-Z0-9_-]+))?$`),
     new RegExp(`^(${BASES_POR_PERFIL_HORARIOS.join('|')})_(default|perfil_[a-zA-Z0-9_-]+)$`)
 ];
 
@@ -89,7 +89,7 @@ function _migrarClaveIndividual(legacyKey) {
             localStorage.setItem(newKey, legacyVal);
             return true;
         } catch (errRestore) {
-            try { localStorage.setItem(legacyKey, legacyVal); } catch (_) { }
+            try { localStorage.setItem(legacyKey, legacyVal); } catch (_) { /* el almacenamiento puede estar bloqueado o lleno: se sigue sin guardar */ }
             return false;
         }
     }
@@ -106,12 +106,12 @@ function migrarClavesLegadas() {
                 if (parsed && typeof parsed === 'object') {
                     Object.keys(parsed).forEach(id => idsPerfiles.add(id));
                 }
-            } catch (_) { }
+            } catch (_) { /* el almacenamiento puede estar bloqueado o lleno: se sigue sin guardar */ }
         }
 
         const candidatas = new Set(CLAVES_ESTATICAS_HORARIOS);
         ['subir', 'bajar'].forEach(t => candidatas.add(STORAGE_KEYS.GIST_LIMITE(t)));
-        ['registrar', 'estadisticas', 'historico'].forEach(c => candidatas.add(STORAGE_KEYS.CARD_VISIBLE(c)));
+        CARDS.forEach(c => candidatas.add(STORAGE_KEYS.CARD_VISIBLE(c)));
         idsPerfiles.forEach(pid => {
             BASES_POR_PERFIL_HORARIOS.forEach(base => candidatas.add(`${base}_${pid}`));
         });
@@ -124,7 +124,7 @@ function migrarClavesLegadas() {
         }
         try {
             Object.keys(localStorage).forEach(k => candidatas.add(k));
-        } catch (_) { }
+        } catch (_) { /* el almacenamiento puede estar bloqueado o lleno: se sigue sin guardar */ }
 
         let migradas = 0;
         for (const key of candidatas) {
@@ -190,10 +190,15 @@ function getObject(key, defaultValue = null, useProfile = false) {
     }
 }
 
+/** Borra todas las claves por perfil (configuración, historial de deshacer, timer, avisos...) de `perfilId`. */
+function borrarClavesDePerfil(perfilId) {
+    BASES_POR_PERFIL_HORARIOS.forEach(base => removeItem(`${base}_${perfilId}`));
+}
+
 function removeItem(key, useProfile = false) {
     try {
         localStorage.removeItem(_getKey(key, useProfile));
-    } catch (e) { }
+    } catch (e) { /* el almacenamiento puede estar bloqueado o lleno: se sigue sin guardar */ }
 }
 
 export const Almacenamiento = {
@@ -204,9 +209,8 @@ export const Almacenamiento = {
     getNumber,
     getObject,
     removeItem,
+    borrarClavesDePerfil,
     configurarNotificaciones,
     setProfileKeyResolver,
-    esClaveLegadaHorarios,
-    migrarClavesLegadas,
-    _getKey
+    migrarClavesLegadas
 };

@@ -1,10 +1,10 @@
 import { STORAGE_KEYS, DEFAULTS } from '../core/constantes.js';
-import { $ } from '../core/dom.js';
+import { $, setColapsable } from '../core/dom.js';
 import { Movimiento } from '../core/movimiento.js';
+import { EstiloCalendario } from '../core/estilo-calendario.js';
 import { TiempoUtils } from '../core/tiempo-utils.js';
 import { Almacenamiento } from '../core/almacenamiento.js';
 import { GestorTemas } from './gestor-temas.js';
-import { GestorPerfiles } from '../services/gestor-perfiles.js';
 import { GestorModales } from './gestor-modales.js';
 import { GestionDatos } from '../services/gestion-datos.js';
 import { UIBase } from './base.js';
@@ -19,16 +19,17 @@ import { _scrollHastaVisible, _scrollA } from './scroll.js';
 import { mostrarToast } from './toast.js';
 import { Animaciones } from './animaciones.js';
 import { AyudaBuscador } from './ayuda-buscador.js';
+import { AvisoJornada } from '../services/aviso-jornada.js';
 
 // ====================================================================
 // UI CONFIG MODULE (configuración, ayuda, tema y steppers)
 // ====================================================================
 const {
-    _abrirModalConPadre, _cerrarModalConPadre, _crearToggleConfig, _setBtnDisabled, _flashCampo
+    _abrirModalConPadre, _cerrarModalConPadre, _crearToggleConfig, _setBtnDisabled, _setBtnActivo, _flashCampo
 } = UIBase;
 const { _esperarAnim, _animarValor } = Animaciones;
 
-const _reprogramarPushDebounced = debounce(() => GestionDatos.sincronizarPushHoy(), 400);
+const _reprogramarPushDebounced = debounce(() => AvisoJornada.sincronizarHoy(), 400);
 
 const verificarBloqueoCredito = (...args) => EstadoApp._notify().verificarBloqueoCredito(...args);
 const actualizarUI = (...args) => EstadoApp._notify().actualizarUI(...args);
@@ -49,7 +50,7 @@ const { toggle: toggleIgnorarTiempoFuera, actualizarEstado: actualizarEstadoBoto
         getVal: () => EstadoApp.getIgnorarTiempoFuera(),
         setVal: (v) => { EstadoApp.setIgnorarTiempoFuera(v); Almacenamiento.setItem(STORAGE_KEYS.IGNORAR_TF, v, true); },
         btnId: 'btn-toggle-ignorar-tf',
-        onAfterToggle: () => { GestionDatos.recalcularTotalesEnMemoria(true); EstadoApp.guardarYActualizar(); GestionDatos.sincronizarPushHoy(); },
+        onAfterToggle: () => { GestionDatos.recalcularTotalesEnMemoria(true); EstadoApp.guardarYActualizar(); AvisoJornada.sincronizarHoy(); },
     });
 
 const { toggle: toggleHoverPopupCalendario, actualizarEstado: actualizarEstadoBotonHoverPopup } =
@@ -91,13 +92,46 @@ const { toggle: toggleRuedaCalendario, actualizarEstado: actualizarEstadoBotonRu
         onAfterToggle: () => { EventosApp.emit('config:rueda-calendario'); }
     });
 
-const { toggle: toggleHintIntegrado, actualizarEstado: actualizarEstadoBotonHintIntegrado } =
-    _crearToggleConfig({
-        getVal: () => Almacenamiento.getBoolean(STORAGE_KEYS.HINT_INTEGRADO, DEFAULTS.HINT_INTEGRADO),
-        setVal: (v) => Almacenamiento.setItem(STORAGE_KEYS.HINT_INTEGRADO, v),
-        btnId: 'btn-toggle-hint-integrado',
-        onAfterToggle: () => { EventosApp.emit('config:hint-integrado'); actualizarUI(); }
-    });
+// "Hint integrado" es un interruptor (HINT_INTEGRADO). Con él activo aparece la opción de animación de los hitos, con tres estados en un solo botón:
+// Desactivado (sin ciclo automático del número grande), Barra (cada hito con su descripción desplegada en la barra) y Texto (el nombre del hito en el número grande, el predeterminado).
+// Se guardan en CICLO_HINT_AUTO (false = desactivado) y DESC_HITOS_NUMERO (barra o texto).
+const _MODOS_ANIM_HINT = ['off', 'barra', 'texto'];
+const _ETIQUETAS_ANIM_HINT = { off: 'Desactivado', barra: 'Barra', texto: 'Texto' };
+
+function _modoAnimHint() {
+    if (!Almacenamiento.getBoolean(STORAGE_KEYS.CICLO_HINT_AUTO, DEFAULTS.CICLO_HINT_AUTO)) return 'off';
+    return Almacenamiento.getBoolean(STORAGE_KEYS.DESC_HITOS_NUMERO, DEFAULTS.DESC_HITOS_NUMERO) ? 'texto' : 'barra';
+}
+
+function actualizarEstadoBotonHintIntegrado(animar = false) {
+    const activo = Almacenamiento.getBoolean(STORAGE_KEYS.HINT_INTEGRADO, DEFAULTS.HINT_INTEGRADO);
+    _setBtnActivo('btn-toggle-hint-integrado', activo);
+    // la animación solo tiene sentido con el hint integrado: sin él, la opción se pliega (sin animar al cargar o al restaurar un respaldo)
+    // si ya está en ese estado no se toca: el evento 'config:hint-integrado' que emite el toggle vuelve acá sin animar y cortaría la transición en curso
+    const colapsable = $('hint-animacion-colapsable');
+    if (colapsable && colapsable.classList.contains('expanded') !== activo) setColapsable(colapsable, activo, { animar });
+    const lbl = $('hint-animacion-label');
+    if (lbl) lbl.textContent = _ETIQUETAS_ANIM_HINT[_modoAnimHint()];
+}
+
+// Al restaurar un respaldo o bajar de Gist cambia la opción: se actualiza la etiqueta
+EventosApp.on('config:hint-integrado', () => actualizarEstadoBotonHintIntegrado());
+
+function toggleHintIntegrado() {
+    Almacenamiento.setItem(STORAGE_KEYS.HINT_INTEGRADO, !Almacenamiento.getBoolean(STORAGE_KEYS.HINT_INTEGRADO, DEFAULTS.HINT_INTEGRADO));
+    actualizarEstadoBotonHintIntegrado(true);
+    EventosApp.emit('config:hint-integrado');
+    actualizarUI();
+}
+
+function toggleAnimacionHint() {
+    const siguiente = _MODOS_ANIM_HINT[(_MODOS_ANIM_HINT.indexOf(_modoAnimHint()) + 1) % _MODOS_ANIM_HINT.length];
+    Almacenamiento.setItem(STORAGE_KEYS.CICLO_HINT_AUTO, siguiente !== 'off');
+    if (siguiente !== 'off') Almacenamiento.setItem(STORAGE_KEYS.DESC_HITOS_NUMERO, siguiente === 'texto');
+    actualizarEstadoBotonHintIntegrado();
+    EventosApp.emit('config:hint-integrado');
+    actualizarUI();
+}
 
 const { toggle: toggleMetricaUso, actualizarEstado: actualizarEstadoBotonMetricaUso } =
     _crearToggleConfig({
@@ -184,12 +218,24 @@ function toggleReducirAnimaciones() {
     actualizarHintAnimaciones();
 }
 
+function actualizarHintEstiloCalendario() {
+    const lbl = $('hint-estilo-calendario-label');
+    if (lbl) lbl.textContent = EstiloCalendario.etiqueta();
+}
+
+// Cada toque pasa al estilo siguiente; el CSS reacciona solo al atributo de <html>, así que el calendario cambia al instante
+function toggleEstiloCalendario() {
+    EstiloCalendario.siguiente();
+    actualizarHintEstiloCalendario();
+}
+
 function _refrescarTogglesConfig() {
     actualizarEstadoBotonIgnorarTF();
     actualizarEstadoBotonLogicaCubierto();
     actualizarEstadoBotonObjetivoPorRegistro();
     actualizarEstadoBotonAplicarHoras();
     actualizarHintAnimaciones();
+    actualizarHintEstiloCalendario();
 }
 
 function _precargarCamposConfig() {
@@ -209,6 +255,11 @@ function _precargarCamposConfig() {
     actualizarEstadoBotonNotificaciones();
     const lbl = $('hint-fondo-label');
     if (lbl) lbl.textContent = _getLabelFondo(getFondoCard());
+}
+
+// Abre los ajustes directamente (sin pasar por el selector de perfiles)
+function abrirConfig() {
+    GestorModales.abrir('modal-config', _precargarCamposConfig);
 }
 
 function mostrarconfig() {
@@ -263,14 +314,10 @@ function actualizarFeedbackConfig() {
         const huboCambio = nuevosDias.length !== diasVigentes.length
             || nuevosDias.some((d, i) => d !== diasVigentes[i]);
         if (huboCambio) Compensatorios.registrarCambioDiasHabiles(nuevosDias);
-        const esDefault = GestorPerfiles && GestorPerfiles.esPerfilDefault();
-        if (esDefault) Almacenamiento.setItem(STORAGE_KEYS.DIAS_HABILES, nuevosDias);
         EstadoApp.guardarYActualizar();
         if (huboCambio) _reprogramarPushDebounced();
     }
-    if (typeof actualizarEstadoBotonPersistir === 'function') {
-        actualizarEstadoBotonPersistir();
-    }
+    actualizarEstadoBotonPersistir();
 }
 
 function _ajustarStepperHoras(el, incremento) {
@@ -290,8 +337,6 @@ function cambiarHorasDiarias(incremento) {
     if (isNaN(nuevoValor)) return;
 
     EstadoApp.setHorasDiarias(nuevoValor);
-    const esDefault = GestorPerfiles && GestorPerfiles.esPerfilDefault();
-    if (esDefault) Almacenamiento.setItem(STORAGE_KEYS.HORAS_DIARIAS, nuevoValor);
     actualizarFeedbackConfig();
     _reprogramarPushDebounced();
 }
@@ -319,10 +364,12 @@ function bindEventos() {
     $('btn-toggle-ignorar-tf')?.addEventListener('click', () => toggleIgnorarTiempoFuera());
     $('btn-toggle-hover-popup')?.addEventListener('click', () => toggleHoverPopupCalendario());
     $('btn-toggle-animaciones')?.addEventListener('click', () => toggleReducirAnimaciones());
+    $('btn-estilo-calendario')?.addEventListener('click', () => toggleEstiloCalendario());
     $('btn-toggle-logica-cubierto')?.addEventListener('click', () => toggleLogicaCubierto());
     $('btn-toggle-objetivo-registro')?.addEventListener('click', () => toggleObjetivoPorRegistro());
     $('btn-toggle-rueda-calendario')?.addEventListener('click', () => toggleRuedaCalendario());
     $('btn-toggle-hint-integrado')?.addEventListener('click', () => toggleHintIntegrado());
+    $('btn-toggle-hint-animacion')?.addEventListener('click', () => toggleAnimacionHint());
     $('btn-toggle-metrica-uso')?.addEventListener('click', () => toggleMetricaUso());
     $('btn-toggle-formato-corto-stats')?.addEventListener('click', () => toggleFormatoCortoStats());
     $('btn-aplicar-horas-todos')?.addEventListener('click', () => aplicarHorasConfiguradasATodos());
@@ -357,6 +404,6 @@ export const Configuracion = {
     actualizarEstadoBotonIgnorarTF, actualizarEstadoBotonHoverPopup, actualizarEstadoBotonRuedaCalendario,
     actualizarEstadoBotonLogicaCubierto, actualizarEstadoBotonObjetivoPorRegistro,
     actualizarEstadoBotonFormatoCortoStats, actualizarEstadoBotonHintIntegrado, actualizarEstadoBotonMetricaUso, actualizarEstadoBotonAplicarHoras, cerrarConfig,
-    cerrarModalAyuda, _precargarCamposConfig, refrescarConfigSiVisible, mostrarConfigOnboarding, mostrarConfigEnAjuste,
+    abrirModalAyuda, abrirConfig, alternarTema, cerrarModalAyuda, _precargarCamposConfig, refrescarConfigSiVisible, mostrarConfigOnboarding, mostrarConfigEnAjuste,
     pressHoldObjetivoEdicion, formatearInput, bindEventos
 };

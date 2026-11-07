@@ -14,6 +14,10 @@ import { Historico } from './historico.js';
 import { Estadisticas } from './estadisticas.js';
 import { Compensatorios } from '../services/compensatorios.js';
 import { EstadoApp } from '../services/estado-app.js';
+import { esHtmlSeguro, montar } from '../core/html.js';
+import { CicloStats } from './tarjeta-ciclo-stats.js';
+import { FocoHitos } from './foco-hitos.js';
+import { HoverBarra } from './hover-barra.js';
 
 // ====================================================================
 //                     UI CLOCK-IN CARD MODULE
@@ -22,7 +26,7 @@ const {
     _renderConFirma, _conRendersSinAnimar, _rendersSinAnimarActivos, _animarFadeSwap,
     _animarMutacion, _animarConteo, _conteoEnCurso, _cancelarConteo, _durSiAnima
 } = Animaciones;
-const { _cantidadHoras, _cantidadHorasCorta, _modoTextoStats, _hintIntegradoActivo } = TarjetaFichajeVista;
+const { _cantidadHoras, _cantidadHorasCorta, _modoTextoStats, _hintIntegradoActivo, _descHitosEnNumero, _cicloAutoActivo } = TarjetaFichajeVista;
 
 const { setProgressBarColor, toggleFondoCard, actualizarFondoCard } = TarjetaFondos;
 const {
@@ -101,112 +105,65 @@ function _actualizarTiempoFueraConsolidado(el, est) {
     label.title = 'Tiempo fuera registrado hoy';
 }
 
-let _cicloStatsInterval = null;
-let _cicloStatsValorHoras = '';
-let _cicloStatsEntrada = '';
-let _cicloStatsSalida = '';
-let _cicloStatsTiempoFuera = '';
-let _cicloStatsFaseAlRenderizar = null;
+// Texto del número grande del último render: lo que se restaura al salir el cursor de un tramo de la vista semanal (ver HoverBarra)
+let _statsActual = '';
 
-const _CICLO_DURACION_MS = 2000;
-const _CICLO_PREFIJOS = { entrada: 'Entrada', salida: 'Salida', tiempoFuera: 'Tiempo fuera' };
-
-function _detenerCicloStats() {
-    clearTimeout(_cicloStatsInterval);
-    _cicloStatsInterval = null;
+/**
+ * Si el número grande en formato largo ("19 horas 59 minutos") no entra en una línea, pasa a la variante corta ("19h 59m"). Se mide en una copia oculta
+ * para no tocar el número mientras se anima. Parte siempre del texto largo (`statsLargo`), así vuelve solo cuando vuelve a entrar (ej. al girar el celular).
+ * @param {any} vista
+ */
+function _ajustarStatsAlAncho(vista) {
+    vista.statsLargo ??= vista.stats;
+    vista.stats = vista.statsLargo;
+    vista.statsAjustado = false;
     const el = $('stats-semana');
-    if (el) el.classList.remove('mutacion-entrante');
+    const ancho = el?.clientWidth;
+    if (!vista.statsCorto || !el?.parentElement || !(ancho > 0)) return;
+    const sonda = document.createElement('div');
+    sonda.className = 'stats-number';
+    Object.assign(sonda.style, { position: 'absolute', visibility: 'hidden', pointerEvents: 'none', width: `${ancho}px`, minHeight: '0' });
+    sonda.textContent = vista.statsLargo;
+    el.parentElement.appendChild(sonda);
+    const estilo = getComputedStyle(sonda);
+    const alto = parseFloat(estilo.lineHeight) || parseFloat(estilo.fontSize) * 1.2;
+    const entra = sonda.getBoundingClientRect().height <= alto * 1.5;
+    sonda.remove();
+    if (!entra) { vista.stats = vista.statsCorto; vista.statsAjustado = true; }
 }
 
-function _prepararMostrarFaseAlRenderizar(tipo) {
-    _cicloStatsFaseAlRenderizar = tipo;
-}
-
-function _fasesCiclo() {
-    return [
-        _cicloStatsValorHoras,
-        `Entrada ${_cicloStatsEntrada}`,
-        _cicloStatsTiempoFuera ? `Tiempo fuera ${_formatearMinutosCorto(TiempoUtils.horaAMinutos(_cicloStatsTiempoFuera))}` : null,
-        _cicloStatsSalida ? `Salida ${_cicloStatsSalida}` : null,
-    ].filter(Boolean);
-}
-
-function _crearCicloTick(fases, estado) {
-    const _cicloTick = () => {
-        const el = $('stats-semana');
-        if (!el) { _detenerCicloStats(); return; }
-
-        _animarMutacion(el, () => {
-            estado.idx++;
-            const terminado = estado.idx >= fases.length;
-            el.textContent = terminado ? _cicloStatsValorHoras : fases[estado.idx];
-            if (terminado) { _detenerCicloStats(); return; }
-            _cicloStatsInterval = setTimeout(_cicloTick, _CICLO_DURACION_MS);
-        });
-    };
-    return _cicloTick;
-}
-
-function _cicloStatsActivo() {
-    return !!_cicloStatsInterval;
-}
-
-function _iniciarCicloStats(inmediato = false) {
-    if (_cicloStatsInterval) return true;
-    _detenerCicloStats();
-    if (!_cicloStatsEntrada) return false;
-
-    const fases = _fasesCiclo();
-    const estado = { idx: 0 };
-    const tick = _crearCicloTick(fases, estado);
-
-    _cicloStatsInterval = setTimeout(tick, inmediato ? 0 : _CICLO_DURACION_MS);
-    return true;
-}
-
-function _iniciarCicloEnFase(tipo) {
-    if (!_cicloStatsEntrada) return false;
-    clearTimeout(_cicloStatsInterval);
-
-    const fases = _fasesCiclo();
-    const prefijo = _CICLO_PREFIJOS[tipo];
-    const idx = prefijo ? fases.findIndex(f => f?.startsWith(prefijo)) : -1;
-    if (idx === -1) return false;
-
-    const estado = { idx };
-    const tick = _crearCicloTick(fases, estado);
-
-    const el = $('stats-semana');
-    if (el) el.textContent = fases[idx];
-
-    _cicloStatsInterval = setTimeout(tick, _CICLO_DURACION_MS);
-    return true;
-}
+// Último estado y vista renderizados, para reevaluar si el número entra en una línea al cambiar el ancho (rotar, redimensionar)
+let _statsVista = null;
+let _statsEst = null;
 
 /** @param {any} [conteo] */
 function _renderStats(vista, est, conteo = null) {
     const el = $('stats-semana');
     if (!el) return;
+    _statsActual = vista.stats;
 
     const esDiaria = EstadoApp.vistaActual() !== 'semana';
-    const regHoy = est.regHoy;
+    // En el cruce de medianoche (ayer sigue abierto y hoy aún no tiene entrada) la barra muestra los hitos de esa jornada, y el ciclo también
+    const regHoy = (est.ayerAbierto && !est.regHoy?.entrada) ? est.regAyer : est.regHoy;
     const esEspecial = !!est.tipoEspecialHoy;
     const entradaHoy = (esDiaria && regHoy && regHoy.entrada && !esEspecial) ? regHoy.entrada : '';
     const salidaHoy = (esDiaria && regHoy && regHoy.salida && !esEspecial) ? regHoy.salida : '';
     const tiempoFueraHoy = (esDiaria && regHoy && regHoy.tiempoFuera && regHoy.tiempoFuera !== '00:00' && !esEspecial) ? regHoy.tiempoFuera : '';
 
-    _cicloStatsValorHoras = vista.stats;
-    _cicloStatsEntrada = entradaHoy;
-    _cicloStatsSalida = salidaHoy;
-    _cicloStatsTiempoFuera = tiempoFueraHoy;
+    // con el hint integrado la barra muestra los hitos: el ciclo los resalta en lugar de repetir su texto, y con la jornada abierta suma la salida estimada y, si hay banda, la salida con banco
+    const linea = _hintIntegradoActivo() && esDiaria && !esEspecial ? vista.linea : null;
+    const salidaEstimada = linea && !linea.cerrado ? linea.horaSalida : '';
+    const salidaBanco = linea && !linea.cerrado && linea.hayBanda ? linea.horaBuffer : '';
 
-    if (_cicloStatsFaseAlRenderizar) {
-        const tipo = _cicloStatsFaseAlRenderizar;
-        _cicloStatsFaseAlRenderizar = null;
-        if (_iniciarCicloEnFase(tipo)) return;
-    }
+    // variante B: el nombre del hito va en el número grande y el CSS oculta su descripción en la barra
+    const nombreEnNumero = !!linea && _descHitosEnNumero();
+    $('stats-card')?.classList.toggle('desc-en-numero', nombreEnNumero);
+    CicloStats.actualizarDatos({ valorHoras: vista.stats, entrada: entradaHoy, salida: salidaHoy, tiempoFuera: tiempoFueraHoy, salidaEstimada, salidaBanco, hitosEnBarra: !!linea, nombreEnNumero });
 
-    if (!_cicloStatsInterval) {
+    const fase = CicloStats.tomarFasePendiente();
+    if (fase && _cicloAutoActivo() && CicloStats.iniciarEnFase(fase)) return;
+
+    if (!CicloStats.activo()) {
         if (conteo) {
             _animarConteo(el, conteo.texto);
         } else if (_conteoEnCurso(el) === vista.stats) {
@@ -264,9 +221,14 @@ function _renderBarra(vista, desdeCero = false) {
     }
     const enProgreso = esDiaria && vista.colorBarra === 'green' && vista.estadoFondo === 'en_curso';
     setProgressBarColor(el, vista.colorBarra, vista.colorBorde, enProgreso);
+    // La clase que oculta la descripción en la barra (Texto: el ciclo pone el nombre en el número grande) se quita para medir las descripciones
+    // (con display:none miden 0) porque al pasar el cursor por un hito siempre se despliegan en la barra, y se vuelve a poner al terminar.
+    card?.classList.remove('desc-en-numero');
     const colorTramo = BarraHitos.render({ vista, pista: /** @type {HTMLElement} */ (pista), fill: el, conLinea, conSemana });
+    card?.classList.toggle('desc-en-numero', conLinea && _descHitosEnNumero());
     if (colorTramo && punto && !vista.cerrado) punto.dataset.color = colorTramo(anchoBarra);
     el.classList.toggle('con-remate', !conLinea && !conSemana && vista.estadoFondo === 'en_curso' && !!punto && punto.classList.contains('visible'));
+    HoverBarra.actualizarDatos(conSemana ? { hitos: vista.hitosSemana ?? [], fin: vista.anchoBarra / 100 } : null);
 }
 
 // Último mensaje renderizado, para reevaluar si entra en una línea al cambiar el ancho (rotar, redimensionar)
@@ -278,7 +240,7 @@ function _renderMensaje(vista = _mensajeActual) {
     const el = $('stats-mensaje');
     if (!el || !vista) return;
     _mensajeActual = vista;
-    el.style.display = vista.mostrarMensaje ? 'block' : 'none';
+    el.classList.toggle('hidden', !vista.mostrarMensaje);
     el.textContent = vista.mensaje;
     if (!vista.mostrarMensaje || !vista.mensajeCorto || vista.mensajeCorto === vista.mensaje) return;
     const estilo = getComputedStyle(el);
@@ -298,7 +260,7 @@ function _renderHint(vista) {
     const el = $('toggle-hint');
     if (!el) return;
     if (_hintIntegradoActivo()) { el.textContent = vista.aviso || ''; return; }
-    if (vista.hintEsHTML) { el.innerHTML = vista.hint; }
+    if (esHtmlSeguro(vista.hint)) montar(el, vista.hint);
     else el.textContent = vista.hint;
 }
 
@@ -308,7 +270,7 @@ let _bufferActual = null;
 function _dibujarBuffer(est, corto) {
     const el = $('stats-buffer');
     if (!el) return;
-    el.innerHTML = '';
+    el.replaceChildren();
     const { bufferSemanal, horasDiarias, semanaAbierta } = est;
     if (horasDiarias > 0 && Math.abs(bufferSemanal) > 0.01 && semanaAbierta) {
         const esPositivo = bufferSemanal > 0;
@@ -347,7 +309,7 @@ function _animarCambioCard(renderFn) {
         $('toggle-hint'),
     ];
 
-    _detenerCicloStats();
+    CicloStats.detener();
     _animarMutacion(els, renderFn);
 }
 
@@ -360,7 +322,7 @@ function _planConteoInicial(vista, est) {
     const valor = esSemana ? est.totalSemana : est.tiempoHoy;
     if (!(valor > 0)) return null;
     const { horas, minutos } = TiempoUtils.descomponerHorasDecimales(valor);
-    const modo = _modoTextoStats();
+    const modo = vista.statsAjustado ? 'short' : _modoTextoStats();
     const texto = e => TiempoUtils.partesATexto(Math.round(horas * e), Math.round(minutos * e), modo, { horas, minutos });
     if (texto(1) !== vista.stats) return null;
     return { texto };
@@ -379,6 +341,9 @@ function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false, sin
     const vista = EstadoApp.vistaActual() === 'semana'
         ? TarjetaFichajeVista.derivarVistaSemana(est)
         : TarjetaFichajeVista.derivarVistaHoy(est);
+    _ajustarStatsAlAncho(vista);
+    _statsVista = vista;
+    _statsEst = est;
 
     const conteo = conteoInicial ? _planConteoInicial(vista, est) : null;
 
@@ -392,7 +357,7 @@ function actualizarUI(idNuevo = null, soloReloj = false, animarCard = false, sin
     if (Calendario.getVistaHistoricoCalendario()) {
         const selector = $('calendario-selector-meses');
         if (selector && selector.style.display !== 'none') {
-            Calendario._cerrarSelectorMeses(idNuevo);
+            if (!Calendario._selectorMesesProtegido()) Calendario._cerrarSelectorMeses(idNuevo);
         } else {
             Calendario._renderizarCalendario(idNuevo, asignacionesCompensatorio);
         }
@@ -421,7 +386,7 @@ function _forzarVista(nuevaVista, renderFn) {
     return _animarFadeSwap(content, async () => {
         EstadoApp.setVistaActual(nuevaVista);
         Almacenamiento.setItem(STORAGE_KEYS.VISTA_ACTUAL, nuevaVista);
-        _detenerCicloStats();
+        CicloStats.detener();
         const resultado = await _conRendersSinAnimar(renderFn);
         if (card) card.classList.remove('cambiando-vista');
         return resultado;
@@ -434,6 +399,25 @@ function alternarVista() {
 }
 
 function bindEventos() {
+    // el ciclo del número grande avisa qué fase muestra y la barra resalta su hito
+    CicloStats.alCambiarFase(tipo => FocoHitos.enfocar(tipo));
+
+    // al pasar el cursor por el tramo de un día de la vista semanal (solo escritorio) se escribe su total y su rango horario; al salir vuelve lo de siempre
+    HoverBarra.conectarTextos({
+        mostrar: (stats, mensaje) => {
+            const num = $('stats-semana');
+            if (num && stats !== null) Animaciones._animarTextoHover(num, () => { num.textContent = stats; });
+            const msg = $('stats-mensaje');
+            if (msg && mensaje !== null) Animaciones._animarTextoHover(msg, () => { msg.classList.remove('hidden'); msg.textContent = mensaje; });
+        },
+        restaurar: () => {
+            const num = $('stats-semana');
+            if (num && !CicloStats.activo()) Animaciones._animarTextoHover(num, () => { num.textContent = _statsActual; });
+            Animaciones._animarTextoHover($('stats-mensaje'), () => _renderMensaje());
+        }
+    });
+    HoverBarra.bindEventos();
+
     (function () {
         const header = /** @type {HTMLElement} */ (document.querySelector('.header'));
         const statsCard = $('stats-card');
@@ -462,14 +446,15 @@ function bindEventos() {
                 BarraHitos.redibujar();
                 _renderMensaje();
                 _renderBuffer();
+                if (_statsVista && _statsEst) { _ajustarStatsAlAncho(_statsVista); _renderStats(_statsVista, _statsEst); }
             }, 200);
         });
     })();
 
     $('stats-card')?.addEventListener('click', (e) => {
         const enStatsNumber = /** @type {HTMLElement} */ (e.target).closest('#stats-semana');
-        if (enStatsNumber && EstadoApp.vistaActual() !== 'semana' && !_cicloStatsActivo()) {
-            const ciclado = _iniciarCicloStats(true);
+        if (enStatsNumber && EstadoApp.vistaActual() !== 'semana' && !CicloStats.activo() && _cicloAutoActivo()) {
+            const ciclado = CicloStats.iniciar(true);
             if (ciclado) {
                 e.stopPropagation();
                 return;
@@ -506,9 +491,5 @@ export const TarjetaFichaje = {
     alternarVista,
     _forzarVista,
     setTimerAutoVista: (v) => { _timerAutoVista = v; },
-    _iniciarCicloStats,
-    _detenerCicloStats,
-    _cicloStatsActivo,
-    _prepararMostrarFaseAlRenderizar,
     _retenerRegistroAyer,
 };

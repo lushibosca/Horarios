@@ -7,7 +7,7 @@ import { SaldoSemanal } from '../services/saldo-semanal.js';
 import { TarjetaTiempoFuera } from './tarjeta-tiempo-fuera.js';
 import { Compensatorios } from '../services/compensatorios.js';
 import { EstadoApp } from '../services/estado-app.js';
-import { icono } from '../core/html.js';
+import { html, icono } from '../core/html.js';
 
 // ====================================================================
 //                     UI CLOCK-IN CARD VIEW MODEL (textos, hints y colores de la tarjeta)
@@ -31,8 +31,14 @@ EventosApp.on('config:formato-corto-stats', _refrescarFormatoCortoStatsCache);
 
 // "Hint integrado": la salida estimada y la salida con buffer se dibujan sobre la barra en vez de en el texto inferior
 let _hintIntegrado = Almacenamiento.getBoolean(STORAGE_KEYS.HINT_INTEGRADO, DEFAULTS.HINT_INTEGRADO);
+// y su variante: el nombre del hito enfocado va en el número grande en vez de desplegarse en la barra
+let _descHitosNumero = Almacenamiento.getBoolean(STORAGE_KEYS.DESC_HITOS_NUMERO, DEFAULTS.DESC_HITOS_NUMERO);
+// y si el ciclo automático de fases (al tocar el número o al fichar) sigue activo con el hint integrado
+let _cicloHintAuto = Almacenamiento.getBoolean(STORAGE_KEYS.CICLO_HINT_AUTO, DEFAULTS.CICLO_HINT_AUTO);
 EventosApp.on('config:hint-integrado', () => {
+    _cicloHintAuto = Almacenamiento.getBoolean(STORAGE_KEYS.CICLO_HINT_AUTO, DEFAULTS.CICLO_HINT_AUTO);
     _hintIntegrado = Almacenamiento.getBoolean(STORAGE_KEYS.HINT_INTEGRADO, DEFAULTS.HINT_INTEGRADO);
+    _descHitosNumero = Almacenamiento.getBoolean(STORAGE_KEYS.DESC_HITOS_NUMERO, DEFAULTS.DESC_HITOS_NUMERO);
 });
 
 // Solo se activa mientras se deriva la variante corta del mensaje de la tarjeta (ver _conMensajeCorto): no toca la opción del usuario
@@ -49,14 +55,18 @@ function _cantidadHorasCorta(horasDecimales) {
     try { return _cantidadHoras(horasDecimales); } finally { _forzarCorto = false; }
 }
 
-// Agrega vista.mensajeCorto (el mismo mensaje con el tiempo abreviado: "2h 26m") para que el render la use solo si el largo no entra en una línea.
-// Con el formato corto ya activo el mensaje ya es corto y no hace falta variante.
+// Agrega vista.mensajeCorto y vista.statsCorto (el mismo mensaje y número grande con el tiempo abreviado: "2h 26m", "19h 59m") para que el render las use solo si
+// la larga no entra en una línea. Con el formato corto ya activo ya son cortas y no hace falta variante.
 function _conMensajeCorto(derivar) {
     return (est) => {
         const vista = derivar(est);
-        if (_formatoCortoStatsCache || !vista.mostrarMensaje) return vista;
+        if (_formatoCortoStatsCache) return vista;
         _forzarCorto = true;
-        try { vista.mensajeCorto = derivar(est).mensaje; } finally { _forzarCorto = false; }
+        try {
+            const corta = derivar(est);
+            if (vista.mostrarMensaje) vista.mensajeCorto = corta.mensaje;
+            if (corta.stats !== vista.stats) vista.statsCorto = corta.stats;
+        } finally { _forzarCorto = false; }
         return vista;
     };
 }
@@ -64,7 +74,7 @@ function _conMensajeCorto(derivar) {
 // Con la jornada recién abierta el reloj marca 0 minutos: se muestra un texto en lugar del cero
 const _TEXTO_COMENZANDO = 'Comenzando...';
 const _TEXTO_SEMANA_SIN_HORAS = 'Sin horas todavía';
-const _sinMinutos = horasDecimales => Math.round(horasDecimales * 60) === 0;
+const _sinMinutos = horasDecimales => TiempoUtils.horasAMinutosRedondeados(horasDecimales) === 0;
 
 function _horasTextoStats(horasDecimales) {
     return TiempoUtils.horasATexto(horasDecimales, _modoTextoStats());
@@ -91,20 +101,20 @@ function _hintSalidaODefault(reg, objetivoAplica, bufferSemanal, diasHabiles, hi
     if (permiteEstimado && reg && reg.entrada && objetivoAplica > 0 && !TiposRegistro.esRegistroEspecial(reg.entrada, reg.salida)) {
         return _calcularHintSalidaEstimada(reg, objetivoAplica, bufferSemanal, diasHabiles);
     }
-    return { hint: hintDefault, hintEsHTML: false };
+    return { hint: hintDefault };
 }
 
 function _tituloDia(nombreDia) {
-    return `${icono('#icon-clock')}${nombreDia}`;
+    return html`${icono('#icon-clock')}${nombreDia}`;
 }
 
 // objetivoCumplido: con el día abierto y la jornada ya cumplida, el badge "En curso" parpadea más rápido
 function _badgeEstadoHoy(dayClosed, colorFinal, objetivoCumplido = false) {
     if (!dayClosed) {
-        return `<span class="estado-badge estado-badge--en-curso${objetivoCumplido ? ' estado-badge--cumplido' : ''}">En curso</span>`;
+        return html`<span class="estado-badge estado-badge--en-curso${objetivoCumplido ? ' estado-badge--cumplido' : ''}">En curso</span>`;
     }
     const color = colorFinal || 'green';
-    return `<span class="estado-badge estado-badge--finalizado estado-badge--${color}">Finalizado</span>`;
+    return html`<span class="estado-badge estado-badge--finalizado estado-badge--${color}">Finalizado</span>`;
 }
 
 function _conAvisoAyer(vista, avisoAyerHint) {
@@ -140,6 +150,15 @@ function _palabraEstadoDia(d) {
 // Los días futuros no entran, salvo hoy aunque todavía no tenga registro. Los días sin horas (especial, sin salida, sin registro) ocupan un tramo fijo y chico para poder marcarlos;
 // los seguidos del mismo tipo (sin registro o especiales del mismo color) se fusionan en un solo hito con rango (L–X). Hoy nunca se fusiona: lleva el badge.
 // Cada hito trae su sigla (lun, mar...) y su inicial (L, M, X...) para que el dibujo use la que entre mejor.
+// Texto que se ve al pasar el cursor por el tramo de un día (solo escritorio): con horas, el total en el número grande y "Lunes · 13:55 – 21:01" en el mensaje;
+// sin horas (especial, sin registro...) solo el mensaje con su estado. `stats` null = el número no cambia.
+function _textoHoverDia(d, esHoy, conRegistro) {
+    const nombre = `${TiempoUtils.obtenerNombreDia(d.fecha)}${esHoy ? ' (hoy)' : ''}`;
+    if (!conRegistro || !d.entrada) return { stats: null, mensaje: `${nombre}: ${_palabraEstadoDia(d)}` };
+    const rango = d.salida ? `${d.entrada} – ${d.salida}` : `${d.entrada} – en curso`;
+    return { stats: _horasTextoStats(d.total), mensaje: `${nombre} · ${rango}` };
+}
+
 const _PESO_DIA_SIN_HORAS = 1;   // en horas
 function _franjasSemana(todosLosDias, horasDiarias, objetivoSemana, hoy) {
     const diasSemana = (todosLosDias ?? []).filter(d => d.estado !== ESTADO_DIA.FUTURO || d.fecha === hoy);
@@ -176,10 +195,12 @@ function _franjasSemana(todosLosDias, horasDiarias, objetivoSemana, hoy) {
             previo.hito.sigla = `${previo.primera}–${nombre(d)}`;
             previo.hito.inicial = `${previo.inicialPrimera}–${inicial(d)}`;
             previo.hito.descripcion = `${previo.hito.sigla} ${_palabraEstadoDia(d)}`;
+            previo.hito.hover = { stats: null, mensaje: `${previo.hito.sigla}: ${_palabraEstadoDia(d)}` };
         } else {
             const hito = {
                 fecha: d.fecha, sigla: nombre(d), inicial: inicial(d), fraccion: fin, hoy: esHoy(d),
                 descripcion: `${nombre(d)}${esHoy(d) ? ' (hoy)' : ''} ${_palabraEstadoDia(d)}`,
+                hover: _textoHoverDia(d, esHoy(d), conRegistro(d)),
                 prioridad: esHoy(d) ? 3 : conRegistro(d) ? 2 : d.estado === ESTADO_DIA.ESPECIAL || d.estado === ESTADO_DIA.SIN_SALIDA ? 1 : 0   // si no entran todas las siglas se conservan primero hoy y los días con horas
             };
             hitos.push(hito);
@@ -248,7 +269,7 @@ function derivarVistaSemana(est) {
     const franjas = _hintIntegrado && horasDiarias > 0 && !todosEspeciales ? _franjasSemana(est.diasSemana, horasDiarias, objetivoSemana, hoy) : null;
 
     return {
-        titulo: `${icono('#icon-calendar-simple')} Esta Semana`,
+        titulo: html`${icono('#icon-calendar-simple')} Esta Semana`,
         stats: todosEspeciales ? '🌞' : _textoStatsSemana(tot, est, semanaAbierta),
         mensaje, mostrarMensaje,
         colorBarra, anchoBarra: franjas ? franjas.fin * 100 : progreso,
@@ -256,7 +277,6 @@ function derivarVistaSemana(est) {
         colorCierre: colorBarra,
         cerrado,
         hint: 'Tocá para ver Hoy',
-        hintEsHTML: false,
         ...(franjas ? {
             hitosSemana: franjas.hitos, tramosSemana: franjas.tramos,
             siglasCortas: _formatoCortoStatsCache,   // con el formato de tiempo corto, en móviles los días van con su inicial (L, M, X...)
@@ -280,18 +300,16 @@ function _calcularHintSalidaEstimada(reg, objetivoDiario, bufferSemanal, diasHab
     const mostrarBuffer = Math.abs(bufferSemanal) > 0.01 && esLaborable;
 
     if (mostrarBuffer) {
-        const minutosConBuffer = minutosTotal - (bufferSemanal * 60);
+        const minutosConBuffer = minutosTotal - TiempoUtils.horasAMinutosRedondeados(bufferSemanal);
         const horaBuf = _minutosAHoraWrap(minutosConBuffer);
         const claseBuffer = bufferSemanal > 0 ? ' hint-buffer-color--green' : bufferSemanal < 0 ? ' hint-buffer-color--red' : '';
         return {
-            hint: `Salida estimada: <strong>${horaSalida}</strong> | <span class="hint-buffer-color${claseBuffer}"><strong>${horaBuf}</strong></span>`,
-            hintEsHTML: true
+            hint: html`Salida estimada: <strong>${horaSalida}</strong> | <span class="hint-buffer-color${claseBuffer}"><strong>${horaBuf}</strong></span>`
         };
     }
 
     return {
-        hint: `Salida estimada: <strong>${horaSalida}</strong>`,
-        hintEsHTML: true
+        hint: html`Salida estimada: <strong>${horaSalida}</strong>`
     };
 }
 
@@ -310,7 +328,7 @@ function _calcularLinea(reg, objetivoDiario, bufferSemanal, diasHabiles) {
     const ahoraRel = rel(TiempoUtils.horaAMinutos(cerrado ? reg.salida : TiempoUtils.obtenerHoraActual()));
     const hayBuffer = !cerrado && TiempoUtils.esFechaHabil(reg.fecha, diasHabiles) && Math.abs(bufferSemanal) > 0.01;
     // con un buffer mayor que la jornada la salida con buffer no puede quedar antes de la entrada
-    const bufferRel = hayBuffer ? Math.max(0, salidaRel - bufferSemanal * 60) : null;
+    const bufferRel = hayBuffer ? Math.max(0, salidaRel - TiempoUtils.horasAMinutosRedondeados(bufferSemanal)) : null;
     const hayBanda = bufferRel !== null && Math.abs(bufferRel - salidaRel) >= 1;
 
     return {
@@ -343,69 +361,83 @@ function _mensajeProgreso(cumplido, tiempoHoy, objetivoDiario, bufferSemanal, la
     return bufferSemanal >= faltante ? `${faltanteTexto}, pero te podés ir` : faltanteTexto;
 }
 
+/** Vista de hoy cuando todavía no hay entrada pero ayer quedó una jornada abierta que cruza la medianoche. */
+function _vistaAyerAbierto(est) {
+    const { tiempoHoy, bufferSemanalBase, diasHabiles, horasDiarias, regHoy } = est;
+    const objetivoDiario = regHoy ? Compensatorios.objetivoDeRegistro(regHoy) : horasDiarias;
+    const objetivoDiarioAyerAplica = TiempoUtils.esFechaHabil(est.ayerStr, diasHabiles)
+        ? (est.regAyer ? Compensatorios.objetivoDeRegistro(est.regAyer) : objetivoDiario)
+        : 0;
+    const prog = _calcularProgreso(tiempoHoy, objetivoDiarioAyerAplica);
+    const cumplido = _estaCumplido(tiempoHoy, objetivoDiarioAyerAplica);
+    const colorBarra = objetivoDiarioAyerAplica === 0 ? 'blue' : (cumplido ? 'green' : 'blue');
+    const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAyerAplica, bufferSemanalBase, 'En curso (cruce de medianoche)');
+
+    const nombreDiaAyer = TiempoUtils.obtenerNombreDia(est.ayerStr);
+    const linea = _calcularLinea(est.regAyer, objetivoDiarioAyerAplica, bufferSemanalBase, diasHabiles);
+    const { hint } = _hintSalidaODefault(est.regAyer, objetivoDiarioAyerAplica, bufferSemanalBase, diasHabiles, 'Tocá Fichar para registrar salida', true);
+
+    return {
+        titulo: html`${_tituloDia(nombreDiaAyer)} (ayer)${_badgeEstadoHoy(false, undefined, objetivoDiarioAyerAplica > 0 && cumplido)}`,
+        stats: _sinMinutos(tiempoHoy) ? _TEXTO_COMENZANDO : _horasTextoStats(tiempoHoy),
+        mensaje, mostrarMensaje: true,
+        colorBarra, anchoBarra: prog,
+        colorBorde: colorBarra, estadoFondo: 'en_curso', estadoFondoColor: null,
+        colorCierre: _colorSiCerraraAhora(tiempoHoy, objetivoDiarioAyerAplica, bufferSemanalBase),
+        cerrado: false,
+        hint,
+        linea,
+    };
+}
+
+/** Vista de hoy sin ningún registro (ni jornada de ayer abierta). */
+function _vistaSinRegistro(est) {
+    const { horasDiarias, esDiaHabil } = est;
+    return {
+        titulo: _tituloDia(TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy())),
+        stats: esDiaHabil ? '🎒' : '🌞',
+        mensaje: esDiaHabil
+            ? (horasDiarias === 0 ? '' : 'Esperando registro...')
+            : (horasDiarias === 0 ? '' : 'Día libre'),
+        mostrarMensaje: horasDiarias > 0,
+        colorBarra: 'blue', anchoBarra: 0,
+        colorBorde: 'transparent', estadoFondo: 'esperando',
+        cerrado: false,
+        hint: 'Tocá para ver la Semana',
+    };
+}
+
+/** Vista de hoy cuando el registro es un día especial (licencia, feriado...). */
+function _vistaEspecial(tipoEspecialHoy) {
+    return {
+        titulo: _tituloDia(TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy())),
+        stats: `${tipoEspecialHoy.emoji} ${tipoEspecialHoy.label}`,
+        mensaje: `¡${tipoEspecialHoy.descripcion}!`,
+        mostrarMensaje: true,
+        colorBarra: tipoEspecialHoy.color, anchoBarra: 100,
+        colorBorde: tipoEspecialHoy.color,
+        estadoFondo: 'especial', estadoFondoColor: tipoEspecialHoy.color,
+        cerrado: false,
+        hint: 'Tocá para ver la Semana',
+    };
+}
+
 function derivarVistaHoy(est) {
     const { regHoy, tiempoHoy, horasDiarias, esDiaHabil, tipoEspecialHoy, bufferSemanalBase, diasHabiles } = est;
     const objetivoDiario = regHoy ? Compensatorios.objetivoDeRegistro(regHoy) : horasDiarias;
 
     if (!regHoy || !regHoy.entrada) {
 
-        if (est.ayerAbierto) {
-            const objetivoDiarioAyerAplica = TiempoUtils.esFechaHabil(est.ayerStr, diasHabiles)
-                ? (est.regAyer ? Compensatorios.objetivoDeRegistro(est.regAyer) : objetivoDiario)
-                : 0;
-            const prog = _calcularProgreso(tiempoHoy, objetivoDiarioAyerAplica);
-            const cumplido = _estaCumplido(tiempoHoy, objetivoDiarioAyerAplica);
-            const colorBarra = objetivoDiarioAyerAplica === 0 ? 'blue' : (cumplido ? 'green' : 'blue');
-            const mensaje = _mensajeProgreso(cumplido, tiempoHoy, objetivoDiarioAyerAplica, bufferSemanalBase, 'En curso (cruce de medianoche)');
+        if (est.ayerAbierto) return _vistaAyerAbierto(est);
 
-            const nombreDiaAyer = TiempoUtils.obtenerNombreDia(est.ayerStr);
-            const linea = _calcularLinea(est.regAyer, objetivoDiarioAyerAplica, bufferSemanalBase, diasHabiles);
-            const { hint, hintEsHTML } = _hintSalidaODefault(est.regAyer, objetivoDiarioAyerAplica, bufferSemanalBase, diasHabiles, 'Tocá Fichar para registrar salida', true);
-
-            return {
-                titulo: `${_tituloDia(nombreDiaAyer)} (ayer)${_badgeEstadoHoy(false, undefined, objetivoDiarioAyerAplica > 0 && cumplido)}`,
-                stats: _sinMinutos(tiempoHoy) ? _TEXTO_COMENZANDO : _horasTextoStats(tiempoHoy),
-                mensaje, mostrarMensaje: true,
-                colorBarra, anchoBarra: prog,
-                colorBorde: colorBarra, estadoFondo: 'en_curso', estadoFondoColor: null,
-                colorCierre: _colorSiCerraraAhora(tiempoHoy, objetivoDiarioAyerAplica, bufferSemanalBase),
-                cerrado: false,
-                hint, hintEsHTML,
-                linea,
-            };
-        }
-
-        return {
-            titulo: _tituloDia(TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy())),
-            stats: esDiaHabil ? '🎒' : '🌞',
-            mensaje: esDiaHabil
-                ? (horasDiarias === 0 ? '' : 'Esperando registro...')
-                : (horasDiarias === 0 ? '' : 'Día libre'),
-            mostrarMensaje: horasDiarias > 0,
-            colorBarra: 'blue', anchoBarra: 0,
-            colorBorde: 'transparent', estadoFondo: 'esperando',
-            cerrado: false,
-            hint: 'Tocá para ver la Semana', hintEsHTML: false,
-        };
+        return _vistaSinRegistro(est);
     }
 
     const avisoAyerHint = est.ayerAbierto
-        ? { hint: `⚠️ Ayer (${TiempoUtils.obtenerNombreDia(est.ayerStr)}) quedó un fichaje sin cerrar`, hintEsHTML: false, aviso: `⚠️ Ayer (${TiempoUtils.obtenerNombreDia(est.ayerStr)}) quedó un fichaje sin cerrar` }
+        ? { hint: `⚠️ Ayer (${TiempoUtils.obtenerNombreDia(est.ayerStr)}) quedó un fichaje sin cerrar`, aviso: `⚠️ Ayer (${TiempoUtils.obtenerNombreDia(est.ayerStr)}) quedó un fichaje sin cerrar` }
         : null;
 
-    if (tipoEspecialHoy) {
-        return _conAvisoAyer({
-            titulo: _tituloDia(TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy())),
-            stats: `${tipoEspecialHoy.emoji} ${tipoEspecialHoy.label}`,
-            mensaje: `¡${tipoEspecialHoy.descripcion}!`,
-            mostrarMensaje: true,
-            colorBarra: tipoEspecialHoy.color, anchoBarra: 100,
-            colorBorde: tipoEspecialHoy.color,
-            estadoFondo: 'especial', estadoFondoColor: tipoEspecialHoy.color,
-            cerrado: false,
-            hint: 'Tocá para ver la Semana', hintEsHTML: false,
-        }, avisoAyerHint);
-    }
+    if (tipoEspecialHoy) return _conAvisoAyer(_vistaEspecial(tipoEspecialHoy), avisoAyerHint);
 
     const dayClosed = !!regHoy.salida;
     const objetivoDiarioAplica = esDiaHabil ? objetivoDiario : 0;
@@ -417,7 +449,9 @@ function derivarVistaHoy(est) {
         colorBarra = dayClosed ? 'green' : 'blue';
         colorBorde = dayClosed ? 'green' : 'blue';
         estadoFondo = dayClosed ? 'finalizado_ok' : 'en_curso';
-        mensaje = ''; mostrarMensaje = false;
+        // en un día no laborable se aclara por qué no hay objetivo; sin objetivo configurado (horasDiarias 0) o con objetivo 0 en un día hábil no hay nada que decir
+        const noLaborable = !esDiaHabil && horasDiarias > 0;
+        mensaje = noLaborable ? 'Día libre' : ''; mostrarMensaje = noLaborable;
     } else if (dayClosed) {
         const dif = tiempoHoy - objetivoDiarioAplica;
 
@@ -449,19 +483,19 @@ function derivarVistaHoy(est) {
     }
 
     const linea = _calcularLinea(regHoy, objetivoDiarioAplica, bufferSemanalBase, diasHabiles);
-    const { hint, hintEsHTML } = _hintSalidaODefault(regHoy, objetivoDiarioAplica, bufferSemanalBase, diasHabiles, 'Tocá para ver la Semana', !dayClosed);
+    const { hint } = _hintSalidaODefault(regHoy, objetivoDiarioAplica, bufferSemanalBase, diasHabiles, 'Tocá para ver la Semana', !dayClosed);
 
     const colorFinal = estadoFondoColor || (estadoFondo === 'finalizado_fail' ? 'red' : 'green');
 
     return _conAvisoAyer({
-        titulo: `${est.esRetenido ? `${_tituloDia(TiempoUtils.obtenerNombreDia(regHoy.fecha))} (ayer)` : _tituloDia(TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy()))}${_badgeEstadoHoy(dayClosed, colorFinal, objetivoDiarioAplica > 0 && cumplido)}`,
+        titulo: html`${est.esRetenido ? html`${_tituloDia(TiempoUtils.obtenerNombreDia(regHoy.fecha))} (ayer)` : _tituloDia(TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy()))}${_badgeEstadoHoy(dayClosed, colorFinal, objetivoDiarioAplica > 0 && cumplido)}`,
         stats: !dayClosed && _sinMinutos(tiempoHoy) ? _TEXTO_COMENZANDO : _horasTextoStats(tiempoHoy),
         mensaje, mostrarMensaje,
         colorBarra, anchoBarra: prog,
         colorBorde, estadoFondo, estadoFondoColor,
         colorCierre: dayClosed ? colorBarra : _colorSiCerraraAhora(tiempoHoy, objetivoDiarioAplica, bufferSemanalBase),
         cerrado: dayClosed,
-        hint, hintEsHTML,
+        hint,
         linea,
     }, avisoAyerHint);
 }
@@ -473,5 +507,8 @@ export const TarjetaFichajeVista = {
     _cantidadHorasCorta,
     _modoTextoStats,
     _hintIntegradoActivo: () => _hintIntegrado,
+    // Desactivado (sin ciclo automático) se comporta como Barra al pasar el cursor: la descripción se despliega en la barra y el número queda con las horas
+    _descHitosEnNumero: () => _hintIntegrado && _cicloHintAuto && _descHitosNumero,
+    _cicloAutoActivo: () => !_hintIntegrado || _cicloHintAuto,
     _refrescarFormatoCortoStatsCache
 };

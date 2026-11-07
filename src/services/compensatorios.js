@@ -9,8 +9,12 @@ import { EstadoApp as D } from './estado-app.js';
 // ====================================================================
 //      COMPENSATORY DAYS & WORKDAY HISTORY CALCULATIONS MODULE
 // ====================================================================
-function _esObjetivoValido(v) {
-    return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 24;
+const _esObjetivoValido = S.esObjetivoHorasValido;
+
+/** Objetivo guardado en el registro (sin mirar la opción de ignorarlo), o el global si no tiene uno válido. Lo usa la edición. */
+function objetivoGuardado(registro) {
+    const v = registro?.objetivoHoras;
+    return _esObjetivoValido(v) ? v : D.horasDiarias();
 }
 
 function sanitizarHistorialDiasHabiles(historial) {
@@ -151,12 +155,6 @@ function _buscarAsignacionCompensatorio(idBuscado, campoId, asignacionesPrecalcu
 }
 
 /** @param {any} [asignacionesPrecalculadas] */
-function _montoCompensadoPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
-    const a = _buscarAsignacionCompensatorio(registroCompensatorio.id, 'compensatorioId', asignacionesPrecalculadas);
-    return a ? a.excedente : 0;
-}
-
-/** @param {any} [asignacionesPrecalculadas] */
 function fechaCompensadaPorRegistro(registroCompensatorio, asignacionesPrecalculadas = null) {
     const a = _buscarAsignacionCompensatorio(registroCompensatorio.id, 'compensatorioId', asignacionesPrecalculadas);
     return a ? a.referenciaFecha : null;
@@ -182,6 +180,55 @@ function horasEfectivasDeRegistro(registro) {
     return 0;
 }
 
+// --------------------------------------------------------------------
+// Edición de tramos del historial de días hábiles (modal "Historial de días hábiles")
+// --------------------------------------------------------------------
+const DESDE_SIEMPRE = '0001-01-01';
+
+/** Tramos ordenados por fecha; sin historial, uno solo "desde siempre" con los días vigentes. */
+function tramosDiasHabiles() {
+    const historial = D.historialDiasHabiles();
+    return Array.isArray(historial) && historial.length > 0
+        ? [...historial].sort((a, b) => a.desde.localeCompare(b.desde))
+        : [{ desde: DESDE_SIEMPRE, dias: D.diasHabiles() }];
+}
+
+async function _aplicarHistorial(historial, diasRespaldo) {
+    const limpio = sanitizarHistorialDiasHabiles(historial);
+    D._setHistorialDiasHabilesRaw(limpio && limpio.length > 0 ? limpio : [{ desde: DESDE_SIEMPRE, dias: diasRespaldo }]);
+    D.setDiasHabiles(diasHabilesEnFecha(TiempoUtils.obtenerFechaHoy()));
+    const guardado = await D.guardarYActualizar();
+    if (guardado) D.sincronizarPushHoy();   // cambian los días hábiles de hoy: el aviso puede dejar de corresponder
+    return guardado;
+}
+
+/**
+ * Cambia la fecha y los días de un tramo (el tramo "desde siempre" conserva su fecha). Valida y guarda.
+ * @returns {Promise<{ error: string } | { ok: boolean }>}
+ */
+async function editarTramoDias(desdeOriginal, nuevaFechaCruda, diasCrudos) {
+    const tramos = tramosDiasHabiles();
+    if (!tramos.some(t => t.desde === desdeOriginal)) return { error: 'Tramo no encontrado' };
+    const nuevaFecha = desdeOriginal === DESDE_SIEMPRE ? DESDE_SIEMPRE : String(nuevaFechaCruda ?? '');
+    if (nuevaFecha !== DESDE_SIEMPRE && !TiempoUtils.validarFecha(nuevaFecha)) return { error: 'Ingresá una fecha válida' };
+    const dias = S.sanitizarDiasHabiles(diasCrudos);
+    if (!dias) return { error: 'Seleccioná al menos un día' };
+    const otros = tramos.filter(t => t.desde !== desdeOriginal);
+    if (otros.some(t => t.desde === nuevaFecha)) return { error: 'Ya existe un tramo con esa fecha' };
+    return { ok: await _aplicarHistorial([...otros, { desde: nuevaFecha, dias }], dias) };
+}
+
+/**
+ * Elimina un tramo; los registros que abarcaba pasan a regirse por el anterior. El primero no se puede eliminar.
+ * @returns {Promise<{ error: string } | { ok: boolean }>}
+ */
+async function eliminarTramoDias(desde) {
+    const tramos = tramosDiasHabiles();
+    if (tramos.length <= 1 || tramos[0].desde === desde) return { error: 'El primer tramo no se puede eliminar' };
+    if (!tramos.some(t => t.desde === desde)) return { error: 'Tramo no encontrado' };
+    return { ok: await _aplicarHistorial(tramos.filter(t => t.desde !== desde), D.diasHabiles()) };
+}
+
 function objetivoEdicionEnVivo() {
     if (Almacenamiento.getBoolean(STORAGE_KEYS.IGNORAR_OBJETIVO_POR_REGISTRO, false, true)) return D.horasDiarias();
     const v = D._notify().leerObjetivoEdicion();
@@ -191,7 +238,7 @@ function objetivoEdicionEnVivo() {
 function migrarObjetivoHorasFaltante() {
     let migrados = 0;
     D.registros().forEach(r => {
-        if (typeof r.objetivoHoras !== 'number' || !Number.isFinite(r.objetivoHoras)) {
+        if (!_esObjetivoValido(r.objetivoHoras)) {
             r.objetivoHoras = D.horasDiarias();
             migrados++;
         }
@@ -232,14 +279,16 @@ function aplicarHorasATodosLosRegistros() {
 export const Compensatorios = {
     _esObjetivoValido,
     sanitizarHistorialDiasHabiles,
+    tramosDiasHabiles,
+    editarTramoDias,
+    eliminarTramoDias,
     diasHabilesEnFecha,
     registrarCambioDiasHabiles,
     objetivoDeRegistro,
+    objetivoGuardado,
     esTipoRemoto,
-    _excedenteDeRegistro,
     calcularAsignacionesCompensatorio,
     _buscarAsignacionCompensatorio,
-    _montoCompensadoPorRegistro,
     fechaCompensadaPorRegistro,
     fechaCompensadoDeRegistro,
     montoCompensadoDeReferencia,

@@ -7,6 +7,19 @@ import { SeguridadYUtils } from './seguridad.js';
 // atributos entre comillas). Para insertar marcado ya confiable: anidar otro
 // html`...` o envolverlo con crudo(). Un string común NUNCA se interpreta como HTML.
 
+// Trusted Types: la CSP de index.html exige `require-trusted-types-for 'script'`, así que el navegador solo acepta
+// TrustedHTML en innerHTML y TrustedScriptURL al registrar el Service Worker. La única política ('horarios') vive acá:
+// createHTML solo se usa con el contenido de un HtmlSeguro (ya escapado por html`...`) y createScriptURL solo admite sw.js.
+// Sin soporte (Node, navegadores viejos) se usan los strings tal cual.
+const SCRIPTS_PERMITIDOS = ['./sw.js'];
+const _politica = /** @type {any} */ (globalThis).trustedTypes?.createPolicy?.('horarios', {
+    createHTML: (/** @type {string} */ s) => s,
+    createScriptURL: (/** @type {string} */ url) => {
+        if (!SCRIPTS_PERMITIDOS.includes(url)) throw new TypeError(`Script no permitido: ${url}`);
+        return url;
+    },
+});
+
 class HtmlSeguro {
     constructor(valor) { this.valor = valor; }
     toString() { return this.valor; }
@@ -35,8 +48,22 @@ export function icono(href, clase = '') {
 
 export function esHtmlSeguro(v) { return v instanceof HtmlSeguro; }
 
-/** Reemplaza el contenido de `el` por un html`...` (único camino recomendado para innerHTML con datos). */
+/**
+ * Convierte un html`...` en lo que aceptan los sinks de HTML (TrustedHTML con Trusted Types activo, si no el string).
+ * @returns {any}
+ */
+export function aHtmlConfiable(contenido) {
+    if (!esHtmlSeguro(contenido)) throw new TypeError('aHtmlConfiable: el contenido debe ser un html`...`');
+    return _politica ? _politica.createHTML(contenido.valor) : contenido.valor;
+}
+
+/** URL de script para APIs como serviceWorker.register (solo las de SCRIPTS_PERMITIDOS). @returns {any} */
+export function urlScriptConfiable(url) {
+    if (!SCRIPTS_PERMITIDOS.includes(url)) throw new TypeError(`Script no permitido: ${url}`);
+    return _politica ? _politica.createScriptURL(url) : url;
+}
+
+/** Reemplaza el contenido de `el` por un html`...` (único lugar del código que asigna innerHTML). */
 export function montar(el, contenido) {
-    if (!esHtmlSeguro(contenido)) throw new TypeError('montar: el contenido debe ser un html`...`');
-    el.innerHTML = contenido.valor;
+    el.innerHTML = aHtmlConfiable(contenido);
 }

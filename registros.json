@@ -1,0 +1,89 @@
+{
+  "registros": [
+    {
+      "id": "1ulg0rlaygw4m1e3ybw0ftcdl0",
+      "fecha": "2026-11-07",
+      "entrada": "00:28",
+      "salida": null,
+      "tiempoFuera": null,
+      "horas": 0,
+      "minutos": 0,
+      "total": 0,
+      "objetivoHoras": 7
+    },
+    {
+      "id": "1icmi4s4y9azkd4ldnbhppw3m",
+      "fecha": "2026-11-06",
+      "entrada": "10:00",
+      "salida": "17:01",
+      "tiempoFuera": null,
+      "horas": 7,
+      "minutos": 1,
+      "total": 7.016666666666667,
+      "objetivoHoras": 7,
+      "credito": null,
+      "notas": null
+    },
+    {
+      "id": "3jlixurk41dk1yifly01vnr1iv",
+      "fecha": "2026-11-05",
+      "entrada": "10:00",
+      "salida": "18:00",
+      "tiempoFuera": null,
+      "horas": 8,
+      "minutos": 0,
+      "total": 8,
+      "objetivoHoras": 7,
+      "credito": null,
+      "notas": null
+    }
+  ],
+  "diasHabiles": [
+    4,
+    5,
+    6
+  ],
+  "horasDiarias": 7,
+  "historialDiasHabiles": [
+    {
+      "desde": "0001-01-01",
+      "dias": [
+        4,
+        5,
+        6
+      ]
+    }
+  ],
+  "ignorarTiempoFuera": false,
+  "ignorarLogicaCubierto": false,
+  "ignorarObjetivoPorRegistro": false,
+  "reducirAnimaciones": "auto",
+  "hintIntegrado": true,
+  "descHitosNumero": true,
+  "cicloHintAuto": true,
+  "ordenCards": [
+    "estado",
+    "registrar",
+    "estadisticas",
+    "historico"
+  ],
+  "ordenCardsMovil": [
+    "estado",
+    "registrar",
+    "estadisticas",
+    "historico"
+  ],
+  "columnasCards": [
+    3,
+    1
+  ],
+  "tarjetasVisibles": {
+    "registrar": true,
+    "estadisticas": true,
+    "historico": true
+  },
+  "fecha": "2026-11-07 00:31:38",
+  "version": 4,
+  "hash": "b0c386ba1dea1f422c0c91aa145f0b10e9dee0645a1984f892864ef976cb4bf2",
+  "timestamp": 1794022298516
+}

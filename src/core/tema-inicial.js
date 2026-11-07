@@ -3,8 +3,14 @@
 // Se oculta siempre: un <iframe sandbox> bloquea la navegación del top sin lanzar excepción.
 if (window.top !== window.self) {
     document.documentElement.style.display = 'none';
-    try { /** @type {Window} */ (window.top).location = window.self.location.href; } catch (e) { }
+    try { /** @type {Window} */ (window.top).location = window.self.location.href; } catch (e) { /* sin acceso al almacenamiento o a window.top: se usan los valores por defecto */ }
 }
+
+// Listas válidas (copias de TEMAS en ui/gestor-temas.js y de ESTILOS_CALENDARIO en core/estilo-calendario.js: este
+// script clásico no puede importar módulos; tests/architecture.test.mjs verifica que coincidan). Un valor guardado
+// que no esté en la lista se trata como el valor por defecto, igual que hacen esos módulos.
+var TEMAS_VALIDOS = ['light', 'dark', 'medianoche', 'pink', 'green', 'blue', 'lilac', 'crema'];
+var ESTILOS_CALENDARIO_VALIDOS = ['legacy', 'relleno-aro', 'cuadrado-aro', 'aro-grueso', 'contorno-brillo', 'subrayado', 'punto'];
 
 (function () {
     try {
@@ -15,7 +21,7 @@ if (window.top !== window.self) {
         // Compatibilidad con el valor booleano antiguo ('true'/'false')
         if (s === 'true') s = 'dark';
         else if (s === 'false') s = 'light';
-        else if (s === null) s = 'dark'; // valor por defecto
+        else if (s === null || TEMAS_VALIDOS.indexOf(s) === -1) s = 'dark'; // valor por defecto (también si está corrupto)
 
         if (s === 'dark') {
             html.classList.add('dark-mode');
@@ -23,7 +29,15 @@ if (window.top !== window.self) {
             html.setAttribute('data-theme', s);
         }
         // s === 'light' -> no se aplica nada, queda el tema claro por defecto
-    } catch (e) { }
+    } catch (e) { /* sin acceso al almacenamiento o a window.top: se usan los valores por defecto */ }
+}());
+
+// Estilo de los días del calendario (ver EstiloCalendario): el CSS solo mira <html data-estilo-calendario>; sin valor guardado queda el original ('legacy').
+(function () {
+    try {
+        var e = localStorage.getItem('horarios_estiloCalendario') || 'legacy';
+        document.documentElement.setAttribute('data-estilo-calendario', ESTILOS_CALENDARIO_VALIDOS.indexOf(e) === -1 ? 'legacy' : e);
+    } catch (err) { /* sin acceso al almacenamiento o a window.top: se usan los valores por defecto */ }
 }());
 
 // Reducir animaciones: 'on' | 'off' | 'auto' (sin valor = auto, sigue al sistema).
@@ -34,5 +48,13 @@ if (window.top !== window.self) {
         if (m === null) m = localStorage.getItem('reducirAnimaciones');
         var reducir = m === 'on' || (m !== 'off' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
         document.documentElement.setAttribute('data-motion', reducir ? 'reduce' : 'full');
-    } catch (e) { }
+    } catch (e) { /* sin acceso al almacenamiento o a window.top: se usan los valores por defecto */ }
+}());
+
+// Pantalla de carga: oculta el HTML estático (CSS: html.cargando) hasta que main.js lo quita al terminar de iniciar la UI.
+// Red de seguridad: si el módulo falla o tarda demasiado, se muestra la página igual.
+(function () {
+    var html = document.documentElement;
+    html.classList.add('cargando');
+    setTimeout(function () { html.classList.remove('cargando'); }, 8000);
 }());

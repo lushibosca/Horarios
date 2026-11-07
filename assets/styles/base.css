@@ -16,6 +16,8 @@ body.modal-open {
 }
 
 html {
+    /* Desactiva el pull-to-refresh nativo (recarga abrupta): lo reemplaza ui/recarga-gesto.js con fundido de las tarjetas */
+    overscroll-behavior-y: contain;
     scrollbar-gutter: stable;
 }
 
@@ -26,6 +28,85 @@ body {
     overflow-anchor: none;
     transition: background var(--transition-ui), color var(--transition-ui);
     overflow-y: auto;
+}
+
+/* ─── PANTALLA DE CARGA ──────────────────────────────────────────────────────── */
+/* tema-inicial.js marca <html class="cargando"> antes del primer pintado; main.js la quita cuando la UI está lista.
+   Así no se ven las tarjetas "muertas" (HTML estático) mientras el módulo todavía no corrió. */
+html.cargando body>* {
+    visibility: hidden;
+}
+
+html.cargando body::after {
+    content: '';
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 36px;
+    height: 36px;
+    margin: -18px 0 0 -18px;
+    border: 3px solid var(--border);
+    border-top-color: var(--text-muted);
+    border-radius: 50%;
+    animation: girarCarga var(--dur-giro) linear infinite;
+}
+
+html[data-motion="reduce"].cargando body::after {
+    animation: none;
+}
+
+@keyframes girarCarga {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ─── RECARGA POR GESTO / FUNDIDO DE ENTRADA ─────────────────────────────────── */
+/* --recarga-progreso (0→1) lo escribe ui/recarga-gesto.js mientras se tira hacia abajo en el tope de la página. */
+.container {
+    opacity: calc(1 - var(--recarga-progreso, 0) * 0.65);
+}
+
+/* Duración propia (no --dur-anim): es solo un fundido, no movimiento, así que también se ve con "reducir animaciones" */
+html.recarga-animando .container {
+    transition: opacity var(--dur-recarga) var(--ease-anim);
+}
+
+html.recargando .container {
+    opacity: 0;
+}
+
+/* Recarga programática (cambio de perfil, etc.): también se desvanece el modal que esté abierto */
+html.recargando .modal {
+    opacity: 0;
+    transition: opacity var(--dur-recarga) var(--ease-anim);
+}
+
+/* Los fantasmas de las animaciones de mutación (ver _fantasmaDe) cuelgan de <body>, fuera de .container, así que el fundido
+   no los alcanza: si la recarga arranca en medio de una mutación (p. ej. el ciclo entrada/salida de la tarjeta de estado)
+   quedaban sueltos sobre el spinner. Se ocultan de golpe: no se puede reiniciarles la animación (reaparecerían con opacidad 1). */
+/* Mientras se tira con el dedo (todavía sin soltar) el fantasma tampoco puede verse a opacidad plena sobre las tarjetas
+   atenuadas: parecía un semi-overlay. Se atenúa con `filter` (la opacidad ya la maneja su animación) igual que .container */
+.mutacion-saliente {
+    filter: opacity(calc(1 - var(--recarga-progreso, 0) * 0.65));
+}
+
+html.recarga-animando .mutacion-saliente {
+    transition: filter var(--dur-recarga) var(--ease-anim);
+}
+
+html.recargando .mutacion-saliente {
+    display: none;
+}
+
+html.entrada-pagina .container {
+    animation: fundidoEntrada var(--dur-entrada) var(--ease-anim) both;
+}
+
+@keyframes fundidoEntrada {
+    from {
+        opacity: 0;
+    }
 }
 
 /* ─── DISEÑO ─────────────────────────────────────────────────────────────────── */
@@ -277,9 +358,9 @@ h2.mutacion-saliente.no-margin,
 }
 
 .input-number-group--pill .btn-increment {
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
+    width: var(--control-sm);
+    min-width: var(--control-sm);
+    height: var(--control-sm);
     padding: 0;
     background: transparent;
     border: none;
@@ -314,8 +395,8 @@ h2.mutacion-saliente.no-margin,
 .input-number-group--embed .btn-increment {
     background: transparent;
     border: none;
-    min-width: 36px;
-    width: 36px;
+    min-width: var(--control-sm);
+    width: var(--control-sm);
     height: 100%;
     padding: 0;
     color: var(--text-main);
@@ -491,7 +572,7 @@ button:disabled {
 }
 
 .btn-register .icon {
-    animation: llamarAtencion 5s ease-in-out 1.2s 2;
+    animation: llamarAtencion var(--dur-ambiente) ease-in-out 1.2s 2;
     transform-origin: bottom;
 }
 
@@ -530,6 +611,21 @@ button:disabled {
 .icon-btn,
 .filter-btn {
     background: transparent;
+}
+
+/* Llamado de atención del botón de instalar (ver instalador-pwa.js): un aro que pulsa a su alrededor */
+#btn-install {
+    position: relative;
+}
+
+#btn-install.llamando::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--c-blue);
+    border-radius: var(--radius-full);
+    pointer-events: none;
+    animation: instalar-pulso var(--dur-pulso) ease-out;
 }
 
 #btn-lock-toggle.bloqueado,
@@ -952,7 +1048,7 @@ mark.ayuda-resaltado--activa {
 .toast-progreso:indeterminate {
     background: linear-gradient(90deg, transparent 0 30%, var(--c-blue) 30% 60%, transparent 60%) 0 0 / 200% 100% no-repeat,
         color-mix(in srgb, var(--text-muted) 24%, transparent);
-    animation: toastBarraIndeterminada 1.2s linear infinite;
+    animation: toastBarraIndeterminada var(--dur-barra-indeterminada) linear infinite;
 }
 
 @keyframes toastBarraIndeterminada {
@@ -977,8 +1073,7 @@ mark.ayuda-resaltado--activa {
 
 .svg-sprite,
 #btn-install,
-#file-import,
-#modo-lote {
+#file-import {
     display: none;
 }
 

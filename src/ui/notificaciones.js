@@ -1,9 +1,10 @@
 import { $ } from '../core/dom.js';
+import { TOAST_MS } from '../core/constantes.js';
 import { RecordatorioPush } from '../services/recordatorio-push.js';
 import { UIBase } from './base.js';
-import { GestionDatos } from '../services/gestion-datos.js';
 import { debounce } from './gestos.js';
 import { mostrarToast } from './toast.js';
+import { AvisoJornada } from '../services/aviso-jornada.js';
 
 // ====================================================================
 // UI NOTIFICATIONS MODULE (push y permisos de notificaciones)
@@ -23,7 +24,7 @@ function actualizarEstadoBotonNotificaciones() {
     _setBtnActivo('btn-toggle-notification', RecordatorioPush.getHabilitado());
 }
 
-const _sincronizarPushHoyDebounced = debounce(() => GestionDatos.sincronizarPushHoy(), 400);
+const _sincronizarPushHoyDebounced = debounce(() => AvisoJornada.sincronizarHoy(), 400);
 
 const { toggle: togglePushBuffer, actualizarEstado: actualizarEstadoBotonPushBuffer } =
     _crearToggleConfig({
@@ -82,7 +83,7 @@ async function _suscribirCambiosPermisoNotificaciones() {
 function actualizarEstadoPermisoNotificaciones() {
     const el = $('push-permiso-estado');
     if (!el) return;
-    el.innerHTML = '';
+    el.replaceChildren();
 
     if (!('Notification' in window)) return;
 
@@ -118,7 +119,7 @@ async function enviarNotificacionPrueba() {
         'no-soportado': ['Este navegador no admite notificaciones', 'error'],
     };
     const [texto, tipo] = mensajes[await RecordatorioPush.enviarNotificacionPrueba(10000)];
-    mostrarToast(texto, tipo, 5000);
+    mostrarToast(texto, tipo, TOAST_MS.AVISO);
     actualizarEstadoPermisoNotificaciones();
 }
 

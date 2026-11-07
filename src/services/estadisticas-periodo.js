@@ -39,7 +39,7 @@ function _calcularRegularidadRango(registrosValidos, regularidadPorMes) {
             const regs = registrosValidos.filter(r => r.fecha.startsWith(mes));
             if (regs.length < 2) return;
             const dE = desviacionEstandar(regs.map(r => TiempoUtils.horaAMinutos(r.entrada)));
-            const dJ = desviacionEstandar(regs.map(r => Math.round(r.total * 60)));
+            const dJ = desviacionEstandar(regs.map(r => TiempoUtils.horasAMinutosRedondeados(r.total)));
             if (dE !== null) desE.push(dE);
             if (dJ !== null) desJ.push(dJ);
         });
@@ -51,7 +51,7 @@ function _calcularRegularidadRango(registrosValidos, regularidadPorMes) {
     }
     return {
         regEntrada: calcularRegularidad(desviacionEstandar(registrosValidos.map(r => TiempoUtils.horaAMinutos(r.entrada)))),
-        regJornada: calcularRegularidad(desviacionEstandar(registrosValidos.map(r => Math.round(r.total * 60))))
+        regJornada: calcularRegularidad(desviacionEstandar(registrosValidos.map(r => TiempoUtils.horasAMinutosRedondeados(r.total))))
     };
 }
 

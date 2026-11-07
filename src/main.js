@@ -1,4 +1,4 @@
-import { APP_NOMBRE, APP_VERSION } from './core/constantes.js';
+import { APP_NOMBRE, APP_VERSION, DEMORA_ARRANQUE_MS } from './core/constantes.js';
 import { InstaladorPWA } from './ui/instalador-pwa.js';
 import { RecordatorioPush } from './services/recordatorio-push.js';
 import { FeriadosAR } from './services/feriados-ar.js';
@@ -15,6 +15,7 @@ import { HistorialDias } from './ui/historial-dias.js';
 import { OrquestadorUI } from './ui/orquestador.js';
 import { BienvenidaModal } from './ui/bienvenida-modal.js';
 import { AvisoPush } from './ui/aviso-push.js';
+import { RecargaGesto } from './ui/recarga-gesto.js';
 
 // ====================================================================
 // MAIN — arranque de la aplicación
@@ -39,6 +40,7 @@ function _iniciarEventosDOM() {
     Notificaciones.bindEventos();
     Configuracion.bindEventos();
     HistorialDias.bindEventos();
+    RecargaGesto.bindEventos();
 
     _mostrarVersion();
 }
@@ -49,10 +51,16 @@ if (document.readyState === 'loading') {
     _iniciarEventosDOM();
 }
 
+// UI iniciada: se quita la pantalla de carga (ver html.cargando en base.css y tema-inicial.js)
+requestAnimationFrame(() => {
+    document.documentElement.classList.remove('cargando');
+    RecargaGesto.entrar();
+});
+
 (async () => {
     await BienvenidaModal.chequearYMostrar();
-    setTimeout(() => FeriadosAR.chequearYNotificar(), 4000);
-    setTimeout(() => AvisoPush.chequearYAvisar(), 2000);
-    setTimeout(() => RecordatorioPush.registrarUso(), 3000);
+    setTimeout(() => FeriadosAR.chequearYNotificar(), DEMORA_ARRANQUE_MS.FERIADOS);
+    setTimeout(() => AvisoPush.chequearYAvisar(), DEMORA_ARRANQUE_MS.AVISO_PUSH);
+    setTimeout(() => RecordatorioPush.registrarUso(), DEMORA_ARRANQUE_MS.REGISTRAR_USO);
     document.addEventListener('visibilitychange', () => RecordatorioPush.registrarUso());
 })();

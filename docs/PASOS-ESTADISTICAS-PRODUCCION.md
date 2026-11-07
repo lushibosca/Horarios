@@ -63,11 +63,11 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST \
 
 ## 4. Apuntar la app a producción
 
-1. `src/services/recordatorio-push.js`: `WORKER_URL = 'https://horarios-push.lushibosca.workers.dev'`.
+1. `app.js`: `WORKER_URL = 'https://horarios-push.lushibosca.workers.dev'`.
 2. `index.html`: en la CSP, `connect-src` con
    `https://horarios-push.lushibosca.workers.dev` en vez de la de `l-lus`.
-3. Correr `npm run release` (sube `CACHE_NAME` en `sw.js` y `APP_VERSION`) y luego `npm test`,
-   para que los dispositivos bajen los módulos nuevos.
+3. `sw.js`: subir `CACHE_NAME` (por ejemplo `horarios-vAAMMDD.HHMM-cache`) para
+   que los dispositivos bajen el `app.js` nuevo.
 4. Commit y push al repo que publica `lushibosca.github.io`.
 
 ## 5. Token para consultar las estadísticas

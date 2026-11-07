@@ -46,19 +46,18 @@ function mostrarError(inputId, errorId) {
     const input = $(inputId);
     const error = $(errorId);
     if (input) input.classList.add('error');
-    if (error) error.style.display = 'block';
+    if (error) error.classList.remove('hidden');
 }
 
 function limpiarError(inputId, errorId) {
     const input = $(inputId);
     const error = $(errorId);
     if (input) input.classList.remove('error');
-    if (error) error.style.display = 'none';
+    if (error) error.classList.add('hidden');
 }
 
 function obtenerNombrePerfilSafe() {
-    let nombre = 'Backup';
-    if (GestorPerfiles) nombre = GestorPerfiles.obtenerDatosPerfil().nombre;
+    const nombre = String(GestorPerfiles.obtenerDatosPerfil()?.nombre ?? 'Backup');
     return nombre.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ'\-_ ]/g, '').trim().replace(/\s+/g, '_');
 }
 
@@ -118,7 +117,7 @@ function _poblarSelect(selectId, items, getLabel, selDefault, actualizarFn, agru
     const select = $(selectId);
     if (!select) return;
     const selActual = select.value;
-    select.innerHTML = '';
+    select.replaceChildren();
     if (!items.length) { select.appendChild(_crearOpcion('', 'Sin registros')); actualizarFn(null); return; }
     const sel = (selActual && items.includes(selActual))
         ? selActual
@@ -179,7 +178,7 @@ function _vibrarFichar(tipo) {
         } else {
             navigator.vibrate([50, 60, 50]);
         }
-    } catch (_) { }
+    } catch (_) { /* la vibración es opcional: algunos navegadores la bloquean */ }
 }
 
 function _flashCampoTipo(tipo, ...ids) {

@@ -37,7 +37,7 @@ function _renderizarStats(stats, opciones = {}) {
     const toggleStatItem = (id, value) => {
         const el = $(id); if (!el) return;
         const si = /** @type {HTMLElement} */ (el.closest('.stat-item'));
-        if (si) { if (value === 0) { si.style.display = 'none'; } else { si.style.display = ''; el.textContent = value; } }
+        if (si) { si.classList.toggle('hidden', value === 0); if (value !== 0) el.textContent = value; }
     };
     toggleStatItem('stat-dias-trabajados', stats.diasTrabajados);
 
@@ -64,9 +64,9 @@ function _renderizarStats(stats, opciones = {}) {
     const itemSaldo = $('stat-item-saldo');
     if (elSaldo && itemSaldo) {
         if (stats.bufferPeriodo === null) {
-            itemSaldo.style.display = 'none';
+            itemSaldo.classList.add('hidden');
         } else {
-            itemSaldo.style.display = '';
+            itemSaldo.classList.remove('hidden');
             const b = stats.bufferPeriodo;
             elSaldo.textContent = b === 0 ? '0h' : TiempoUtils.horasATexto(b, 'short');
             elSaldo.classList.remove('saldo-positivo', 'saldo-negativo', 'saldo-neutro');
@@ -233,15 +233,8 @@ const AJUSTE_POR_STAT = {
 
 let _popupStatEl = null;
 
-function _popupStat(event, statId) {
-    event.stopPropagation();
-    if (_popupStatEl) {
-        const el = _popupStatEl;
-        _popupStatEl = null;
-        if (el._cerrar) el._cerrar();
-        else el.remove();
-    }
-
+/** Título y descripción del popup de una estadística, con los datos actuales (modo, días hábiles, objetivo...) agregados al final. */
+function _infoPopupStat(statId) {
     let info = DESCRIPCIONES_STATS[statId];
     const conExtra = (partes) => ({ titulo: info.titulo, desc: html`${info.desc}${partes}` });
     const nota = (texto) => html`<hr class="stat-popup-sep"><strong>${texto}</strong>`;
@@ -292,6 +285,19 @@ function _popupStat(event, statId) {
                 : 'Detalle de esta estadística.'
         };
     }
+    return info;
+}
+
+function _popupStat(event, statId) {
+    event.stopPropagation();
+    if (_popupStatEl) {
+        const el = _popupStatEl;
+        _popupStatEl = null;
+        if (el._cerrar) el._cerrar();
+        else el.remove();
+    }
+
+    const info = _infoPopupStat(statId);
 
     const ajusteId = AJUSTE_POR_STAT[statId];
     const btnModificarHtml = ajusteId ? html`
@@ -376,22 +382,8 @@ function bindEventos() {
 
 export const Estadisticas = {
     bindEventos,
-    _renderizarStats,
-    actualizarEstadisticas,
     _renderSelectorStats,
-    poblarSelectorAnios,
-    actualizarEstadisticasAnio,
-    poblarSelectorSemanas,
-    actualizarEstadisticasSemana,
-    cambiarMesStats,
-    cambiarSemanaStats,
-    cambiarAnioStats,
-    togglePeriodoStats,
-    poblarSelectorMeses,
-    _popupStat,
-    _onclickStatItem,
     _bindStatItemPopups,
     toggleStats,
-    getModoEstadisticas: () => modoEstadisticas,
     setModoEstadisticas: (v) => { modoEstadisticas = v; }
 };

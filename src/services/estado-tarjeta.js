@@ -39,6 +39,71 @@ function _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias) {
     });
 }
 
+/** Horas efectivas de los registros de la semana hasta hoy y lo que se descuenta por compensatorios (el día activo cuenta lo corrido hasta ahora). */
+function _totalesSemana(registrosSemana, regActivo, tiempoHoy, asignaciones) {
+    let totalSemana = 0;
+    let descuentoCompensatorioSemana = 0;
+    registrosSemana.forEach(r => {
+        if (regActivo && r.fecha === regActivo.fecha) { totalSemana += tiempoHoy; return; }
+        totalSemana += Compensatorios.horasEfectivasDeRegistro(r);
+        const tipoDia = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
+        if (!tipoDia) {
+            descuentoCompensatorioSemana += Compensatorios.montoCompensadoDeReferencia(r, asignaciones);
+        }
+    });
+    return { totalSemana, descuentoCompensatorioSemana };
+}
+
+/** Horas objetivo de toda la semana: cada día laborable suma su objetivo (los especiales no, salvo el remoto). */
+function _objetivoSemana(ini, fn, porFecha, horasDiarias) {
+    let objetivoSemana = 0;
+    for (const isoDate of TiempoUtils.generarRangoFechas(ini, fn)) {
+        if (!Compensatorios.diasHabilesEnFecha(isoDate).includes(TiempoUtils.parsearFechaLocal(isoDate).getDay())) continue;
+        const rDia = porFecha.get(isoDate);
+        if (!rDia) { objetivoSemana += horasDiarias; continue; }
+        const tipoDia = TiposRegistro.obtenerTipoPorCodigo(rDia.entrada, rDia.salida);
+        if (tipoDia && tipoDia.id !== 'remoto') continue;
+        objetivoSemana += Compensatorios.objetivoDeRegistro(rDia);
+    }
+    return objetivoSemana;
+}
+
+/**
+ * Franjas de la semana para la barra con hitos: un día por cada laborable (o con registro), con su objetivo, lo trabajado y su estado.
+ * @param {{ ini: string, fn: string, hoy: string, horasDiarias: number, porFecha: Map<string, any>, regActivo: any, tiempoHoy: number, asignaciones: any }} p
+ */
+function _franjasSemana({ ini, fn, hoy, horasDiarias, porFecha, regActivo, tiempoHoy, asignaciones }) {
+    /** @type {{ fecha: string, objetivo: number, total: number, activo: boolean, estado: (typeof ESTADO_DIA)[keyof typeof ESTADO_DIA], especial?: string, cumplimiento?: (typeof CUMPLIMIENTO)[keyof typeof CUMPLIMIENTO], entrada?: string, salida?: string }[]} */
+    const diasSemana = [];
+    for (const isoDate of TiempoUtils.generarRangoFechas(ini, fn)) {
+        const rDia = porFecha.get(isoDate) ?? null;
+        const esLaborable = Compensatorios.diasHabilesEnFecha(isoDate).includes(TiempoUtils.parsearFechaLocal(isoDate).getDay());
+        if (!esLaborable && !rDia) continue;
+        const tipo = rDia ? TiposRegistro.obtenerTipoPorCodigo(rDia.entrada, rDia.salida) : null;
+        const especial = tipo && tipo.id !== 'remoto' ? tipo.color : undefined;
+        const objetivo = rDia ? (esLaborable ? Compensatorios.objetivoDeRegistro(rDia) : 0) : horasDiarias;
+        const activo = !!regActivo && isoDate === regActivo.fecha;
+        let estado;
+        if (isoDate > hoy) estado = ESTADO_DIA.FUTURO;
+        else if (especial) estado = ESTADO_DIA.ESPECIAL;
+        else if (activo) estado = ESTADO_DIA.ACTIVO;
+        else if (rDia && !tipo && !rDia.salida) estado = ESTADO_DIA.SIN_SALIDA;   // jornada de un día pasado que nunca se cerró
+        else if (rDia) estado = ESTADO_DIA.CERRADO;
+        else estado = isoDate < hoy ? ESTADO_DIA.SIN_REGISTRO : ESTADO_DIA.FUTURO;
+        // lo mismo que cuenta para el total de la semana (un día remoto cuenta su objetivo completo)
+        const total = activo ? tiempoHoy : (rDia ? Compensatorios.horasEfectivasDeRegistro(rDia) : 0);
+        // resultado de un día cerrado: cumplió su objetivo, faltó pero lo cubre el saldo, o faltó (se reutilizan las asignaciones ya calculadas)
+        const cumplimiento = estado !== ESTADO_DIA.CERRADO ? undefined
+            : (objetivo === 0 || horasGte(total, objetivo)) ? CUMPLIMIENTO.CUMPLIDO
+                : SaldoSemanal.cubiertoPorSaldo(isoDate, asignaciones) ? CUMPLIMIENTO.CUBIERTO : CUMPLIMIENTO.FALTANTE;
+        // entrada y salida reales del día (los días especiales y remotos no las tienen como horas)
+        const entrada = rDia && !tipo ? rDia.entrada : undefined;
+        const salida = rDia && !tipo && rDia.salida ? rDia.salida : undefined;
+        diasSemana.push({ fecha: isoDate, objetivo, total, activo, estado, especial, cumplimiento, entrada, salida });
+    }
+    return diasSemana;
+}
+
 /**
  * Estado de la tarjeta de fichaje (día y semana actual). Lo que depende de la UI llega por parámetro:
  * los minutos del tiempo fuera en curso y el registro de ayer que la tarjeta retiene tras cerrarlo.
@@ -76,58 +141,16 @@ function calcularEstadoCard({ asignacionesPrecalculadas = null, minutosBreakActi
 
     const fechaLimite = hoy < fn ? hoy : fn;
     const registrosSemana = registros.filter(r => r.fecha >= ini && r.fecha <= fechaLimite);
-    let totalSemana = 0;
-    let descuentoCompensatorioSemana = 0;
-    registrosSemana.forEach(r => {
-        if (regActivo && r.fecha === regActivo.fecha) { totalSemana += tiempoHoy; return; }
-        totalSemana += Compensatorios.horasEfectivasDeRegistro(r);
-        const tipoDia = TiposRegistro.obtenerTipoPorCodigo(r.entrada, r.salida);
-        if (!tipoDia) {
-            descuentoCompensatorioSemana += Compensatorios.montoCompensadoDeReferencia(r, asignacionesCompensatorio);
-        }
-    });
+    const { totalSemana, descuentoCompensatorioSemana } = _totalesSemana(registrosSemana, regActivo, tiempoHoy, asignacionesCompensatorio);
     const totalSemanaProgreso = totalSemana - descuentoCompensatorioSemana;
 
     const registrosSemanaCompletaPorFecha = new Map(
         registros.filter(r => r.fecha >= ini && r.fecha <= fn).map(r => [r.fecha, r])
     );
-    let objetivoSemana = 0;
-    for (const isoDate of TiempoUtils.generarRangoFechas(ini, fn)) {
-        if (!Compensatorios.diasHabilesEnFecha(isoDate).includes(TiempoUtils.parsearFechaLocal(isoDate).getDay())) continue;
-        const rDia = registrosSemanaCompletaPorFecha.get(isoDate);
-        if (!rDia) { objetivoSemana += horasDiarias; continue; }
-        const tipoDia = TiposRegistro.obtenerTipoPorCodigo(rDia.entrada, rDia.salida);
-        if (tipoDia && tipoDia.id !== 'remoto') continue;
-        objetivoSemana += Compensatorios.objetivoDeRegistro(rDia);
-    }
+    const objetivoSemana = _objetivoSemana(ini, fn, registrosSemanaCompletaPorFecha, horasDiarias);
     const todosEspeciales = _todosEspeciales(registros, ini, fn, diasHabiles, horasDiarias);
 
-    // Franjas de la semana para la barra con hitos: un día por cada laborable (o con registro), con su objetivo, lo trabajado y su estado
-    /** @type {{ fecha: string, objetivo: number, total: number, activo: boolean, estado: (typeof ESTADO_DIA)[keyof typeof ESTADO_DIA], especial?: string, cumplimiento?: (typeof CUMPLIMIENTO)[keyof typeof CUMPLIMIENTO] }[]} */
-    const diasSemana = [];
-    for (const isoDate of TiempoUtils.generarRangoFechas(ini, fn)) {
-        const rDia = registrosSemanaCompletaPorFecha.get(isoDate) ?? null;
-        const esLaborable = Compensatorios.diasHabilesEnFecha(isoDate).includes(TiempoUtils.parsearFechaLocal(isoDate).getDay());
-        if (!esLaborable && !rDia) continue;
-        const tipo = rDia ? TiposRegistro.obtenerTipoPorCodigo(rDia.entrada, rDia.salida) : null;
-        const especial = tipo && tipo.id !== 'remoto' ? tipo.color : undefined;
-        const objetivo = rDia ? (esLaborable ? Compensatorios.objetivoDeRegistro(rDia) : 0) : horasDiarias;
-        const activo = !!regActivo && isoDate === regActivo.fecha;
-        let estado;
-        if (isoDate > hoy) estado = ESTADO_DIA.FUTURO;
-        else if (especial) estado = ESTADO_DIA.ESPECIAL;
-        else if (activo) estado = ESTADO_DIA.ACTIVO;
-        else if (rDia && !tipo && !rDia.salida) estado = ESTADO_DIA.SIN_SALIDA;   // jornada de un día pasado que nunca se cerró
-        else if (rDia) estado = ESTADO_DIA.CERRADO;
-        else estado = isoDate < hoy ? ESTADO_DIA.SIN_REGISTRO : ESTADO_DIA.FUTURO;
-        // lo mismo que cuenta para el total de la semana (un día remoto cuenta su objetivo completo)
-        const total = activo ? tiempoHoy : (rDia ? Compensatorios.horasEfectivasDeRegistro(rDia) : 0);
-        // resultado de un día cerrado: cumplió su objetivo, faltó pero lo cubre el saldo, o faltó (se reutilizan las asignaciones ya calculadas)
-        const cumplimiento = estado !== ESTADO_DIA.CERRADO ? undefined
-            : (objetivo === 0 || horasGte(total, objetivo)) ? CUMPLIMIENTO.CUMPLIDO
-                : SaldoSemanal.cubiertoPorSaldo(isoDate, asignacionesCompensatorio) ? CUMPLIMIENTO.CUBIERTO : CUMPLIMIENTO.FALTANTE;
-        diasSemana.push({ fecha: isoDate, objetivo, total, activo, estado, especial, cumplimiento });
-    }
+    const diasSemana = _franjasSemana({ ini, fn, hoy, horasDiarias, porFecha: registrosSemanaCompletaPorFecha, regActivo, tiempoHoy, asignaciones: asignacionesCompensatorio });
 
     return {
         hoy: regRetenido ? regRetenido.fecha : hoy, ini, fn,

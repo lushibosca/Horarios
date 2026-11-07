@@ -13,6 +13,8 @@ import { Animaciones } from './animaciones.js';
 // ====================================================================
 //           UI CARD BATCH / FORM & INPUT HELPERS MODULE
 // ====================================================================
+const ESPERA_SALIR_LOTE_MS = 350;   // deja terminar el cierre del modal antes de salir del modo lote
+
 const { _flashCampo, _avisarFichaje, toggleSeccionGen, _crearOpcion, aplicarFeedbackCampos } = UIBase;
 const { _animarFadeSwap, _animarSlideElemento, _esperarAnim, _animarValor, _durSiAnima } = Animaciones;
 const actualizarEstadoBotonTimerMain = (...args) => EstadoApp._notify().actualizarEstadoBotonTimerMain(...args);
@@ -50,8 +52,8 @@ function toggleModoLote(deltaSwipe, conAnimacion = true) {
     const delta = deltaSwipe !== undefined ? deltaSwipe : (modoLoteActivo ? 1 : -1);
 
     const aplicarCambiosLote = () => {
-        modoNormal.style.display = 'none';
-        modoLote.style.display = 'block';
+        modoNormal.classList.add('hidden');
+        modoLote.classList.remove('hidden');
 
         $('lote-tipo').value = 'feriado';
         $('lote-fecha-desde').value = '';
@@ -69,8 +71,8 @@ function toggleModoLote(deltaSwipe, conAnimacion = true) {
     };
 
     const aplicarCambiosNormal = () => {
-        modoLote.style.display = 'none';
-        modoNormal.style.display = 'block';
+        modoLote.classList.add('hidden');
+        modoNormal.classList.remove('hidden');
         _animarFadeSwap(btn, () => {
             cancelarExitoFichaje(btn);
             resetearBoton(btn);
@@ -170,14 +172,14 @@ function poblarSelectoresTipos() {
 
     const cfg = [
         { id: 'lote-tipo', getLabel: t => `${t.emoji} ${t.label}`, extra: [{ value: 'normal', text: '🕒 Jornadas (borrar)' }] },
-        { id: 'filtro-tipo', getLabel: t => `${t.emoji} ${t.labelPlural}`, prefix: '<option value="">Todos</option><option value="normal">🕒 Jornadas</option>' },
+        { id: 'filtro-tipo', getLabel: t => `${t.emoji} ${t.labelPlural}`, prefix: [{ value: '', text: 'Todos' }, { value: 'normal', text: '🕒 Jornadas' }] },
         { id: 'edit-grupo-tipo', getLabel: t => `${t.emoji} ${t.label}` },
     ];
 
-    cfg.forEach(({ id, getLabel, prefix = '', extra = [] }) => {
+    cfg.forEach(({ id, getLabel, prefix = [], extra = [] }) => {
         const sel = $(id);
         if (!sel) return;
-        sel.innerHTML = prefix;
+        sel.replaceChildren(...prefix.map(e => _crearOpcion(e.value, e.text)));
         tipos.forEach(t => sel.appendChild(_crearOpcion(t.id, getLabel(t))));
         extra.forEach(e => sel.appendChild(_crearOpcion(e.value, e.text)));
     });
@@ -355,7 +357,7 @@ function toggleFormulario() {
                 if (modoLoteActivo) {
                     toggleModoLote(undefined, false);
                 }
-            }, 350);
+            }, ESPERA_SALIR_LOTE_MS);
         } else {
             actualizarEstadoBotonTimerMain();
         }
@@ -415,11 +417,9 @@ export const TarjetaLote = {
     limpiarCampo,
     toggleModoLote,
     ejecutarAccionRegistro,
-    registrarLoteDesdeCard,
     poblarSelectoresTipos,
     actualizarBotonLote,
     toggleFormulario,
     _irAFicharConFecha,
-    _scrollACardFichar,
     alternarFechaActual
 };

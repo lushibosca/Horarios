@@ -1,24 +1,20 @@
 import { RespaldoLocal } from './respaldo-local.js';
-import { STORAGE_KEYS } from '../core/constantes.js';
+import { IconosAnimados } from './iconos-animados.js';
 import { $, setColapsable } from '../core/dom.js';
 import { TiempoUtils } from '../core/tiempo-utils.js';
+import { EventosApp } from '../core/eventos.js';
 import { GestorModales } from './gestor-modales.js';
-import { GestorHistorial } from '../services/gestor-historial.js';
-import { GestionDatos } from '../services/gestion-datos.js';
 import { UIBase } from './base.js';
 import { SincronizacionGist } from '../services/sincronizacion-gist.js';
 import { HistoricoEdicion } from './historico-edicion.js';
 import { TarjetaFichaje } from './tarjeta-fichaje.js';
-import { Configuracion } from './configuracion.js';
-import { SeguridadYUtils as S } from '../core/seguridad.js';
-import { Compensatorios } from '../services/compensatorios.js';
 import { EstadoApp } from '../services/estado-app.js';
 import { ImportarExportar } from '../services/importar-exportar.js';
 import { setIconoBtn } from './boton-fichar.js';
 import { _crearPressHold } from './gestos.js';
 import { mostrarToast } from './toast.js';
 import { Animaciones } from './animaciones.js';
-import { icono, montar } from '../core/html.js';
+import { GistResumenMerge } from './gist-resumen-merge.js';
 
 // ====================================================================
 //                     UI GIST AND BACKUP MODULE
@@ -30,6 +26,8 @@ const { mostrarImportar, cerrarImportar, mostrarExportar, cerrarExportar, ejecut
 let _gistAutoSyncTemp = null;
 let _gistLimitesTemp = null;
 let _gistMergeDesdeModal = false;
+/** @type {{ registrosNormalizados: any[], data: any } | null} */
+let _gistMergeData = null;
 
 function _gistEstadoAutoSyncActual() {
     return parseInt(_gistAutoSyncTemp ?? SincronizacionGist.getAutoSync());
@@ -170,21 +168,22 @@ function actualizarBotonesHistorico() {
 
     if (tieneGist) {
         newRespaldar.title = 'Subir a Gist';
-        newRespaldar.addEventListener('click', () => { autoCierre(); gistSubir(); });
-        setIconoBtn(newRespaldar, '#icon-cloud-upload');
+        newRespaldar.addEventListener('click', () => { autoCierre(); IconosAnimados.animarFlecha(newRespaldar, 'subir'); gistSubir(); });
+        IconosAnimados.ponerIconoFlecha(newRespaldar, 'nube', 'subir');
 
         newRestaurar.title = 'Bajar de Gist';
-        newRestaurar.addEventListener('click', () => { autoCierre(); gistBajar(); });
-        setIconoBtn(newRestaurar, '#icon-cloud-download');
+        newRestaurar.addEventListener('click', () => { autoCierre(); IconosAnimados.animarFlecha(newRestaurar, 'bajar'); gistBajar(); });
+        IconosAnimados.ponerIconoFlecha(newRestaurar, 'nube', 'bajar');
     } else {
         newRespaldar.title = 'Respaldar';
         newRespaldar.addEventListener('click', () => { autoCierre(); mostrarExportar(true); });
-        setIconoBtn(newRespaldar, '#icon-download');
+        IconosAnimados.ponerIconoFlecha(newRespaldar, 'bandeja', 'bajar');
 
         newRestaurar.title = 'Restaurar';
         newRestaurar.addEventListener('click', () => { autoCierre(); mostrarImportar(true); });
-        setIconoBtn(newRestaurar, '#icon-upload');
+        IconosAnimados.ponerIconoFlecha(newRestaurar, 'bandeja', 'subir');
     }
+    EventosApp.emit('historico:botones');
 }
 
 function guardarConfigGist() {
@@ -198,6 +197,14 @@ function guardarConfigGist() {
     }
     if (hastaInvalida) {
         mostrarToast('Hora final inválida.', 'error');
+        return;
+    }
+    if (token && !SincronizacionGist.esTokenValido(token)) {
+        mostrarToast('El token de GitHub tiene caracteres no válidos', 'error');
+        return;
+    }
+    if (gistId && !SincronizacionGist.esGistIdValido(gistId)) {
+        mostrarToast('Gist ID inválido', 'error');
         return;
     }
 
@@ -227,46 +234,6 @@ function cerrarModalGist() {
     actualizarBotonesHistorico();
 }
 
-function _calcularRegistrosMerge(modo, mergeData) {
-    const { registrosNormalizados, soloEnGist, complementarios = [], data } = mergeData;
-
-    if (modo === 'merge') {
-        if (soloEnGist.length === 0 && complementarios.length === 0) {
-            return { vacio: true };
-        }
-        if (EstadoApp.registros().length + soloEnGist.length > S.SECURITY_LIMITS.MAX_REGISTROS) {
-            return { limiteAlcanzado: true };
-        }
-
-        const registrosActualizados = EstadoApp.registros().map(local => {
-            const imp = complementarios.find(c => c.fecha === local.fecha);
-            if (!imp) return local;
-            const actualizado = { ...local };
-            if (!actualizado.salida && imp.salida) actualizado.salida = imp.salida;
-            if (!actualizado.tiempoFuera && imp.tiempoFuera) actualizado.tiempoFuera = imp.tiempoFuera;
-            const t = EstadoApp.calcularHoras(actualizado.entrada, actualizado.salida, actualizado.tiempoFuera || null, actualizado.credito || null);
-            if (t) { actualizado.horas = t.horas; actualizado.minutos = t.minutos; actualizado.total = t.total; }
-            return actualizado;
-        });
-
-        const partes = [];
-        if (soloEnGist.length > 0) partes.push(`${soloEnGist.length} día${TiempoUtils.pluralizar(soloEnGist.length)} nuevo${TiempoUtils.pluralizar(soloEnGist.length)}`);
-        if (complementarios.length > 0) partes.push(`${complementarios.length} registro${TiempoUtils.pluralizar(complementarios.length)} completado${TiempoUtils.pluralizar(complementarios.length)}`);
-
-        return {
-            registrosFinales: [...registrosActualizados, ...soloEnGist],
-            mensajeExito: `Combinado: ${partes.join(', ')}`
-        };
-
-    } else {
-        ImportarExportar.aplicarConfigImportada(data, registrosNormalizados);
-        return {
-            registrosFinales: registrosNormalizados,
-            mensajeExito: `${registrosNormalizados.length} registros restaurados desde Gist`
-        };
-    }
-}
-
 function _gistMergeCerrarOVolver() {
     if (_gistMergeDesdeModal) {
         _gistMergeDesdeModal = false;
@@ -278,40 +245,16 @@ function _gistMergeCerrarOVolver() {
 
 async function gistMergeAplicar(modo, modoAutomatico = false) {
     if (!_gistMergeData) return;
-    const mergeData = _gistMergeData;
+    const { registrosNormalizados, data } = _gistMergeData;
     _gistMergeData = null;
 
-    const resultado = _calcularRegistrosMerge(modo, mergeData);
-
-    if (resultado.vacio) {
-        if (!modoAutomatico) _gistMergeCerrarOVolver();
-        mostrarToast('Sin datos nuevos para completar', 'info');
-        return;
+    const { ok, vacio } = await ImportarExportar.restaurarRespaldo(data, registrosNormalizados, modo === 'merge' ? 'merge' : 'replace', { etiqueta: 'con Gist', cerrarImportar: false });
+    if (ok) TarjetaFichaje.actualizarUI();
+    if ((ok || vacio) && !modoAutomatico) _gistMergeCerrarOVolver();
+    if (ok) {
+        const lastSyncEl = $('gist-ultima-sync');
+        if (lastSyncEl) lastSyncEl.textContent = `Última sync: ${SincronizacionGist.formatLastSync(SincronizacionGist.getLastSync())}`;
     }
-    if (resultado.limiteAlcanzado) {
-        mostrarToast('Límite alcanzado', 'error');
-        return;
-    }
-
-    const { registrosFinales, mensajeExito } = resultado;
-
-    EstadoApp.registros().splice(0, EstadoApp.registros().length, ...registrosFinales);
-    EstadoApp.registros().sort((a, b) => {
-        if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
-        return (b.entrada || '').localeCompare(a.entrada || '');
-    });
-    Compensatorios.migrarObjetivoHorasFaltante();
-    GestionDatos.sincronizarPushHoy();
-    GestorHistorial.saveState(EstadoApp.registros(), modo === 'replace' ? 'reemplazar con Gist' : 'combinar con Gist');
-
-    await EstadoApp.guardarYActualizar();
-    TarjetaFichaje.actualizarUI();
-    Configuracion.refrescarConfigSiVisible();
-
-    if (!modoAutomatico) _gistMergeCerrarOVolver();
-    const lastSyncEl = $('gist-ultima-sync');
-    if (lastSyncEl) lastSyncEl.textContent = `Última sync: ${SincronizacionGist.formatLastSync(SincronizacionGist.getLastSync())}`;
-    mostrarToast(mensajeExito, 'success');
 
     const btn = $('btn-gist-bajar');
     if (btn) btn.disabled = false;
@@ -379,12 +322,9 @@ function toggleVerToken() {
 }
 
 function abrirGistEnBrowser() {
-    const gistIdRaw = $('gist-id')?.value.trim() || SincronizacionGist.getGistId();
-    if (gistIdRaw && SincronizacionGist.esGistIdValido(gistIdRaw)) {
-        window.open(`https://gist.github.com/${gistIdRaw.trim()}`, '_blank', 'noopener,noreferrer');
-    } else {
-        window.open('https://gist.github.com', '_blank', 'noopener,noreferrer');
-    }
+    const gistId = ($('gist-id')?.value || SincronizacionGist.getGistId() || '').trim();
+    const url = SincronizacionGist.esGistIdValido(gistId) ? `https://gist.github.com/${gistId}` : 'https://gist.github.com';
+    window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function _tipoSyncActual() {
@@ -432,7 +372,7 @@ async function _gistConSpinner(btnId, mensajeError, accion) {
         await accion();
     } catch (e) {
         console.error(`${mensajeError}:`, e);
-        mostrarToast(mensajeError, 'error');
+        mostrarToast(mensajeError, 'error', undefined, e instanceof Error ? e.message : null);
     } finally {
         if (btn) btn.disabled = false;
         iconoPerfil?.classList.remove('icono-spin');
@@ -442,13 +382,7 @@ async function _gistConSpinner(btnId, mensajeError, accion) {
 async function gistSubir() {
     _gistGuardarCredencialesSiModalAbierto();
     await _gistConSpinner('btn-gist-subir', 'Error al subir', async () => {
-        const nuevoId = await SincronizacionGist.subir(
-            EstadoApp.registros(),
-            EstadoApp.diasHabiles(),
-            EstadoApp.horasDiarias(),
-            EstadoApp.historialDiasHabiles(),
-            ImportarExportar.obtenerConfigExportable()
-        );
+        const nuevoId = await SincronizacionGist.subir(await ImportarExportar.armarRespaldo(EstadoApp.registros()));
         const gistIdInput = $('gist-id');
         if (gistIdInput) gistIdInput.value = nuevoId;
         const lastSyncEl = $('gist-ultima-sync');
@@ -457,201 +391,22 @@ async function gistSubir() {
     });
 }
 
-let _gistMergeData = null;
-
-async function _validarDatosGist(data) {
-    if (!data.registros || !Array.isArray(data.registros)) throw new Error('Datos inválidos en el Gist');
-    const allowedRootKeys = ['registros', STORAGE_KEYS.DIAS_HABILES, STORAGE_KEYS.HORAS_DIARIAS, STORAGE_KEYS.HISTORIAL_DIAS_HABILES, ...ImportarExportar.KEYS_CONFIG_EXPORTABLE, 'fecha', 'version', 'hash', 'timestamp', '_hashNoCoincide'];
-    if (Object.keys(data).some(k => !allowedRootKeys.includes(k)) || !ImportarExportar.validarCamposConfigImport(data)) throw new Error('Estructura del Gist sospechosa');
-    if (data._hashNoCoincide) {
-        const continuar = await GestorModales.confirmar('El hash de integridad no coincide. El Gist puede haber sido modificado o corrompido. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
-        if (!continuar) return null;
-    } else if (!data.hash) {
-        const continuar = await GestorModales.confirmar('Este Gist no tiene verificación de integridad. ¿Restaurar de todas formas?', 'Restaurar', '#icon-upload');
-        if (!continuar) return null;
-    }
-    if (data.version && data.version > S.SECURITY_LIMITS.SCHEMA_VERSION) {
-        mostrarToast(`Gist de versión más nueva (v${data.version}). Algunos datos pueden no importarse correctamente.`, 'warning');
-    }
-    const registrosNormalizados = ImportarExportar.normalizarRegistrosImportados(data.registros, EstadoApp.calcularHoras);
-    if (registrosNormalizados.length === 0) throw new Error('No se encontraron registros válidos');
-    if (registrosNormalizados.length > S.SECURITY_LIMITS.MAX_REGISTROS) throw new Error(`Máximo ${S.SECURITY_LIMITS.MAX_REGISTROS} registros permitidos`);
-    return registrosNormalizados;
-}
-
-function _calcularDiffGist(registrosNormalizados) {
-    const localesPorFecha = new Map(EstadoApp.registros().map(r => [r.fecha, r]));
-    const gistPorFecha = new Map(registrosNormalizados.map(r => [r.fecha, r]));
-
-    const soloEnGist = registrosNormalizados.filter(r => !localesPorFecha.has(r.fecha));
-    const enAmbos = registrosNormalizados.filter(r => localesPorFecha.has(r.fecha));
-    const soloLocal = EstadoApp.registros().filter(r => !gistPorFecha.has(r.fecha));
-    const complementarios = enAmbos.filter(imp => {
-        const local = localesPorFecha.get(imp.fecha);
-        return local && ((!local.salida && imp.salida) || (!local.tiempoFuera && imp.tiempoFuera));
-    });
-    return { soloEnGist, enAmbos, soloLocal, complementarios };
-}
-
-function _calcularConfigCambios(data) {
-    return ImportarExportar.calcularCambiosConfigImport(data);
-}
-
-const _mkEl = (tag, cls, texto) => {
-    const e = document.createElement(tag);
-    if (cls) e.className = cls;
-    if (texto != null) e.textContent = String(texto);
-    return e;
-};
-
-const _mkColapsable = (contenido) => {
-    const wrap = _mkEl('div', 'collapsible');
-    const inner = _mkEl('div', 'collapsible-inner');
-    inner.appendChild(contenido);
-    wrap.appendChild(inner);
-    return wrap;
-};
-
-function _crearSelectorModoMerge(onCambio) {
-    const el = _mkEl('div', 'btn-group');
-    el.setAttribute('role', 'group');
-    el.setAttribute('aria-label', 'Cómo aplicar los datos del Gist');
-    const btns = [['merge', '#icon-combine', 'Combinar'], ['replace', '#icon-replace-swap', 'Reemplazar']].map(([modo, href, texto]) => {
-        const btn = _mkEl('button');
-        btn.type = 'button';
-        btn.dataset.modo = modo;
-        montar(btn, icono(href));
-        btn.appendChild(document.createTextNode(texto));
-        btn.addEventListener('click', () => onCambio(modo));
-        el.appendChild(btn);
-        return btn;
-    });
-    return {
-        el,
-        pintar(modo) {
-            btns.forEach(b => {
-                const activo = b.dataset.modo === modo;
-                b.classList.toggle('btn-activo', activo);
-                b.setAttribute('aria-pressed', String(activo));
-            });
-        }
-    };
-}
-
-function _crearTarjetaResultadoMerge({ nLocal, nGist, nNuevos, nComp }, configCambios) {
-    const el = _mkEl('div', 'gist-res');
-    const fila = (label, valorEl, conBorde) => {
-        const f = _mkEl('div', 'gist-res-fila' + (conBorde ? ' con-borde' : ''));
-        f.append(_mkEl('span', 'gist-res-label', label), valorEl);
-        return f;
-    };
-
-    const antesEl = _mkEl('em');
-    const despuesEl = _mkEl('span');
-    const deltaEl = _mkEl('span');
-    const valorReg = _mkEl('span', 'gist-res-valor');
-    valorReg.append(antesEl, despuesEl, deltaEl);
-    el.appendChild(fila('Registros', valorReg, false));
-
-    let wrapComp = null;
-    if (nComp > 0) {
-        const valorComp = _mkEl('span', 'gist-res-valor');
-        valorComp.append(_mkEl('span', null, nComp), _mkEl('span', 'gist-delta is-info', 'datos faltantes'));
-        wrapComp = _mkColapsable(fila('Se completan', valorComp, true));
-        el.appendChild(wrapComp);
-    }
-
-    let cfgValor = null;
-    if (configCambios.length > 0) {
-        cfgValor = _mkEl('span', 'gist-res-valor');
-        el.appendChild(fila('Configuración', cfgValor, true));
-    }
-
-    return {
-        el,
-        pintar(esMerge, animar) {
-            const despues = esMerge ? nLocal + nNuevos : nGist;
-            const delta = despues - nLocal;
-            antesEl.textContent = `${nLocal} →`;
-            despuesEl.textContent = String(despues);
-            deltaEl.className = 'gist-delta' + (delta > 0 ? ' is-mas' : delta < 0 ? ' is-menos' : '');
-            deltaEl.textContent = delta > 0 ? `+${delta}` : delta < 0 ? String(delta) : 'sin cambios';
-            cfgValor?.replaceChildren(esMerge ? _mkEl('em', null, 'sin cambios') : document.createTextNode(configCambios.join(', ')));
-            setColapsable(wrapComp, esMerge, { animar });
-        }
-    };
-}
-
-function _crearAlertaReemplazoMerge(nSoloLocal) {
-    if (nSoloLocal === 0) return null;
-    const alerta = _mkEl('div', 'gist-alerta');
-    montar(alerta, icono('#icon-alert-triangle'));
-    const txt = _mkEl('span');
-    txt.append(
-        'Se eliminan ',
-        _mkEl('strong', null, `${nSoloLocal} ${nSoloLocal === 1 ? 'registro local' : 'registros locales'}`),
-        ` que no ${nSoloLocal === 1 ? 'está' : 'están'} en el Gist.`
-    );
-    alerta.appendChild(txt);
-    const el = _mkColapsable(alerta);
-    el.classList.add('gist-alerta-wrap');
-    return { el, pintar: (esMerge, animar) => setColapsable(el, !esMerge, { animar }) };
-}
-
-function _buildResumenMerge(resumenEl, { soloEnGist, enAmbos, soloLocal, complementarios }, registrosNormalizados, configCambios) {
-    const cantidades = {
-        nLocal: enAmbos.length + soloLocal.length,
-        nGist: registrosNormalizados.length,
-        nNuevos: soloEnGist.length,
-        nComp: complementarios.length
-    };
-    resumenEl.innerHTML = '';
-    resumenEl.dataset.modo = 'merge';
-
-    const selector = _crearSelectorModoMerge(modo => {
-        if (resumenEl.dataset.modo === modo) return;
-        resumenEl.dataset.modo = modo;
-        pintar(true);
-    });
-    const tarjeta = _crearTarjetaResultadoMerge(cantidades, configCambios);
-    const alerta = _crearAlertaReemplazoMerge(soloLocal.length);
-    resumenEl.append(selector.el, tarjeta.el);
-    if (alerta) resumenEl.appendChild(alerta.el);
-
-    function pintar(animar) {
-        const modo = resumenEl.dataset.modo;
-        const esMerge = modo === 'merge';
-        selector.pintar(modo);
-        tarjeta.pintar(esMerge, animar);
-        alerta?.pintar(esMerge, animar);
-
-        const btnAplicar = $('btn-gist-merge-aplicar');
-        if (btnAplicar) {
-            btnAplicar.classList.toggle('btn-edit', esMerge);
-            btnAplicar.classList.toggle('btn-delete', !esMerge);
-        }
-    }
-    pintar(false);
-}
-
 async function gistBajar(modoAutomatico = false) {
     _gistGuardarCredencialesSiModalAbierto();
     _gistMergeDesdeModal = $('modal-gist')?.classList.contains('show') ?? false;
     await _gistConSpinner('btn-gist-bajar', 'Error al bajar', async () => {
         const data = await SincronizacionGist.bajar();
-        const registrosNormalizados = await _validarDatosGist(data);
+        const registrosNormalizados = await ImportarExportar.prepararRespaldo(data, 'gist');
         if (!registrosNormalizados) return;
-
-        const diff = _calcularDiffGist(registrosNormalizados);
-        const { soloEnGist, complementarios } = diff;
-        _gistMergeData = { registrosNormalizados, soloEnGist, complementarios, data };
+        _gistMergeData = { registrosNormalizados, data };
 
         if (modoAutomatico) {
             await gistMergeAplicar(SincronizacionGist.getMergeBehavior(), true);
         } else {
-            const configCambios = _calcularConfigCambios(data);
+            const diff = ImportarExportar.calcularDiferencias(registrosNormalizados);
+            const configCambios = ImportarExportar.calcularCambiosConfigImport(data);
             const resumenEl = $('gist-merge-resumen');
-            if (resumenEl) _buildResumenMerge(resumenEl, diff, registrosNormalizados, configCambios);
+            if (resumenEl) GistResumenMerge.construir(resumenEl, diff, registrosNormalizados, configCambios);
             if (_gistMergeDesdeModal) GestorModales.alternar('modal-gist', 'modal-gist-merge');
             else GestorModales.abrir('modal-gist-merge');
         }
@@ -667,8 +422,8 @@ function bindEventos() {
     $('btn-toggle-token')?.addEventListener('click', () => toggleVerToken());
     $('btn-crear-token')?.addEventListener('click', () => window.open('https://github.com/settings/tokens/new?description=Horarios+sync&scopes=gist', '_blank', 'noopener,noreferrer'));
     $('btn-gist-abrir')?.addEventListener('click', () => abrirGistEnBrowser());
-    $('btn-gist-subir')?.addEventListener('click', () => gistSubir());
-    $('btn-gist-bajar')?.addEventListener('click', () => gistBajar());
+    $('btn-gist-subir')?.addEventListener('click', () => { IconosAnimados.animarFlecha($('btn-gist-subir'), 'subir'); gistSubir(); });
+    $('btn-gist-bajar')?.addEventListener('click', () => { IconosAnimados.animarFlecha($('btn-gist-bajar'), 'bajar'); gistBajar(); });
     $('btn-toggle-gist-backup')?.addEventListener('click', () => toggleGistBackup());
     $('btn-toggle-gist-merge')?.addEventListener('click', () => toggleGistMerge());
     document.querySelectorAll('.gist-panel-toggle').forEach(b => b.addEventListener('click', () => toggleGistPanel(b.id)));
@@ -701,21 +456,9 @@ function bindEventos() {
 
 export const GistRespaldo = {
     bindEventos,
-    actualizarEstadoBotonesGist,
-    actualizarResumenLimites: _actualizarResumenLimites,
-    toggleGistPanel,
     actualizarBotonesHistorico,
-    abrirModalGist,
     cerrarModalGist,
-    guardarConfigGist,
-    toggleVerToken,
-    abrirGistEnBrowser,
     gistMergeCancelar,
-    gistMergeAplicar,
-    toggleGistBackup,
-    toggleGistMerge,
-    cambiarLimiteSync,
-    pressHoldLimite,
     gistSubir,
     gistBajar
 };

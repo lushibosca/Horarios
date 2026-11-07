@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'horarios-';
-const CACHE_NAME = `${CACHE_PREFIX}v261101.1501-cache`;
+const CACHE_NAME = `${CACHE_PREFIX}v261107.0034-cache`;
 const urlsToCache = [
   './',
   './index.html',
@@ -18,6 +18,8 @@ const urlsToCache = [
   './src/core/dom.js',
   './src/core/eventos.js',
   './src/core/movimiento.js',
+  './src/core/recarga.js',
+  './src/core/estilo-calendario.js',
   './src/core/tiempo-utils.js',
   './src/core/seguridad.js',
   './src/core/html.js',
@@ -29,12 +31,15 @@ const urlsToCache = [
   './src/services/estado-app.js',
   './src/services/recordatorio-push.js',
   './src/services/gestor-perfiles.js',
+  './src/services/orden-cards.js',
   './src/services/gestor-historial.js',
   './src/services/tipos-registro.js',
   './src/services/compensatorios.js',
   './src/services/importar-exportar.js',
   './src/services/filtros-periodos.js',
   './src/services/gestion-datos.js',
+  './src/services/edicion-registro.js',
+  './src/services/aviso-jornada.js',
   './src/services/saldo-semanal.js',
   './src/services/estadisticas-periodo.js',
   './src/services/estado-tarjeta.js',
@@ -46,6 +51,7 @@ const urlsToCache = [
   './src/ui/formularios.js',
   './src/ui/animaciones.js',
   './src/ui/gestos.js',
+  './src/ui/recarga-gesto.js',
   './src/ui/toast.js',
   './src/ui/boton-fichar.js',
   './src/ui/popups.js',
@@ -53,21 +59,29 @@ const urlsToCache = [
   './src/ui/base.js',
   './src/ui/perfiles.js',
   './src/ui/calendario.js',
+  './src/ui/calendario-popups.js',
   './src/ui/respaldo-local.js',
   './src/ui/gist-respaldo.js',
+  './src/ui/gist-resumen-merge.js',
   './src/ui/historico-edicion.js',
   './src/ui/historico.js',
+  './src/ui/historico-items.js',
   './src/ui/reportes.js',
   './src/ui/estadisticas.js',
   './src/ui/tarjeta-fondos.js',
   './src/ui/tarjeta-tiempo-fuera.js',
   './src/ui/tarjeta-lote.js',
   './src/ui/barra-hitos.js',
+  './src/ui/foco-hitos.js',
+  './src/ui/hover-barra.js',
+  './src/ui/iconos-animados.js',
   './src/ui/ayuda-buscador.js',
   './src/ui/aviso-actualizacion.js',
   './src/ui/tarjeta-fichaje.js',
+  './src/ui/tarjeta-ciclo-stats.js',
   './src/ui/tarjeta-fichaje-vista.js',
   './src/ui/orden-tarjetas.js',
+  './src/ui/arrastre.js',
   './src/ui/notificaciones.js',
   './src/ui/configuracion.js',
   './src/ui/historial-dias.js',
@@ -161,18 +175,24 @@ self.addEventListener('fetch', event => {
             return networkResponse;
           })
           .catch(async () => {
+            // Sin conexión: una navegación cae a la app precacheada; cualquier otro recurso falla como error de red
             if (event.request.mode === 'navigate') {
-              return (await caches.match('./index.html', matchOpts)) || caches.match('./', matchOpts);
+              const app = (await caches.match('./index.html', matchOpts)) || (await caches.match('./', matchOpts));
+              if (app) return app;
             }
+            return Response.error();
           });
       })
   );
 });
 
 // Muestra el recordatorio de fin de jornada (lo usan el push real y la notificación de prueba)
+// El payload puede llegar como cualquier JSON (null, un número, un array): se toman solo title y body como texto acotado.
 function mostrarRecordatorio(data) {
-  return self.registration.showNotification(data.title || 'Horarios', {
-    body: data.body || 'Se cumplió tu horario de hoy',
+  const d = data && typeof data === 'object' ? data : {};
+  const texto = (v, max) => (typeof v === 'string' && v.trim() ? v.slice(0, max) : '');
+  return self.registration.showNotification(texto(d.title, 100) || 'Horarios', {
+    body: texto(d.body, 300) || 'Se cumplió tu horario de hoy',
     icon: './assets/icons/icon-192.png',
     badge: './assets/icons/badge-96.png',
     tag: 'horarios-recordatorio',

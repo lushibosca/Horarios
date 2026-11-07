@@ -178,7 +178,6 @@ function mapaNotasPorRegistro(registros) {
 }
 
 export const TiposRegistro = {
-    TIPOS,
     agruparConsecutivos,
     notaDeGrupo,
     mapaNotasPorRegistro,

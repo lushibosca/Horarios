@@ -82,6 +82,19 @@
     --dur-fichaje-ok: 1800ms;
     --dur-fichaje-salida: 220ms;
     --dur-fichaje-vuelta: 200ms;
+    --dur-recarga: 150ms;   /* fundido de salida al recargar (solo opacidad: se mantiene con "reducir animaciones") */
+    --dur-entrada: 150ms;   /* fundido de entrada de la página al abrirla */
+    --dur-fade: 150ms;      /* fundidos cortos de opacidad */
+    --dur-flash: 500ms;     /* parpadeo de aviso sobre un campo (2 iteraciones) */
+    --dur-ambiente: 5s;     /* animaciones decorativas lentas en bucle */
+    --dur-giro: 900ms;      /* vuelta completa de un spinner */
+    --dur-barra-indeterminada: 1.2s;   /* barrido de la barra de progreso sin porcentaje */
+    --dur-pulso: 1.1s;      /* anillo que pulsa en el hito enfocado */
+    --dur-pulso-hoy: 600ms; /* pulso del día de hoy en el calendario */
+    --dur-parpadeo: 3s;     /* parpadeo del badge de estado */
+    --dur-parpadeo-rapido: 1.2s;   /* ídem cuando ya se cumplió el objetivo con la jornada abierta */
+    --delay-linea: 0.3s;    /* escalonado de entrada de la línea del día */
+    --delay-linea-arriba: 0.45s;
     --ease-anim: ease;
     --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
     --ease-conteo: cubic-bezier(0.215, 0.61, 0.355, 1);
@@ -91,6 +104,7 @@
     --opacity-disabled: 0.35;
     --modal-overlay: rgba(0, 0, 0, 0.5);
     --touch-target: 48px;
+    --control-sm: 36px;   /* botones compactos (+/− de los campos numéricos, controles flotantes); su área táctil se amplía a --touch-target */
     --input-height: var(--touch-target);
     --app-header-h: 60px;
     --mes-header-h: 54px;

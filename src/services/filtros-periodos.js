@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from '../core/constantes.js';
+import { STORAGE_KEYS, TOAST_MS } from '../core/constantes.js';
 import { EventosApp } from '../core/eventos.js';
 import { TiempoUtils } from '../core/tiempo-utils.js';
 import { Almacenamiento } from '../core/almacenamiento.js';
@@ -27,11 +27,18 @@ function editarGrupo(grupo) {
     notify.abrirModal('modal-editar-grupo');
 }
 
+/** Error de un rango de fechas (formato y orden) o null. Lo usan la edición de grupo y las operaciones por lote. */
+function _errorRangoFechas(desde, hasta) {
+    if (!desde || !hasta) return 'Verificá ambas fechas';
+    if (!TiempoUtils.validarFecha(desde)) return 'Fecha "Desde" inválida';
+    if (!TiempoUtils.validarFecha(hasta)) return 'Fecha "Hasta" inválida';
+    if (desde > hasta) return 'La fecha inicial debe ser inferior a la final';
+    return null;
+}
+
 function _validarRangoGrupo(nuevoTipo, nuevaDesde, nuevaHasta) {
-    if (!nuevaDesde || !nuevaHasta) return 'Verificá ambas fechas';
-    if (!TiempoUtils.validarFecha(nuevaDesde)) return 'Fecha "Desde" inválida';
-    if (!TiempoUtils.validarFecha(nuevaHasta)) return 'Fecha "Hasta" inválida';
-    if (nuevaDesde > nuevaHasta) return 'La fecha inicial debe ser inferior a la final';
+    const errorRango = _errorRangoFechas(nuevaDesde, nuevaHasta);
+    if (errorRango) return errorRango;
     const hoy = new Date();
     const dosPasado = new Date(hoy); dosPasado.setFullYear(hoy.getFullYear() - 2);
     const dosFuturo = new Date(hoy); dosFuturo.setFullYear(hoy.getFullYear() + 2);
@@ -48,9 +55,9 @@ async function guardarEdicionGrupo({ tipo, desde, hasta }) {
     const grupoEnEdicion = EstadoApp.getGrupoEnEdicion();
     if (!grupoEnEdicion) return;
     const notify = EstadoApp._notify();
-    const nuevoTipo = S.sanitizeString((tipo ?? '').trim(), 20);
-    const nuevaDesde = S.sanitizeString((desde ?? '').trim(), 10);
-    const nuevaHasta = S.sanitizeString((hasta ?? '').trim(), 10);
+    const nuevoTipo = S.limpiarTexto((tipo ?? '').trim(), 20);
+    const nuevaDesde = S.limpiarTexto((desde ?? '').trim(), 10);
+    const nuevaHasta = S.limpiarTexto((hasta ?? '').trim(), 10);
 
     const error = _validarRangoGrupo(nuevoTipo, nuevaDesde, nuevaHasta);
     if (error) { notify.mostrarToast(error, 'error'); return; }
@@ -97,7 +104,7 @@ async function eliminarGrupoActual() {
     if (!grupoEnEdicion) return;
     const notify = EstadoApp._notify();
     if (grupoEnEdicion.registros.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) {
-        notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} registros por operación.`, 'error', 4000);
+        notify.mostrarToast(`Este grupo contiene ${grupoEnEdicion.registros.length} registros.\nMáximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} registros por operación.`, 'error', TOAST_MS.LARGO);
         return;
     }
     const idsAEliminar = grupoEnEdicion.registros.map(r => r.id);
@@ -110,8 +117,12 @@ async function eliminarGrupoActual() {
 
 async function registrarDiaEspecial(fecha, tipo) {
     const notify = EstadoApp._notify();
+    if (!TiempoUtils.validarFecha(fecha)) { notify.avisarFichaje('Fecha inválida'); throw new Error('Fecha inválida'); }
     const registroExistente = EstadoApp.registroPorFecha(fecha);
-    if (registroExistente) { notify.mostrarToast('Ya existe un registro para hoy', 'warning'); throw new Error('Registro ya existe'); }
+    if (registroExistente) {
+        notify.mostrarToast(fecha === TiempoUtils.obtenerFechaHoy() ? 'Ya existe un registro para hoy' : 'Ya existe un registro para esa fecha', 'warning');
+        throw new Error('Registro ya existe');
+    }
 
     const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
     if (!tipoConfig) { notify.avisarFichaje('Tipo inválido'); throw new Error('Tipo inválido'); }
@@ -229,7 +240,12 @@ function limpiarFiltros() {
     EventosApp.emit('filtros:cambio', { activo: false });
 }
 
-function aplicarFiltrosInmediato(desde, hasta, tipo) {
+/** Valores crudos del popup de filtros: lo que no es una fecha válida o un tipo conocido se ignora (como si estuviera vacío). */
+function aplicarFiltrosInmediato(desdeCrudo, hastaCrudo, tipoCrudo) {
+    const fechaOVacio = (v) => (typeof v === 'string' && TiempoUtils.validarFecha(v)) ? v : '';
+    const desde = fechaOVacio(desdeCrudo);
+    const hasta = fechaOVacio(hastaCrudo);
+    const tipo = (tipoCrudo === 'normal' || TiposRegistro.validarTipoPermitido(tipoCrudo)) ? tipoCrudo : '';
     if (!desde && !hasta && !tipo) {
         EstadoApp.setFiltroState({ activo: false, desde: null, hasta: null, tipo: null });
         EventosApp.emit('filtros:cambio', { activo: false });
@@ -260,13 +276,15 @@ async function registrarVacacionesDirecto(desde, hasta, tipo) {
     const notify = EstadoApp._notify();
     const tipoConfig = TiposRegistro.obtenerTipoPorId(tipo);
     if (!tipoConfig) { notify.avisarFichaje('Tipo inválido'); throw new Error('Tipo inválido'); }
+    const errorRango = _errorRangoFechas(desde, hasta);
+    if (errorRango) { notify.avisarFichaje(errorRango); throw new Error(errorRango); }
     const entrada = tipoConfig.codigo;
     const salida = tipoConfig.codigo;
 
     const fechasARegistrar = TiempoUtils.generarRangoFechas(desde, hasta);
 
     if (fechasARegistrar.length > S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION) {
-        notify.avisarFichaje(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} días por operación.`, 'error', { duracion: 4000 });
+        notify.avisarFichaje(`El rango seleccionado contiene ${fechasARegistrar.length} días.\n Máximo permitido: ${S.SECURITY_LIMITS.MAX_REGISTROS_POR_OPERACION} días por operación.`, 'error', { duracion: TOAST_MS.LARGO });
         throw new Error('Límite de días excedido');
     }
 
@@ -295,6 +313,8 @@ async function registrarVacacionesDirecto(desde, hasta, tipo) {
 
 async function borrarPeriodoDirecto(desde, hasta) {
     const notify = EstadoApp._notify();
+    const errorRango = _errorRangoFechas(desde, hasta);
+    if (errorRango) { notify.avisarFichaje(errorRango); throw new Error(errorRango); }
     const registros = EstadoApp.registros();
     const registrosAEliminar = registros.filter(r => {
         if (r.fecha < desde || r.fecha > hasta) return false;

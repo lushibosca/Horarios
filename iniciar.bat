@@ -5,6 +5,9 @@ setlocal
 set "PORT=%~1"
 if "%PORT%"=="" set "PORT=8001"
 
+set "HOST=%~2"
+if "%HOST%"=="" set "HOST=127.0.0.1"
+
 set "DIR=%~dp0"
 if "%DIR:~-1%"=="\" set "DIR=%DIR:~0,-1%"
 cd /d "%DIR%"
@@ -32,6 +35,11 @@ if "%PY_CMD%"=="" (
     exit /b 1
 )
 
-echo 🚀 Servidor local iniciado en: http://127.0.0.1:%PORT%
+if "%HOST%"=="0.0.0.0" (
+    echo 🚀 Servidor iniciado en todas las interfaces (0.0.0.0) en el puerto %PORT%
+    echo    Acceso local: http://localhost:%PORT%
+) else (
+    echo 🚀 Servidor local iniciado en: http://%HOST%:%PORT%
+)
 echo Presiona Ctrl+C para detener el servidor.
-"%PY_CMD%" -m http.server %PORT% -b 127.0.0.1 -d "%DIR%"
+"%PY_CMD%" "%DIR%\scripts\servidor.py" %PORT% %HOST% "%DIR%"

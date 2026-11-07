@@ -388,7 +388,6 @@ export const HistoricoEdicion = {
     cerrarFiltros,
     toggleHistorico,
     iniciarTimerAutoCierreBotones,
-    cancelarTimerAutoCierreBotones,
     verificarBloqueoCredito,
     setBloqueoEdicionGrupo,
     toggleBloqueoEdicionGrupo,

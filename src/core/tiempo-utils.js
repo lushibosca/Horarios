@@ -146,7 +146,7 @@ function horasATexto(totalHoras, modo = 'long') {
 }
 
 function formatoDiferencia(totalHoras, horasDiariasObjetivo) {
-    const diffMinutos = Math.round(totalHoras * 60) - (horasDiariasObjetivo * 60);
+    const diffMinutos = horasAMinutosRedondeados(totalHoras) - (horasDiariasObjetivo * 60);
     if (diffMinutos === 0) return '';
     const abs = Math.abs(diffMinutos);
     const h = Math.floor(abs / 60);
@@ -169,6 +169,11 @@ function generarRangoFechas(desde, hasta) {
         cur.setDate(cur.getDate() + 1);
     }
     return resultado;
+}
+
+/** Horas decimales -> minutos enteros. Los saldos guardan 6 decimales (1 min = 0.016667 h = 1.00002 min): sin redondear, al truncar una hora se pierde un minuto. */
+function horasAMinutosRedondeados(horas) {
+    return Math.round(horas * 60);
 }
 
 function segundosAMinutosRedondeado(segundos) {
@@ -230,5 +235,5 @@ export const TiempoUtils = {
     horaAMinutos, sumarMinutosAHora, descomponerHorasDecimales,
     obtenerNombreDia, nombreDiaPorIndice, nombreMesPorIndice, obtenerLunes, obtenerLunesSemanaISO, obtenerSemanaRangoActual,
     horasATexto, partesATexto, formatoDiferencia, formatearRangoSemana, formatoTituloMes, pluralizar,
-    generarRangoFechas, fechaCorta, segundosAMinutosRedondeado, _pad2, esperar
+    generarRangoFechas, fechaCorta, segundosAMinutosRedondeado, horasAMinutosRedondeados, _pad2, esperar
 };

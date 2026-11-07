@@ -4,14 +4,14 @@ import { TiempoUtils } from '../core/tiempo-utils.js';
 import { Almacenamiento } from '../core/almacenamiento.js';
 import { GestorPerfiles } from '../services/gestor-perfiles.js';
 import { GestorHistorial } from '../services/gestor-historial.js';
-import { GestionDatos } from '../services/gestion-datos.js';
 import { Animaciones } from './animaciones.js';
 import { TarjetaLote } from './tarjeta-lote.js';
 import { EstadoApp } from '../services/estado-app.js';
 import { FiltrosYPeriodos } from '../services/filtros-periodos.js';
 import { setIconoBtn } from './boton-fichar.js';
 import { mostrarToast } from './toast.js';
-import { icono } from '../core/html.js';
+import { icono, html, montar } from '../core/html.js';
+import { AvisoJornada } from '../services/aviso-jornada.js';
 
 // ====================================================================
 //                     UI CARD BREAK TIMER MODULE
@@ -19,7 +19,7 @@ import { icono } from '../core/html.js';
 
 
 function _breakStorageKey() {
-    const perfilId = GestorPerfiles ? GestorPerfiles.obtenerPerfilActual() : 'default';
+    const perfilId = GestorPerfiles.obtenerPerfilActual();
     return STORAGE_KEYS.BREAK_TIME(perfilId);
 }
 
@@ -51,7 +51,7 @@ function _obtenerOCrearLabelTF(contenedor) {
         label.id = TF_LABEL_ID;
         label.className = 'break-counter-label';
         if (!enBadge) {
-            label.innerHTML = `${icono('#icon-exit')}<span class="break-counter-label-text"></span>`;
+            montar(label, html`${icono('#icon-exit')}<span class="break-counter-label-text"></span>`);
         }
         const estadoBadge = !enBadge ? contenedor.querySelector('.estado-badge') : null;
         if (estadoBadge) {
@@ -79,7 +79,7 @@ function _actualizarCardTimerRunning(card, storageKey, sinAnimar = false) {
         ? icono('#icon-calendar-simple')
         : icono('#icon-clock');
     const contexto = vistaActual === 'semana' ? 'Esta Semana' : TiempoUtils.obtenerNombreDia(TiempoUtils.obtenerFechaHoy());
-    const nuevoHTML = `${iconoTitulo} ${contexto}<span class="tf-badge">Tiempo fuera</span>`;
+    const nuevoHTML = html`${iconoTitulo} ${contexto}<span class="tf-badge">Tiempo fuera</span>`;
     const agregarContador = () => {
         _obtenerOCrearLabelTF(titulo);
         _iniciarContadorBreak(storageKey);
@@ -162,7 +162,7 @@ async function _detenerTimerBreak(registroHoy, storageKey, storedStart) {
     GestorHistorial.saveState(EstadoApp.registros(), `tiempo fuera +${minutos}min (${TiempoUtils.fechaCorta(registroHoy.fecha)})`);
     Almacenamiento.removeItem(storageKey);
     await EstadoApp.guardarYActualizar(registroHoy.id);
-    GestionDatos.sincronizarPushHoy();
+    AvisoJornada.sincronizarHoy();
     const ignorarTF = EstadoApp.getIgnorarTiempoFuera();
     const diaTexto = registroHoy.fecha === TiempoUtils.obtenerFechaHoy() ? 'hoy' : 'ayer';
     const mensajeToast = ignorarTF
@@ -194,13 +194,8 @@ export const TarjetaTiempoFuera = {
     _minutosBreakActivo,
     _minutosAHoraWrap,
     _formatearMinutosCorto,
-    TF_LABEL_ID,
     _obtenerOCrearLabelTF,
     _quitarLabelTF,
-    _actualizarCardTimerRunning,
     actualizarEstadoBotonTimerMain,
-    _iniciarContadorBreak,
-    _detenerContadorBreak,
-    _detenerTimerBreak,
     toggleTimerBreakMain
 };

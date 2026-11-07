@@ -1,6 +1,6 @@
 import { Movimiento } from '../core/movimiento.js';
 import { Animaciones } from './animaciones.js';
-import { icono } from '../core/html.js';
+import { icono, html, montar } from '../core/html.js';
 
 const { DUR_FICHAJE_OK, DUR_FICHAJE_SALIDA } = Animaciones;
 
@@ -13,7 +13,7 @@ export function resetearBoton(btn) {
     btn.classList.remove('btn-color-muted', 'btn-color-red');
     // Con el check de éxito en curso no se recrea el ícono: lo restaura su propia salida
     if (_exitoFichaje.has(btn)) return;
-    btn.innerHTML = `${icono('#icon-clock')} <span id="btn-registrar-texto">Fichar</span>`;
+    montar(btn, html`${icono('#icon-clock')} <span id="btn-registrar-texto">Fichar</span>`);
 }
 
 // ─── Check de éxito en el botón Fichar ──────────────────────────────────────
@@ -86,7 +86,7 @@ export function obtenerIconoBtn(btn) {
 
 export function restaurarBotonGuardarEdicion(btnGuardar) {
     btnGuardar.disabled = false;
-    btnGuardar.innerHTML = `${icono('#icon-check')} Guardar`;
+    montar(btnGuardar, html`${icono('#icon-check')} Guardar`);
 }
 
 export function setIconoBtn(btn, icono) {

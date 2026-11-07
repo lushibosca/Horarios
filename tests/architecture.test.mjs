@@ -247,3 +247,55 @@ test('Módulos: cada Modulo.miembro y cada const { ... } = Modulo existen en el 
     }
     assert.deepEqual(problemas, [], `Miembros inexistentes:\n${problemas.join('\n')}`);
 });
+
+test('HTML seguro: innerHTML, outerHTML= e insertAdjacentHTML solo dentro de core/html.js (montar)', () => {
+    const SINK = /\.(innerHTML|outerHTML)\s*=(?!=)|insertAdjacentHTML\s*\(|\binnerHTML\s*:/;
+    const violaciones = srcFiles
+        .filter(f => f !== 'src/core/html.js')
+        .flatMap(f => fs.readFileSync(f, 'utf8').split('\n')
+            .map((l, i) => [l, i + 1])
+            .filter(([l]) => SINK.test(l) && !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+            .map(([, n]) => `${f}:${n}`));
+    assert.deepEqual(violaciones, [], 'Usá montar(el, html`...`) o replaceChildren() para limpiar');
+});
+
+test('CSP: index.html exige Trusted Types con la única política de core/html.js', () => {
+    const htmlIndex = fs.readFileSync('index.html', 'utf8');
+    const csp = /http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(htmlIndex)?.[1] ?? '';
+    assert.match(csp, /require-trusted-types-for 'script'/);
+    assert.match(csp, /trusted-types horarios;/);
+    assert.match(fs.readFileSync('src/core/html.js', 'utf8'), /createPolicy\?\.\('horarios'/);
+});
+
+test('tema-inicial.js: sus listas de temas y estilos de calendario coinciden con las de los módulos', async () => {
+    const codigo = fs.readFileSync('src/core/tema-inicial.js', 'utf8');
+    const lista = (nombre) => JSON.parse(new RegExp(`var ${nombre} = (\\[[^\\]]*\\]);`).exec(codigo)[1].replace(/'/g, '"'));
+    const temasModulo = JSON.parse(/const TEMAS = (\[[^\]]*\]);/.exec(fs.readFileSync('src/ui/gestor-temas.js', 'utf8'))[1].replace(/'/g, '"'));
+    const { ESTILOS_CALENDARIO } = await import('../src/core/estilo-calendario.js');
+    assert.deepEqual(lista('TEMAS_VALIDOS'), temasModulo);
+    assert.deepEqual(lista('ESTILOS_CALENDARIO_VALIDOS'), ESTILOS_CALENDARIO.map(e => e.id));
+});
+
+test('Service Worker (sw.js): todo recurso local que pide la app (index.html, url() de los CSS, íconos y fuentes) está precacheado', () => {
+    const sw = fs.readFileSync('sw.js', 'utf8');
+    const precache = new Set([...sw.split('];')[0].matchAll(/'\.\/([^']+)'/g)].map(m => m[1]));
+    const pedidos = new Map();   // ruta → quién la pide
+    const anotar = (ruta, origen) => { if (!pedidos.has(ruta)) pedidos.set(ruta, origen); };
+
+    const html = fs.readFileSync('index.html', 'utf8');
+    for (const m of html.matchAll(/(?:href|src)="\.\/([^"#?]+)"/g)) anotar(m[1], 'index.html');
+    for (const css of fs.readdirSync('assets/styles').filter(f => f.endsWith('.css'))) {
+        const ruta = `assets/styles/${css}`;
+        for (const m of fs.readFileSync(ruta, 'utf8').matchAll(/url\(\s*['"]?([^'")]+)/g)) {
+            if (/^(data:|#|https?:)/.test(m[1])) continue;
+            anotar(path.posix.normalize(path.posix.join('assets/styles', m[1])), ruta);
+        }
+    }
+    for (const archivo of [...srcFiles, 'sw.js']) {
+        for (const m of fs.readFileSync(archivo, 'utf8').matchAll(/['"`]\.\/(assets\/[^'"`?#]+)/g)) anotar(m[1], archivo);
+    }
+
+    const faltan = [...pedidos].filter(([ruta]) => !precache.has(ruta)).map(([ruta, origen]) => `${ruta} (lo pide ${origen})`);
+    assert.deepEqual(faltan, [], 'Agregalos a urlsToCache en sw.js para que funcionen sin conexión');
+    assert.ok(pedidos.size >= 10, 'el test encontró los recursos (si no, revisar las expresiones)');
+});

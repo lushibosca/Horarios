@@ -19,7 +19,7 @@ function _secciones() {
 }
 
 function _itemDeIndice(seccion) {
-    return /** @type {HTMLElement | null} */ (document.querySelector(`#ayuda-indice [data-target="${seccion.id}"]`));
+    return /** @type {HTMLElement | null} */ (document.querySelector(`#ayuda-indice [data-target="${CSS.escape(seccion.id)}"]`));
 }
 
 function _quitarMarcas() {

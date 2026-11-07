@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { html, crudo, esHtmlSeguro, montar, icono } from '../src/core/html.js';
+import { html, crudo, esHtmlSeguro, montar, icono, aHtmlConfiable, urlScriptConfiable } from '../src/core/html.js';
 
 test('html: escapa interpolaciones de texto', () => {
     const nota = '<img src=x onerror="alert(1)">\'&';
@@ -33,4 +33,11 @@ test('icono: arma el <svg> del sprite, escapa href y clase, y se anida sin re-es
     assert.equal(String(icono('#icon-edit', 'extra')), '<svg class="icon extra"><use href="#icon-edit"/></svg>');
     assert.equal(String(icono('"><b>')), '<svg class="icon"><use href="&quot;&gt;&lt;b&gt;"/></svg>');
     assert.equal(String(html`<p>${icono('#icon-x')}</p>`), '<p><svg class="icon"><use href="#icon-x"/></svg></p>');
+});
+
+test('Trusted Types: aHtmlConfiable solo acepta html`...` y urlScriptConfiable solo sw.js', () => {
+    assert.equal(aHtmlConfiable(html`<b>${'<i>'}</b>`), '<b>&lt;i&gt;</b>');   // sin trustedTypes (Node) devuelve el string
+    assert.throws(() => aHtmlConfiable('<b>x</b>'), TypeError);
+    assert.equal(urlScriptConfiable('./sw.js'), './sw.js');
+    assert.throws(() => urlScriptConfiable('https://otro.sitio/x.js'), TypeError);
 });

@@ -1,3 +1,4 @@
+import { Recarga } from '../core/recarga.js';
 import { mostrarToast, iniciarToastProgreso, actualizarToastProgreso, finalizarToastProgreso } from './toast.js';
 
 // ====================================================================
@@ -36,7 +37,7 @@ function progreso(porcentaje) {
 function listo() {
     _descargando = false;
     finalizarToastProgreso();
-    mostrarToast('Actualización lista. Tocá para recargar', 'success', DURACION_LISTO_MS, null, () => location.reload());
+    mostrarToast('Actualización lista. Tocá para recargar', 'success', DURACION_LISTO_MS, null, () => Recarga.solicitar());
 }
 
 /** La descarga falló: se conserva la versión actual y se vuelve a intentar en la próxima apertura. */

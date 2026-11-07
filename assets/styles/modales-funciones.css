@@ -89,15 +89,18 @@
 }
 
 /* Deshabilitado: mismo criterio que #gist-limite-sync.disabled (todo el contenido atenuado) */
+.settings-list>.collapsible>.collapsible-inner>button>*,
 .settings-list>button>* {
     transition: opacity var(--transition-ui);
 }
 
+.settings-list>.collapsible>.collapsible-inner>button:disabled,
 .settings-list>button:disabled {
     color: var(--text-muted);
     background: transparent;
 }
 
+.settings-list>.collapsible>.collapsible-inner>button:disabled>*,
 .settings-list>button:disabled>* {
     opacity: var(--opacity-disabled);
 }
@@ -306,7 +309,12 @@
     text-align: left;
 }
 
-#modal-config .config-actions button>span:not(.toggle-switch, #hint-fondo-label, #hint-animaciones-label),
+/* Mismo radio que las listas de ajustes (el botón global es una píldora) */
+.drag-handle {
+    border-radius: var(--radius-md);
+}
+
+#modal-config .config-actions button>span:not(.toggle-switch, #hint-fondo-label, #hint-animaciones-label, #hint-estilo-calendario-label, #hint-animacion-label),
 .drag-handle>span:not(.toggle-switch),
 #modal-reporte-secciones .config-actions button>span:not(.toggle-switch),
 #modal-notificaciones .form-group button>span:not(.toggle-switch) {
@@ -314,7 +322,9 @@
 }
 
 #hint-fondo-label,
-#hint-animaciones-label {
+#hint-animaciones-label,
+#hint-estilo-calendario-label,
+#hint-animacion-label {
     flex: none;
     margin-left: auto;
     color: var(--text-muted);
@@ -351,6 +361,7 @@
     overflow: hidden;
 }
 
+.settings-list>.collapsible>.collapsible-inner>button,
 .settings-list>button {
     width: 100%;
     background: transparent;
@@ -360,7 +371,8 @@
 }
 
 .settings-list>button:not(:last-child),
-.settings-list>.settings-list-row:not(:last-child) {
+.settings-list>.settings-list-row:not(:last-child),
+.settings-list>.collapsible>.collapsible-inner>button {
     border-bottom: 1px solid var(--border);
 }
 
@@ -388,10 +400,12 @@
     margin-bottom: 0;
 }
 
+.settings-list>.collapsible>.collapsible-inner>button:active:not(:disabled),
 .settings-list>button:active:not(:disabled) {
     background: var(--surface-row-hover);
 }
 
+.settings-list>.collapsible>.collapsible-inner>button .icon:first-child,
 .settings-list>button .icon:first-child,
 .settings-list-row .icon:first-child,
 .settings-list-row-head .icon:first-child,
@@ -623,6 +637,67 @@ body.config-onboarding #theme-toggle-config {
     animation: mutacionEntrada var(--dur-anim) ease-out;
 }
 
+/* "Agregar perfil" plegado: el botón se apoya sobre el borde superior del pie (la línea existente) */
+#modal-selector-perfiles .modal-panel-body {
+    padding-bottom: var(--space-lg);
+}
+
+#modal-selector-perfiles .modal-panel-footer {
+    position: relative;
+    padding-top: var(--space-lg);
+}
+
+.perfil-agregar {
+    margin-top: var(--space-lg);
+}
+
+.perfil-agregar-toggle {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 3;
+    width: var(--control-sm);
+    min-width: var(--control-sm);
+    height: var(--control-sm);
+    padding: 0;
+    transform: translate(-50%, -50%);
+    background: var(--input-bg);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    /* anillo del color de la tarjeta: abre un hueco en la línea alrededor del botón */
+    box-shadow: 0 0 0 var(--space-xsm) var(--bg-card);
+}
+
+/* Área táctil de 48px aunque el botón se vea de 36px */
+.perfil-agregar-toggle::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+}
+
+.perfil-agregar-toggle .icon {
+    width: 1.35em;
+    height: 1.35em;
+}
+
+/* El "+" del icono gira al abrir (--giro-plus se hereda dentro del <use>) */
+.icon-plus-giro {
+    transform: rotate(var(--giro-plus, 0deg));
+    transform-origin: 13.5px 13.5px;
+    transition: transform var(--dur-anim) var(--ease-pop);
+}
+
+.perfil-agregar-toggle:active {
+    transform: translate(-50%, -50%) scale(0.92);
+}
+
+.perfil-agregar-toggle[aria-expanded="true"] {
+    --giro-plus: 45deg;
+    background: var(--c-active);
+    color: var(--c-white);
+    border-color: transparent;
+}
+
 /* ─── SELECTOR DE SEMANA ─────────────────────────────────────────────────────── */
 
 .week-selector {
@@ -678,6 +753,10 @@ body.config-onboarding #theme-toggle-config {
     gap: var(--space-xsm);
 }
 
+.settings-list--tras-lista {
+    margin-top: var(--space-sm);
+}
+
 .orden-card-item.arrastrando {
     opacity: 0;
 }
@@ -712,7 +791,6 @@ body.tarjeta-arrastrando-activa * {
     text-align: center;
     margin-top: var(--space-sm);
     color: var(--c-green);
-    display: none;
 }
 
 .importar-btns {
@@ -720,4 +798,31 @@ body.tarjeta-arrastrando-activa * {
     flex-direction: column;
     gap: var(--space-md);
     margin-top: var(--space-lg);
+}
+
+/* ─── COLUMNAS LIBRES DE ESCRITORIO (ver orden-tarjetas.js) ──────────────────────
+   Hasta 3 columnas: --columnas la fija el JS según cuántas tienen tarjetas visibles. Una columna sin tarjetas visibles no ocupa lugar. */
+.columna-vacia {
+    display: none;
+}
+
+/* Tarjeta de estado en la lista de orden: se puede mover pero no ocultar, así que en lugar del interruptor lleva una nota */
+.orden-card-fija {
+    flex: none;
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-normal);
+}
+
+/* La tarjeta de estado no tiene encabezado: se mantiene presionada para reordenarla */
+#stats-card {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    outline: none;   /* sin aro al tocarla; con teclado (Alt + flechas la mueve) sí se ve */
+}
+
+#stats-card:focus-visible {
+    outline: 2px solid var(--c-blue);
+    outline-offset: 2px;
 }

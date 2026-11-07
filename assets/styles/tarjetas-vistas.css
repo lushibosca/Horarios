@@ -133,8 +133,9 @@
    suma esa diferencia (medida: 12 px) para que la distancia visual de la barra a ambos textos sea la misma */
 .progress-pista {
     --ajuste-optico: 0.75rem;
+    --margen-x: var(--space-sm);   /* los puntos de los extremos sobresalen medio círculo de la barra: sin este margen quedaban casi pegados al borde de la tarjeta */
     position: relative;
-    margin: var(--space-lg) 0 calc(var(--space-lg) + var(--ajuste-optico));
+    margin: var(--space-lg) var(--margen-x) calc(var(--space-lg) + var(--ajuste-optico));
 }
 
 .progress-punto {
@@ -161,7 +162,7 @@
 /* Latido del remate cuando el brillo de la barra lo alcanza.
    Mismo ciclo (5 s) que el brillo, y arranca junto con él (se activa con la clase .shimmer): el brillo llega al remate a ~11 % del ciclo y lo deja a ~15 %; el latido sube con él y vuelve hasta ~22 %. */
 .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado) {
-    animation: remate-latido 5s ease-in-out infinite;
+    animation: remate-latido var(--dur-ambiente) ease-in-out infinite;
 }
 
 .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
@@ -173,7 +174,7 @@
     border-color: inherit;
     border-radius: 50%;
     opacity: 0;
-    animation: remate-onda 5s ease-out infinite;
+    animation: remate-onda var(--dur-ambiente) ease-out infinite;
 }
 
 .progress-punto[data-color="green"] { border-color: var(--c-green); }
@@ -214,7 +215,7 @@
     width: 50%;
     height: 100%;
     background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
-    animation: shimmer 5s ease-in-out infinite;
+    animation: shimmer var(--dur-ambiente) ease-in-out infinite;
     will-change: transform;
 }
 
@@ -239,14 +240,14 @@
 }
 
 .progress-pista {
-    --centro-etiqueta: 17.5px;   /* distancia del borde de la barra al centro de las etiquetas de la vista diaria (donde termina la línea diagonal) */
+    --centro-etiqueta: 25.5px;   /* distancia del borde de la barra al centro de las etiquetas de la vista diaria (donde termina la línea diagonal) */
     transition: margin var(--dur-slow) var(--ease-conteo);
 }
 
 /* Hint integrado: la pista reserva el alto de la línea (vista diaria o semanal) */
 .progress-pista.reserva-linea,
 .progress-pista.con-linea {
-    margin: calc(var(--space-lg) + 1.2rem) 0 calc(var(--space-lg) + 1.2rem + var(--ajuste-optico));
+    margin: calc(var(--space-lg) + 1.2rem) var(--margen-x) calc(var(--space-lg) + 1.2rem + var(--ajuste-optico));
 }
 
 /* Al aparecer (display none → block) los elementos de la línea entran con fundido; el estado final es el natural de cada uno */
@@ -271,15 +272,15 @@
 }
 
 .progress-pista.con-linea .linea-tick--buffer {
-    animation-delay: 0.3s;
+    animation-delay: var(--delay-linea);
 }
 
 .progress-pista.con-linea .linea-etiqueta {
-    animation: linea-etiqueta-aparece var(--dur-slow) var(--ease-conteo) 0.3s backwards;
+    animation: linea-etiqueta-aparece var(--dur-slow) var(--ease-conteo) var(--delay-linea) backwards;
 }
 
 .progress-pista.con-linea .linea-etiqueta--arriba {
-    animation-delay: 0.45s;
+    animation-delay: var(--delay-linea-arriba);
 }
 
 .progress-pista.con-linea::before {
@@ -405,6 +406,12 @@
     stroke-width: 1.2;
 }
 
+/* Las marcas de la vista diaria tienen la diagonal 8 px más larga que las de la semanal (svg de 26 x 28 en vez de 26 x 20): así la hora queda más separada de la barra */
+#linea-tick-salida,
+#linea-tick-buffer {
+    height: 28px;
+}
+
 .linea-tick--buffer {
     top: auto;
     bottom: 100%;
@@ -432,6 +439,148 @@
 .linea-etiqueta--arriba { bottom: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); font-weight: 600; }
 .linea-etiqueta--arriba.positivo { color: var(--c-green); }
 .linea-etiqueta--arriba.negativo { color: var(--c-red); }
+
+/* La hora de salida con buffer lleva al comienzo el mismo triángulo que el texto del buffer semanal: ▲ si el buffer suma, ▼ si resta (del color de la etiqueta) */
+#linea-et-buffer::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: var(--space-xs);
+    background-color: currentColor;
+}
+
+#linea-et-buffer.positivo::before {
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+#linea-et-buffer.negativo::before {
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+/* ─── FOCO DE HITOS (ciclo del número grande, ver foco-hitos.js) ─────────────────
+   La etiqueta de la fase que muestra el número grande se resalta en una píldora y despliega su descripción; el resto se atenúa y el punto pulsa.
+   La descripción es absoluta: no cambia el ancho de la etiqueta, así la posición que calcula barra-hitos.js no se mueve.
+   Se despliega hacia la izquierda (a la derecha si la marca está espejada, y siempre a la derecha en la entrada) y barra-hitos.js deja en cada etiqueta
+   data-desc ("larga", "corta" o "ninguna") y --desc-ancho (lo que ocupa desplegada) según el lugar libre. */
+.linea-etiqueta {
+    --foco-color: var(--text-muted);
+    --separacion-desc: 6px;
+    isolation: isolate;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease, color var(--dur-anim) ease, filter var(--dur-anim) ease;
+}
+
+.linea-etiqueta--arriba.positivo { --foco-color: var(--c-green); }
+.linea-etiqueta--arriba.negativo { --foco-color: var(--c-red); }
+.linea-etiqueta[data-desc="ninguna"] { --separacion-desc: 0px; }
+
+.linea-et-desc {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + var(--separacion-desc));
+    translate: 0 -50%;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transition: max-width var(--dur-slow) var(--ease-conteo), opacity var(--dur-anim) ease;
+}
+
+.linea-etiqueta--espejada .linea-et-desc,
+#linea-et-entrada .linea-et-desc {
+    right: auto;
+    left: calc(100% + var(--separacion-desc));
+}
+
+/* Píldora detrás de la hora (y de la descripción desplegada) */
+.linea-etiqueta::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -4px -7px;
+    border: 1px solid color-mix(in srgb, var(--foco-color) 48%, transparent);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--foco-color) 17%, var(--bg-card));
+    opacity: 0;
+    transition: left var(--dur-slow) var(--ease-conteo), right var(--dur-slow) var(--ease-conteo), opacity var(--dur-anim) ease;
+}
+
+.linea-etiqueta.foco { color: var(--text-main); z-index: 2; }   /* por encima de las vecinas atenuadas, que puede tapar */
+.linea-etiqueta--arriba.foco { color: var(--foco-color); }
+
+.linea-etiqueta.foco::after {
+    opacity: 1;
+    left: calc(-7px - var(--desc-ancho, 0px) - var(--separacion-desc));
+}
+
+.linea-etiqueta--espejada.foco::after,
+#linea-et-entrada.foco::after {
+    left: -7px;
+    right: calc(-7px - var(--desc-ancho, 0px) - var(--separacion-desc));
+}
+
+.linea-etiqueta.foco:not([data-desc="ninguna"]) .linea-et-desc {
+    max-width: var(--desc-ancho, 0px);
+    opacity: 1;
+}
+
+.progress-pista.hay-foco .linea-etiqueta:not(.foco),
+.progress-pista.hay-foco .linea-tick:not(.foco) {
+    filter: opacity(0.3);
+}
+
+.linea-tick {
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease, filter var(--dur-anim) ease;
+}
+
+/* Variante B del hint integrado: en el ciclo, el número grande lleva el nombre del hito enfocado y la barra solo resalta la hora, sin desplegar su descripción.
+   Al pasar el cursor por un hito (.hover-hito) siempre se despliega en la barra y el número queda con las horas */
+.stats-card.desc-en-numero:not(.hover-hito) .linea-et-desc {
+    display: none;
+}
+
+.stats-card.desc-en-numero:not(.hover-hito) .linea-etiqueta {
+    --desc-ancho: 0px !important;
+    --separacion-desc: 0px !important;
+}
+
+/* Pulso del punto enfocado: anillo centrado en el punto de anclaje (24, -3) del svg de la marca; en los remates, un anillo alrededor */
+@keyframes hito-pulso {
+    from { transform: scale(1); opacity: 0.75; }
+    to { transform: scale(3.4); opacity: 0; }
+}
+
+.linea-tick::after {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: -7px;
+    width: 8px;
+    height: 8px;
+    box-sizing: border-box;
+    border: 2px solid var(--tick-color);
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.linea-tick.foco::after {
+    animation: hito-pulso var(--dur-pulso) ease-out 2;
+}
+
+.progress-punto.foco::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    box-sizing: border-box;
+    border: 2px solid var(--text-main);
+    border-radius: 50%;
+    animation: hito-pulso var(--dur-pulso) ease-out 2;
+}
+
+.progress-punto--inicio.foco::after {
+    border-color: var(--c-blue);
+}
 
 .stats-card.conteo-inicial .progress-punto {
     transition: left var(--dur-conteo) var(--ease-conteo), opacity var(--dur-fast) ease, border-color var(--dur-slow) ease, background var(--dur-slow) ease;
@@ -720,11 +869,32 @@
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    font-size: var(--text-sm);
+    --cal-dia-tam: var(--text-sm);
+    font-size: var(--cal-dia-tam);
     font-weight: var(--fw-medium);
     cursor: pointer;
     position: relative;
-    transition: opacity var(--dur-fast);
+    /* Cambiar de estilo (o de color del día) es una transición: todo lo que cambia se interpola, y se retoma desde donde esté si se vuelve a cambiar enseguida */
+    --cal-dia-transicion: opacity var(--dur-fast), background-color var(--dur-anim), box-shadow var(--dur-anim), color var(--dur-anim),
+        border-radius var(--dur-anim), padding var(--dur-anim);
+    transition: var(--cal-dia-transicion);
+}
+
+/* Marca de algunos estilos (barra o punto). Existe siempre, invisible, para que al cambiar de estilo aparezca, se deforme y desaparezca en vez de cortarse */
+.calendario-dia::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 19%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--cal-color, transparent);
+    transform: translateX(-50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-anim), width var(--dur-anim), height var(--dur-anim), bottom var(--dur-anim),
+        border-radius var(--dur-anim), background-color var(--dur-anim);
 }
 
 .calendario-dia.dia-filtrado,
@@ -737,10 +907,14 @@
     cursor: default;
 }
 
+/* Hoy se marca con el número más grande (en todos los estilos y con o sin registro); sin registro, además, con el color del texto en vez del atenuado */
 .calendario-dia.hoy {
-    outline: 2px solid var(--text-muted);
-    outline-offset: -2px;
+    font-size: calc(var(--cal-dia-tam) * 1.25);
     font-weight: var(--fw-bold);
+}
+
+.calendario-dia.hoy.dia-sin-registro {
+    color: var(--text-main);
 }
 
 .calendario-dia.tiene-comentario::after {
@@ -758,6 +932,81 @@
 
 .calendario-dia.dia-sin-registro {
     color: var(--text-muted);
+}
+
+/* ─── ESTILOS DE LOS DÍAS (opción "Estilo de los días" en ajustes) ───────────────────────────────
+   'legacy' es el original (círculo relleno, definido arriba). Los demás se activan con <html data-estilo-calendario="...">
+   (lo pone core/estilo-calendario.js) y parten del color del día en --cal-color. Los días sin registro no se tocan. */
+.calendario-dia.dia-normal { --cal-color: var(--c-green); }
+.calendario-dia.dia-incompleto,
+.calendario-dia.dia-especial-red { --cal-color: var(--c-red); }
+.calendario-dia.dia-especial-purple { --cal-color: var(--c-purple); }
+.calendario-dia.dia-especial-orange { --cal-color: var(--c-orange); }
+.calendario-dia.dia-cubierto,
+.calendario-dia.dia-especial-gold { --cal-color: var(--c-gold); }
+.calendario-dia.dia-especial-blue,
+.calendario-dia.dia-en-curso { --cal-color: var(--c-blue); }
+
+/* Todos los estilos se arman con propiedades que se interpolan (color de fondo, sombra interna, radio, relleno) y el fondo se recorta al área de contenido:
+   así el hueco entre un aro y su relleno es el relleno interno (padding) y cambiar de estilo es una transición suave */
+.calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    padding: 0;
+    background-clip: content-box;
+}
+
+/* Contorno con brillo: aro fino del color del día con un resplandor suave; hoy en negrita */
+:root[data-estilo-calendario="contorno-brillo"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 2px var(--cal-color), 0 0 10px color-mix(in srgb, var(--cal-color) 45%, transparent);
+}
+
+/* Aro grueso: aro ancho del color del día y el número del mismo color */
+:root[data-estilo-calendario="aro-grueso"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 4px var(--cal-color);
+    color: color-mix(in srgb, var(--cal-color) 55%, var(--text-main));
+    font-weight: var(--fw-semibold);
+}
+
+/* Relleno con aro: disco más chico (algo más oscuro que el color) y, separado por un hueco, un aro fino del color del día */
+:root[data-estilo-calendario="relleno-aro"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    padding: 4px;
+    background-color: color-mix(in srgb, var(--cal-color) 80%, var(--bg-card));
+    box-shadow: inset 0 0 0 1.5px var(--cal-color);
+}
+
+/* Cuadrado con aro: el mismo concepto de relleno con aro, pero en cuadrado de esquinas redondeadas */
+:root[data-estilo-calendario="cuadrado-aro"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    border-radius: 24%;
+    padding: 4px;
+    background-color: color-mix(in srgb, var(--cal-color) 80%, var(--bg-card));
+    box-shadow: inset 0 0 0 1.5px var(--cal-color);
+}
+
+/* Subrayado: sin círculo, el número con una barrita del color del día debajo */
+:root[data-estilo-calendario="subrayado"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+}
+
+:root[data-estilo-calendario="subrayado"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue)::before {
+    opacity: 1;
+    bottom: 17%;
+    width: 38%;
+    height: 3px;
+    border-radius: var(--radius-full);
+}
+
+/* Punto: sin círculo, el número con un puntito del color del día debajo; hoy lleva el número del color del día y en negrita */
+:root[data-estilo-calendario="punto"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+}
+
+:root[data-estilo-calendario="punto"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue)::before {
+    opacity: 1;
+}
+
+:root[data-estilo-calendario="punto"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue).hoy {
+    color: color-mix(in srgb, var(--cal-color) 55%, var(--text-main));
 }
 
 /* Entrada inicial (una sola vez al cargar): pop escalonado en los días con registro,
@@ -1150,7 +1399,7 @@
 }
 
 .timer-btn.running:not(:disabled) {
-    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+    animation: estadoBadgeParpadeo var(--dur-parpadeo) ease-in-out infinite;
 }
 
 .toggle-hint,
@@ -1395,7 +1644,7 @@
     padding: var(--space-2xs) var(--space-smd);
     border-radius: var(--radius-full);
     white-space: nowrap;
-    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+    animation: estadoBadgeParpadeo var(--dur-parpadeo) ease-in-out infinite;
 }
 
 .tf-badge .icon {
@@ -1423,12 +1672,12 @@
 .estado-badge--en-curso {
     background: var(--c-blue);
     color: var(--c-white);
-    animation: estadoBadgeParpadeo 3s ease-in-out infinite;
+    animation: estadoBadgeParpadeo var(--dur-parpadeo) ease-in-out infinite;
 }
 
 /* Objetivo diario cumplido con la jornada todavía abierta: el mismo parpadeo, más rápido */
 .estado-badge--en-curso.estado-badge--cumplido {
-    animation-duration: 1.2s;
+    animation-duration: var(--dur-parpadeo-rapido);
 }
 
 .estado-badge--finalizado {
@@ -1509,3 +1758,28 @@
     font-weight: var(--fw-semibold);
 }
 
+
+/* ─── HOVER SOBRE LA BARRA (solo escritorio: ver hover-barra.js) ─────────────────
+   Los hitos y remates ignoran el puntero (pointer-events: none); con un puntero que puede hacer hover pasan a recibirlo.
+   En la vista semanal la zona sensible se amplía unos px sobre y bajo la barra (por detrás del contenido: z-index -1). */
+@media (hover: hover) and (pointer: fine) {
+    .progress-pista.con-linea .linea-etiqueta:not(.linea-etiqueta--oculta),
+    .progress-pista.con-linea .linea-tick,
+    .progress-pista.con-linea #progress-punto-inicio,
+    .progress-pista.con-linea #progress-punto.visible {
+        pointer-events: auto;
+    }
+
+    .progress-pista.linea-semanal::after {
+        content: '';
+        position: absolute;
+        inset: -14px 0;
+        z-index: -1;
+    }
+}
+
+/* Vista semanal: el tramo del día enfocado queda a plena opacidad y el resto de la barra se atenúa (la máscara usa el rango que escribe foco-hitos.js) */
+.progress-fill.foco-tramo {
+    -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3) var(--foco-desde), #000 var(--foco-desde) var(--foco-hasta), rgba(0, 0, 0, 0.3) var(--foco-hasta));
+    mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3) var(--foco-desde), #000 var(--foco-desde) var(--foco-hasta), rgba(0, 0, 0, 0.3) var(--foco-hasta));
+}

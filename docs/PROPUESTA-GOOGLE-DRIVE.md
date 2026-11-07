@@ -1,7 +1,5 @@
 # Propuesta técnica y análisis de seguridad — Respaldo en Google Drive
 
-> **Nota (2026-10-30):** este documento se escribió cuando la app era un único `app.js` (más `styles.css` y `flash.js`). Hoy el código está modularizado en `src/` (ver [`ARQUITECTURA.md`](ARQUITECTURA.md)); las referencias a `app.js` corresponden al código anterior: `GistSync` → `src/services/sincronizacion-gist.js`, `UIGistYRespaldo` → `src/ui/gist-respaldo.js`, el Worker/Push → `src/services/recordatorio-push.js`.
-
 **Fecha:** 2026-10-17  
 **Alcance:** `app.js`, `index.html`, `styles.css`, `sw.js` y `horarios-push/src/index.js`  
 **Objetivo:** Incorporar Google Drive como opción de respaldo y sincronización en la nube (manual y automática), con botón propio en **Ajustes → Datos**, manteniendo los estándares de seguridad de `ROADMAP-SEGURIDAD-HORARIOS.md`.

@@ -117,6 +117,14 @@ function parchearRegistrosEnHistorial(parchadorFn) {
 }
 
 export const GestorHistorial = {
-    saveState, undo, redo, canUndo, canRedo, updateButtons, clear,
-    saveToLocalStorage, loadFromLocalStorage, getCurrentState, parchearRegistrosEnHistorial
+    saveState,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    updateButtons,
+    clear,
+    loadFromLocalStorage,
+    getCurrentState,
+    parchearRegistrosEnHistorial
 };

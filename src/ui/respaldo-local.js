@@ -11,6 +11,8 @@ import { mostrarToast } from './toast.js';
 // ====================================================================
 //                     UI LOCAL BACKUP MODULE (Import / Export JSON)
 // ====================================================================
+const ESPERA_MODAL_MS = 50;   // deja abrir el modal antes de lanzar el selector de archivos
+
 const { descargarJSON, obtenerNombrePerfilSafe } = UIBase;
 
 let _modalAbiertoDesdeLista = false;
@@ -43,7 +45,7 @@ function mostrarImportar(desdeLista = false) {
 
         const nombreEl = $('nombre-archivo-seleccionado');
         if (nombreEl) {
-            nombreEl.style.display = 'none';
+            nombreEl.classList.add('hidden');
             nombreEl.textContent = '';
         }
 
@@ -58,7 +60,7 @@ function mostrarImportar(desdeLista = false) {
         }
 
         _actualizarBotonVolver('btn-volver-importar', desdeLista);
-        setTimeout(() => $('file-import').click(), 50);
+        setTimeout(() => $('file-import').click(), ESPERA_MODAL_MS);
     });
 }
 
@@ -106,8 +108,8 @@ async function ejecutarExportacion() {
             await exportarRango(mesActual, mesActual, true);
 
         } else if (tipo === 'rango') {
-            const desde = S.sanitizeString($('export-fecha-desde').value, 10);
-            const hasta = S.sanitizeString($('export-fecha-hasta').value, 10);
+            const desde = S.limpiarTexto($('export-fecha-desde').value, 10);
+            const hasta = S.limpiarTexto($('export-fecha-hasta').value, 10);
 
             if (!desde || !hasta) {
                 mostrarToast('Completá ambas fechas', 'error');
@@ -156,18 +158,9 @@ async function exportarRango(desde, hasta, esMes = false) {
     const fechaLocal = TiempoUtils.fechaLocalISOFull();
     const fechaHoy = fechaLocal.substring(0, 10);
 
-    const data = {
-        registros: registrosFiltrados,
-        diasHabiles: EstadoApp.diasHabiles(),
-        horasDiarias: EstadoApp.horasDiarias(),
-        historialDiasHabiles: EstadoApp.historialDiasHabiles(),
-        ...ImportarExportar.obtenerConfigExportable(),
-        fecha: fechaLocal,
-        version: S.SECURITY_LIMITS.SCHEMA_VERSION,
-        hash: await S.calcularHashSHA256(registrosFiltrados),
-        timestamp: Date.now(),
-        rangoExportado: S.sanitizeString(esMes ? `Mes ${desde}` : `${desde} a ${hasta}`, 100)
-    };
+    const data = await ImportarExportar.armarRespaldo(registrosFiltrados, {
+        rangoExportado: S.limpiarTexto(esMes ? `Mes ${desde}` : `${desde} a ${hasta}`, 100)
+    });
 
     try {
         const sufijo = esMes ? `_${desde}` : `_${desde}_${hasta}`;
@@ -187,6 +180,5 @@ export const RespaldoLocal = {
     mostrarExportar,
     cerrarExportar,
     ejecutarExportacion,
-    toggleCamposRangoExport,
-    exportarRango
+    toggleCamposRangoExport
 };

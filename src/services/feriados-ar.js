@@ -1,7 +1,6 @@
 import { STORAGE_KEYS } from '../core/constantes.js';
 import { FERIADOS_AR } from '../data/feriados.js';
 import { TiempoUtils } from '../core/tiempo-utils.js';
-import { SeguridadYUtils } from '../core/seguridad.js';
 import { Almacenamiento } from '../core/almacenamiento.js';
 import { EstadoApp } from './estado-app.js';
 import { FiltrosYPeriodos } from './filtros-periodos.js';
@@ -13,13 +12,9 @@ const SK_PROCESADOS = STORAGE_KEYS.FERIADOS_PROCESADOS;
 const FERIADOS = FERIADOS_AR || {};
 
 function _cargarProcesados() {
-    const raw = Almacenamiento.getItem(SK_PROCESADOS, null, true);
-    try {
-        if (!raw) return new Set();
-        const parsed = JSON.parse(raw, SeguridadYUtils.reviverJSONSeguro);
-        if (!Array.isArray(parsed)) return new Set();
-        return new Set(parsed.filter(f => typeof f === 'string' && TiempoUtils.validarFecha(f)));
-    } catch { return new Set(); }
+    const guardados = Almacenamiento.getObject(SK_PROCESADOS, null, true);
+    if (!Array.isArray(guardados)) return new Set();
+    return new Set(guardados.filter(f => typeof f === 'string' && TiempoUtils.validarFecha(f)));
 }
 
 function _marcarProcesado(fecha) {

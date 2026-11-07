@@ -3,6 +3,7 @@ import { $ } from '../core/dom.js';
 import { Formularios } from './formularios.js';
 import { EventosApp } from '../core/eventos.js';
 import { Movimiento } from '../core/movimiento.js';
+import { EstiloCalendario } from '../core/estilo-calendario.js';
 import { InstaladorPWA } from './instalador-pwa.js';
 import { TiempoUtils } from '../core/tiempo-utils.js';
 import { RecordatorioPush } from '../services/recordatorio-push.js';
@@ -24,6 +25,7 @@ import { Estadisticas } from './estadisticas.js';
 import { Reportes } from './reportes.js';
 import { TarjetaFichaje } from './tarjeta-fichaje.js';
 import { TarjetaFichajeVista } from './tarjeta-fichaje-vista.js';
+import { CicloStats } from './tarjeta-ciclo-stats.js';
 import { TarjetaFondos } from './tarjeta-fondos.js';
 import { TarjetaTiempoFuera } from './tarjeta-tiempo-fuera.js';
 import { TarjetaLote } from './tarjeta-lote.js';
@@ -77,11 +79,13 @@ const {
 const { cerrarModalReporteSecciones } = Reportes;
 
 const {
-    actualizarUI, alternarVista, _forzarVista, setTimerAutoVista,
-    _iniciarCicloStats, _detenerCicloStats, _prepararMostrarFaseAlRenderizar, _retenerRegistroAyer
+    actualizarUI, alternarVista, _forzarVista, setTimerAutoVista, _retenerRegistroAyer
 } = TarjetaFichaje;
+const { iniciar: _iniciarCicloStatsSiempre, detener: _detenerCicloStats, prepararFase: _prepararMostrarFaseAlRenderizar } = CicloStats;
 
-const { _refrescarFormatoCortoStatsCache } = TarjetaFichajeVista;
+const { _refrescarFormatoCortoStatsCache, _cicloAutoActivo } = TarjetaFichajeVista;
+// con el hint integrado y la animación de los hitos en Desactivado no hay ciclo automático (ni al cargar ni al volver a la pestaña)
+const _iniciarCicloStats = (...args) => (_cicloAutoActivo() ? _iniciarCicloStatsSiempre(...args) : false);
 
 const { setFondoCard } = TarjetaFondos;
 const { actualizarEstadoBotonTimerMain } = TarjetaTiempoFuera;
@@ -249,8 +253,7 @@ function _initSwipesYStats() {
     _bindStatItemPopups(document.querySelector('.stats-grid'));
 }
 
-function _initDatosYConfig() {
-    const config = GestionDatos.cargarConfiguracion();
+function _initDatosYConfig(config) {
     EstadoApp.setVistaActual(config.vistaActual);
     EstadoApp.setIgnorarTiempoFuera(config.ignorarTiempoFuera || false);
     actualizarEstadoBotonIgnorarTF();
@@ -275,53 +278,15 @@ function _initDatosYConfig() {
     setFondoCard(config.fondoCard || 'golden-gate');
     setModoEstadisticas(config.modoEstadisticas || 'mensual');
 
-    const perfilActual = GestorPerfiles.obtenerDatosPerfil();
-    EstadoApp.setDiasHabiles(Array.isArray(perfilActual.diasHabiles) ? perfilActual.diasHabiles : [1, 2, 3, 4, 5]);
-    const hdPerfil = parseFloat(perfilActual.horasDiarias);
-    EstadoApp.setHorasDiarias(Number.isFinite(hdPerfil) && hdPerfil >= 0 && hdPerfil <= 24 ? hdPerfil : 7);
-    const historialGuardado = Compensatorios.sanitizarHistorialDiasHabiles(perfilActual.historialDiasHabiles);
-    GestionDatos.setHistorialDiasHabiles(
-        historialGuardado && historialGuardado.length > 0
-            ? historialGuardado
-            : [{ desde: '0001-01-01', dias: EstadoApp.diasHabiles() }]
-    );
-    EstadoApp.registros().splice(0, EstadoApp.registros().length, ...(perfilActual.registros || []));
-
-    const historialCargado = GestorHistorial.loadFromLocalStorage();
-    if (historialCargado) {
-        const estadoActual = GestorHistorial.getCurrentState();
-        if (estadoActual !== null && estadoActual !== undefined) {
-            EstadoApp.registros().splice(0, EstadoApp.registros().length, ...estadoActual);
-        } else {
-            console.warn('Historial corrupto, descartado. Usando registros del perfil.');
-            GestorHistorial.clear();
-        }
-    }
-    GestionDatos.recalcularTotalesEnMemoria();
-    if (!historialCargado) {
-        GestorHistorial.saveState(EstadoApp.registros());
-    }
-
-    const migrados = Compensatorios.migrarObjetivoHorasFaltante();
-    if (migrados > 0) {
-        console.info(`Migración: ${migrados} registro(s) sin objetivo estampado, asignado el valor global vigente (${EstadoApp.horasDiarias()}h).`);
-        GestorHistorial.parchearRegistrosEnHistorial(r => {
-            if (typeof r.objetivoHoras !== 'number' || !Number.isFinite(r.objetivoHoras)) {
-                r.objetivoHoras = EstadoApp.horasDiarias();
-                return true;
-            }
-            return false;
-        });
-        if (GestorPerfiles) GestorPerfiles.guardarDatosPerfilActual();
-    }
+    GestionDatos.cargarPerfilActivo();
 
     GestorHistorial.updateButtons();
 }
 
-function _restaurarEstadoVisual() {
-    const config = GestionDatos.cargarConfiguracion();
+function _restaurarEstadoVisual(config) {
     GestorTemas.aplicarTema(config.tema);
     Movimiento.init();
+    EstiloCalendario.init();
 
     $('fecha').value = TiempoUtils.obtenerFechaHoy();
 
@@ -441,11 +406,11 @@ function _initListenersOtros() {
             const btnReemplazar = $('btn-reemplazar');
             const hayArchivo = (/** @type {HTMLInputElement} */ (e.target).files?.length ?? 0) > 0;
             if (hayArchivo) {
-                if (nombreEl) { nombreEl.textContent = `✓ ${/** @type {HTMLInputElement} */ (e.target).files?.[0].name}`; nombreEl.style.display = 'block'; }
+                if (nombreEl) { nombreEl.textContent = `✓ ${/** @type {HTMLInputElement} */ (e.target).files?.[0].name}`; nombreEl.classList.remove('hidden'); }
                 if (btnCombinar) btnCombinar.disabled = false;
                 if (btnReemplazar) btnReemplazar.disabled = false;
             } else {
-                if (nombreEl) { nombreEl.style.display = 'none'; nombreEl.textContent = ''; }
+                if (nombreEl) { nombreEl.classList.add('hidden'); nombreEl.textContent = ''; }
                 if (btnCombinar) btnCombinar.disabled = true;
                 if (btnReemplazar) btnReemplazar.disabled = true;
             }
@@ -454,15 +419,15 @@ function _initListenersOtros() {
 }
 
 async function init() {
-    if (typeof Storage === 'undefined') { alert('Tu navegador no soporta localStorage.'); return; }
     Almacenamiento.migrarClavesLegadas();
 
     _initGlobales();
     _initListenersFormulario();
     _initListenersTeclado();
     _initSwipesYStats();
-    _initDatosYConfig();
-    _restaurarEstadoVisual();
+    const config = GestionDatos.cargarConfiguracion();
+    _initDatosYConfig(config);
+    _restaurarEstadoVisual(config);
     setBloqueoEdicion(true);
     setBloqueoEdicionGrupo(true);
     const btnEliminarPerfil = $('btn-eliminar-perfil-editor');
