@@ -1,0 +1,150 @@
+// ====================================================================
+// STORAGE KEYS — MODULE
+// ====================================================================
+// APP_VERSION debe coincidir con el prefijo de CACHE_NAME en sw.js (lo valida tests/architecture.test.mjs).
+export const APP_NOMBRE = 'LUSHIBOSCA';
+export const APP_VERSION = 'v261111';
+
+export const APP_STORAGE_PREFIX = 'horarios_';
+
+export const STORAGE_KEYS = Object.freeze({
+    TEMA_OSCURO: 'temaOscuro',
+    VISTA_ACTUAL: 'vistaActual',
+    MODO_ESTADISTICAS: 'modoEstadisticas',
+    HOVER_POPUP: 'hoverPopupCalendario',
+    RUEDA_CALENDARIO: 'ruedaCalendario',
+    REDUCIR_ANIMACIONES: 'reducirAnimaciones',
+    FORMATO_CORTO_STATS: 'formatoCortoStats',
+    ESTILO_CALENDARIO: 'estiloCalendario',
+    POSICION_HEADER: 'posicionHeader',            // dónde va el encabezado en PC: arriba, abajo, izquierda o derecha (ver core/posicion-header.js)
+    POSICION_HEADER_MOVIL: 'posicionHeaderMovil', // ídem en móvil: solo arriba o abajo
+    LINEA_MOSAICOS: 'lineaMosaicos',        // estilo línea de tiempo con la tarjeta angosta (móvil): los mosaicos Faltan y Banco de horas abajo o a la derecha
+    ANILLO_DISPOSICION: 'anilloDisposicion', // estilo anillo: de qué lado va el aro y si la fila Entrada / Salida / Con banco va abajo o arriba
+    LINEA_DISPOSICION: 'lineaDisposicion',  // estilo línea de tiempo en pantallas anchas: dónde va el tiempo trabajado (arriba, a la izquierda o a la derecha de la línea)
+    ESTILO_TARJETA: 'estiloTarjeta',        // aspecto de la tarjeta de estado (ver core/estilo-tarjeta.js); sin valor se deduce de HINT_INTEGRADO
+    HINT_INTEGRADO: 'hintIntegrado',
+    DESC_HITOS_NUMERO: 'descHitosNumero',   // con el hint integrado: el nombre del hito enfocado va en el número grande en vez de desplegarse en la barra
+    CICLO_HINT_AUTO: 'cicloHintAuto',       // con el hint integrado: el ciclo automático de fases del número grande (al tocarlo o al fichar)
+    DIAS_HABILES: 'diasHabiles',
+    HISTORIAL_DIAS_HABILES: 'historialDiasHabiles',
+    HORAS_DIARIAS: 'horasDiarias',
+    VISTA_HISTORICO_CAL: 'vistaHistoricoCalendario',
+    IGNORAR_TF: 'ignorarTiempoFuera',
+    IGNORAR_LOGICA_CUBIERTO: 'ignorarLogicaCubierto',
+    IGNORAR_OBJETIVO_POR_REGISTRO: 'ignorarObjetivoPorRegistro',
+    FONDO_CARD: 'fondoCard',
+    PERSISTIR_TARJETAS: 'persistirTarjetas',
+    ORDEN_CARDS: 'ordenCards',
+    ORDEN_CARDS_MOVIL: 'ordenCardsMovil',
+    COLUMNAS_CARDS: 'columnasCards',   // cuántas tarjetas hay en cada columna de escritorio de 2 columnas (se corta el orden de ORDEN_CARDS)
+    ORDEN_CARDS_3: 'ordenCards3',   // orden propio con 3 columnas (sin él se parte del de 2 columnas)
+    COLUMNAS_CARDS_3: 'columnasCards3',   // tamaños de las columnas con 3 columnas (se corta el orden de ORDEN_CARDS_3)
+    FORMULARIO_EXPANDIDO: 'formularioExpandido',
+    STATS_EXPANDIDO: 'statsExpandido',
+    HISTORICO_EXPANDIDO: 'historicoExpandido',
+    PERFIL_ACTIVO: 'perfilActivo',
+    PERFILES: 'perfiles',
+    HISTORY: 'history',
+    GIST_TOKEN: 'gistToken',
+    BIENVENIDA_VISTA: 'bienvenidaVista',
+    FERIADOS_PROCESADOS: 'feriadosAR_procesados',
+    PUSH_ANTICIPACION_MIN: 'pushAnticipacionMin',
+    PUSH_USAR_BUFFER_SEMANAL: 'pushUsarBufferSemanal',
+    PUSH_BUFFER_SOLO_ULTIMO_DIA: 'pushBufferSoloUltimoDia',
+    PUSH_HABILITADO: 'pushHabilitado',
+    PUSH_INFO_ACTIVA: 'pushInfoActiva',
+    PUSH_AVISOS_RESTANTES: 'pushAvisosRestantes',
+    PUSH_INSTALL_ID: 'pushInstallId',
+    PUSH_OWNER_TOKEN: 'pushOwnerToken',
+    STATS_ID: 'statsId',
+    STATS_ULTIMO_PING: 'statsUltimoPing',
+    STATS_HABILITADO: 'statsHabilitado',
+
+    BREAK_TIME: (perfilId) => `breakStartTime_${perfilId}`,
+    GIST_LIMITE: (tipo) => `gistSyncLimite_${tipo}`,
+    MES_EXPANDIDO: (clave) => `mes-${clave}-expandido`,
+    ANIO_EXPANDIDO: (anioId) => `anio-${anioId}-expandido`,
+    CARD_VISIBLE: (cual) => `cardVisible_${cual}`,
+});
+
+// Fondo de la tarjeta de estado de un perfil nuevo o restablecido
+export const FONDO_CARD_POR_DEFECTO = 'golden-gate';
+
+// Ajustes de apariencia y comportamiento de toda la instalación (no son de un perfil). Viajan en los respaldos (CONFIG_RESPALDO) y "Restablecer" los devuelve a su valor por defecto:
+// borrar la clave alcanza, sin valor guardado cada uno usa el suyo. Un ajuste nuevo de este tipo se agrega acá para que ninguna de las dos cosas lo olvide.
+export const CLAVES_AJUSTES_INSTALACION = Object.freeze([
+    STORAGE_KEYS.REDUCIR_ANIMACIONES,
+    STORAGE_KEYS.FORMATO_CORTO_STATS,
+    STORAGE_KEYS.ESTILO_CALENDARIO,
+    STORAGE_KEYS.POSICION_HEADER,
+    STORAGE_KEYS.POSICION_HEADER_MOVIL,
+    STORAGE_KEYS.HOVER_POPUP,
+    STORAGE_KEYS.RUEDA_CALENDARIO,
+    STORAGE_KEYS.ESTILO_TARJETA,
+    STORAGE_KEYS.HINT_INTEGRADO,
+    STORAGE_KEYS.LINEA_DISPOSICION,
+    STORAGE_KEYS.LINEA_MOSAICOS,
+    STORAGE_KEYS.ANILLO_DISPOSICION,
+    STORAGE_KEYS.DESC_HITOS_NUMERO,
+    STORAGE_KEYS.CICLO_HINT_AUTO,
+    STORAGE_KEYS.PERSISTIR_TARJETAS,
+]);
+
+// Tarjetas que se pueden ocultar y reordenar, en su orden por defecto (la de fichaje con la barra de progreso va siempre arriba y no cuenta).
+// En escritorio las dos últimas pasan a la columna derecha.
+export const CARDS = Object.freeze(['registrar', 'estadisticas', 'historico']);
+// Tarjetas que se pueden ubicar: las anteriores más la de estado ("Hoy", id `stats-card`), que se mueve pero no se oculta. Va primera por defecto.
+export const CARDS_ORDEN = Object.freeze(['estado', ...CARDS]);
+
+// Jornada de un perfil nuevo o restablecido
+export const DIAS_HABILES_DEFAULT = Object.freeze([1, 2, 3, 4, 5]);
+export const HORAS_DIARIAS_DEFAULT = 7;
+// Fecha del primer tramo del historial de días hábiles: rige "desde siempre"
+export const DESDE_SIEMPRE = '0001-01-01';
+
+
+// Duración (ms) de los toasts según la importancia del mensaje
+export const TOAST_MS = Object.freeze({
+    NORMAL: 3000,
+    LARGO: 4000,
+    AVISO: 5000,
+});
+
+// Demora (ms) de las tareas que se lanzan al arrancar la app, para no competir con el primer render
+export const DEMORA_ARRANQUE_MS = Object.freeze({
+    AVISO_PUSH: 2000,
+    REGISTRAR_USO: 3000,
+    FERIADOS: 4000,
+});
+
+// Estado de cada día de la semana en la tarjeta de fichaje (lo calcula el servicio; la vista lo traduce a colores y textos)
+export const ESTADO_DIA = Object.freeze({
+    ESPECIAL: 'especial',          // licencia, feriado... (sin horas)
+    CERRADO: 'cerrado',            // jornada con entrada y salida
+    ACTIVO: 'activo',              // jornada abierta que se está contando
+    SIN_SALIDA: 'sin-salida',      // día pasado con entrada pero sin salida (jornada olvidada)
+    SIN_REGISTRO: 'sin-registro',  // día laborable pasado sin registro
+    FUTURO: 'futuro',              // hoy sin registro todavía o días que vienen
+});
+
+// Resultado de un día cerrado respecto de su objetivo
+export const CUMPLIMIENTO = Object.freeze({
+    CUMPLIDO: 'cumplido',
+    CUBIERTO: 'cubierto',          // faltó, pero lo cubre el saldo de otro día
+    FALTANTE: 'faltante',
+});
+
+
+// ====================================================================
+// NUMERIC PRECISION — shared helper
+// ====================================================================
+export const EPS_HORAS = 1e-6;
+// Diferencia de horas por debajo de la cual no se muestra saldo ni se calcula salida temprana
+export const MARGEN_HORAS = 0.01;
+export const MINUTOS_DIA = 24 * 60;
+export const MS_DIA = MINUTOS_DIA * 60 * 1000;
+export const horasGte = (valor, objetivo) => (valor - objetivo) > -EPS_HORAS;
+export const horasEq = (valor, objetivo) => Math.abs(valor - objetivo) < EPS_HORAS;
+
+/** Cortes de ancho que cambian el diseño (el CSS usa los mismos valores en sus @media): desde ESCRITORIO hay 2 columnas y desde ANCHO, 3. Mantenerlos juntos acá evita que el orden de tarjetas y la transición de layout discrepen. */
+export const CORTES_LAYOUT = Object.freeze({ ESCRITORIO: '(min-width: 1024px)', ANCHO: '(min-width: 1400px)' });

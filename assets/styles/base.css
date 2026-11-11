@@ -1,0 +1,1233 @@
+/* ==========================================================================
+   2. BASE & PRIMITIVAS UI — Reset, layout, tarjetas, forms, botones, modales, toast
+   ========================================================================== */
+/* ─── RESET ─────────────────────────────────────────────────────────────────── */
+
+body.modal-open {
+    overflow: hidden !important;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html {
+    /* Desactiva el pull-to-refresh nativo (recarga abrupta): lo reemplaza ui/recarga-gesto.js con fundido de las tarjetas */
+    overscroll-behavior-y: contain;
+    scrollbar-gutter: stable;
+}
+
+body {
+    font-family: var(--font-main, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif);
+    background: var(--bg-body);
+    color: var(--text-main);
+    overflow-anchor: none;
+    transition: background var(--transition-ui), color var(--transition-ui), padding-bottom var(--dur-collapse) ease-out;   /* padding-bottom: el espacio de la vista previa se anima también al cerrarla (la clase vista-previa-activa ya no está) */
+    overflow-y: auto;
+}
+
+/* ─── PANTALLA DE CARGA ──────────────────────────────────────────────────────── */
+/* tema-inicial.js marca <html class="cargando"> antes del primer pintado; main.js la quita cuando la UI está lista.
+   Así no se ven las tarjetas "muertas" (HTML estático) mientras el módulo todavía no corrió. */
+html.cargando body>* {
+    visibility: hidden;
+}
+
+/* Los modales no se dibujan durante la carga: con display:none no hay estilo previo del que partir, así que al quitar .cargando
+   no puede dispararse la transición de opacity/visibility de .modal (se vería un confirm o un editor un instante en Firefox móvil) */
+html.cargando .modal {
+    display: none;
+    transition: none;
+}
+
+html.cargando body::after {
+    content: '';
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 36px;
+    height: 36px;
+    margin: -18px 0 0 -18px;
+    border: 3px solid var(--border);
+    border-top-color: var(--text-muted);
+    border-radius: 50%;
+    animation: girarCarga var(--dur-giro) linear infinite;
+}
+
+html[data-motion="reduce"].cargando body::after {
+    animation: none;
+}
+
+@keyframes girarCarga {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ─── RECARGA POR GESTO / FUNDIDO DE ENTRADA ─────────────────────────────────── */
+/* --recarga-progreso (0→1) lo escribe ui/recarga-gesto.js mientras se tira hacia abajo en el tope de la página. */
+.container {
+    opacity: calc(1 - var(--recarga-progreso, 0) * 0.65);
+}
+
+/* Duración propia (no --dur-anim): es solo un fundido, no movimiento, así que también se ve con "reducir animaciones" */
+html.recarga-animando .container {
+    transition: opacity var(--dur-recarga) var(--ease-anim);
+}
+
+html.recargando .container {
+    opacity: 0;
+}
+
+/* Recarga programática (cambio de perfil, etc.): también se desvanece el modal que esté abierto */
+html.recargando .modal {
+    opacity: 0;
+    transition: opacity var(--dur-recarga) var(--ease-anim);
+}
+
+/* Los fantasmas de las animaciones de mutación (ver _fantasmaDe) cuelgan de <body>, fuera de .container, así que el fundido
+   no los alcanza: si la recarga arranca en medio de una mutación (p. ej. el ciclo entrada/salida de la tarjeta de estado)
+   quedaban sueltos sobre el spinner. Se ocultan de golpe: no se puede reiniciarles la animación (reaparecerían con opacidad 1). */
+/* Mientras se tira con el dedo (todavía sin soltar) el fantasma tampoco puede verse a opacidad plena sobre las tarjetas
+   atenuadas: parecía un semi-overlay. Se atenúa con `filter` (la opacidad ya la maneja su animación) igual que .container */
+.mutacion-saliente {
+    filter: opacity(calc(1 - var(--recarga-progreso, 0) * 0.65));
+}
+
+html.recarga-animando .mutacion-saliente {
+    transition: filter var(--dur-recarga) var(--ease-anim);
+}
+
+html.recargando .mutacion-saliente {
+    display: none;
+}
+
+html.entrada-pagina .container {
+    animation: fundidoEntrada var(--dur-entrada) var(--ease-anim) both;
+}
+
+@keyframes fundidoEntrada {
+    from {
+        opacity: 0;
+    }
+}
+
+/* ─── DISEÑO ─────────────────────────────────────────────────────────────────── */
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--space-sm);
+    margin-bottom: 2rem;
+}
+
+/* Cabecera. Su posición la fija <html data-header-pos="top|bottom|left|right"> (core/posicion-header.js; en móvil solo arriba o abajo).
+   Arriba va pegada (sticky) y en flujo; abajo y a los costados va fija y la página le deja su lugar con un relleno en <html>, así que
+   el contenido nunca queda tapado. --header-alto lo mide ui/base.js */
+:root {
+    --header-lateral-w: 4rem;   /* ancho de la barra cuando va a un costado (PC) */
+}
+
+.header {
+    --header-borde: transparent;
+    padding: var(--space-smd);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-header);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    /* El borde del lado que da al contenido muestra siempre el estado del registro (--header-borde, ver .progress-* más abajo); sin estado queda transparente */
+    border-bottom: 3px solid var(--header-borde);
+    transition: border-color var(--transition-ui);
+    /* Se mantiene presionada para reubicarla (ver ui/header-posicion.js); pan-y deja pasar el desplazamiento mientras tanto */
+    touch-action: pan-y;
+}
+
+.header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--bg-header);
+    box-shadow: var(--shadow);
+    pointer-events: none;
+    transition: background-color var(--transition-ui);
+}
+
+.header h1 {
+    font-size: var(--text-lg);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-shrink: 0;
+    margin-right: auto;
+    margin-left: var(--space-lg);
+}
+
+/* Color del borde según el estado del registro (la clase la pone ui/tarjeta-fondos.js junto con el color de la barra de progreso) */
+.header.progress-green { --header-borde: var(--c-green); }
+.header.progress-red { --header-borde: var(--c-red); }
+.header.progress-purple { --header-borde: var(--c-purple); }
+.header.progress-orange { --header-borde: var(--c-orange); }
+.header.progress-gold { --header-borde: var(--c-gold); }
+.header.progress-blue { --header-borde: var(--c-blue); }
+
+/* Abajo: barra fija al pie. El relleno de <html> deja libre ese alto; la zona segura de los celulares con barra de gestos se suma al relleno de la barra */
+html[data-header-pos="bottom"] {
+    padding-bottom: var(--header-alto, 60px);
+}
+
+html[data-header-pos="bottom"] .header {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    border-bottom: 0;
+    border-top: 3px solid var(--header-borde);
+    padding-bottom: calc(var(--space-smd) + env(safe-area-inset-bottom, 0px));
+}
+
+html[data-header-pos="bottom"] .header::before {
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* A los costados (solo PC): el mismo encabezado girado, en una barra vertical fija. El texto va de costado con la parte de abajo de las letras hacia el
+   centro de la pantalla (a la izquierda se lee de abajo hacia arriba; a la derecha, de arriba hacia abajo); el título queda abajo y el perfil arriba.
+   Las letras las gira writing-mode; lo que no es texto (los íconos) se gira con `rotate`. Va en los hijos y no en la barra: la barra se desliza al
+   reubicarla con un transform (ui/arrastre.js) que pisaría el giro. */
+@media (min-width: 1024px) {
+    html[data-header-pos="left"] {
+        padding-left: var(--header-lateral-w);
+    }
+
+    html[data-header-pos="right"] {
+        padding-right: var(--header-lateral-w);
+    }
+
+    html:is([data-header-pos="left"], [data-header-pos="right"]) .header {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        width: var(--header-lateral-w);
+        writing-mode: vertical-rl;
+        flex-direction: row-reverse;   /* el título (primero en el HTML) abajo y las acciones arriba */
+        justify-content: space-between;
+        align-items: center;
+        gap: var(--space-lg);
+        padding: var(--space-lg) var(--space-sm);
+        border-bottom: 0;
+    }
+
+    html[data-header-pos="left"] .header {
+        left: 0;
+        right: auto;
+        border-right: 3px solid var(--header-borde);
+    }
+
+    html[data-header-pos="right"] .header {
+        left: auto;
+        right: 0;
+        border-left: 3px solid var(--header-borde);
+    }
+
+    html[data-header-pos="left"] .header::before {
+        border-right: 1px solid var(--border);
+    }
+
+    html[data-header-pos="right"] .header::before {
+        border-left: 1px solid var(--border);
+    }
+
+    html:is([data-header-pos="left"], [data-header-pos="right"]) .header h1 {
+        margin: 0;
+        justify-content: center;
+    }
+
+    /* Costado izquierdo: las letras (writing-mode) quedan con la parte de abajo hacia la izquierda; se giran 180° para que miren al centro */
+    html[data-header-pos="left"] .header h1 {
+        rotate: 180deg;
+    }
+
+    /* Acciones: el perfil arriba del botón de instalar (el primero del HTML va abajo) */
+    html:is([data-header-pos="left"], [data-header-pos="right"]) .header-actions {
+        flex-direction: row-reverse;
+    }
+
+    /* El ícono de instalar gira con el texto (a la izquierda al revés que a la derecha) */
+    html[data-header-pos="left"] #btn-install .icon {
+        rotate: -90deg;
+    }
+
+    html[data-header-pos="right"] #btn-install .icon {
+        rotate: 90deg;
+    }
+
+    /* Perfil: solo el ícono. El nombre aparece en horizontal, como una píldora que sale hacia las tarjetas, al pasar el cursor o enfocar el botón */
+    html:is([data-header-pos="left"], [data-header-pos="right"]) .header-profile-btn {
+        position: relative;
+        writing-mode: horizontal-tb;
+        max-width: none;
+        padding: var(--space-sm);
+        gap: 0;
+        justify-content: center;
+    }
+
+    html:is([data-header-pos="left"], [data-header-pos="right"]) .header-profile-btn span {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        max-width: 16rem;
+        padding: var(--space-xs) var(--space-md);
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-full);
+        box-shadow: var(--shadow);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity var(--dur-fast);
+    }
+
+    html[data-header-pos="left"] .header-profile-btn span {
+        left: calc(100% + var(--space-sm));
+    }
+
+    html[data-header-pos="right"] .header-profile-btn span {
+        right: calc(100% + var(--space-sm));
+    }
+
+    html:is([data-header-pos="left"], [data-header-pos="right"]) .header-profile-btn:is(:hover, :focus-visible) span {
+        opacity: 1;
+    }
+}
+
+/* Reubicando la cabecera (mantener presionada y arrastrar): queda atenuada mientras se desliza en vivo al borde más cercano, igual que una tarjeta */
+.header.reubicando {
+    opacity: 0.65;
+    user-select: none;
+    cursor: grabbing;
+}
+
+body.header-arrastrando-activa,
+body.header-arrastrando-activa * {
+    user-select: none !important;
+    cursor: grabbing !important;
+}
+
+/* ─── FLEX COMPARTIDO  ──────────────────────────────────────────────────── ──── */
+
+.header-actions,
+.input-with-btn,
+.input-number-group,
+#gist-rango-horario,
+.modal-title-block,
+#calendario-nav-botones,
+.card-section-title,
+.stats-periodo-row,
+.settings-list-row-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* ─── TARJETA ────────────────────────────────────────────────────────────────── */
+
+.card,
+.modal-content {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: var(--space-xl) var(--space-sm);
+    margin-bottom: var(--space-lg);
+    box-shadow: var(--shadow);
+    color: var(--text-main);
+}
+
+/* Modales y hojas: un escalón más redondeado que las tarjetas.
+   Sin margen inferior (lo hereda de .card): el contenedor flex lo centraría contándolo y dejaría más aire abajo que arriba */
+.modal-content {
+    border-radius: var(--radius-xl);
+    margin-bottom: 0;
+}
+
+.card h2,
+.modal h3,
+h2.mutacion-saliente,
+.mutacion-saliente h2 {
+    font-size: var(--text-base);
+    margin-bottom: var(--space-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    color: var(--text-main);
+}
+
+#stats-titulo {
+    min-height: var(--space-lg);
+}
+
+.modal h3 .version-text {
+    margin-left: auto;
+}
+
+.card h2.no-margin,
+h2.mutacion-saliente.no-margin,
+.mutacion-saliente h2.no-margin {
+    margin-bottom: 0;
+}
+
+/* ─── SCROLLBAR ──────────────────────────────────────────────────────────────── */
+
+.custom-scroll {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.custom-scroll::-webkit-scrollbar,
+.ayuda-indice::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scroll::-webkit-scrollbar-track,
+.ayuda-indice::-webkit-scrollbar-track {
+    background: var(--bg-body);
+    border-radius: var(--radius-full);
+}
+
+.custom-scroll::-webkit-scrollbar-thumb,
+.ayuda-indice::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius-full);
+}
+
+.custom-scroll::-webkit-scrollbar-thumb:hover,
+.ayuda-indice::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+/* ─── ICONOS ─────────────────────────────────────────────────────────────────── */
+
+.icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    vertical-align: text-bottom;
+    fill: currentColor;
+    stroke: currentColor;
+    stroke-width: 0;
+}
+
+.chevron-mes-icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    vertical-align: middle;
+}
+
+.icon-rotate-90 {
+    transform: rotate(90deg);
+}
+
+.icon-rotate-neg90 {
+    transform: rotate(-90deg);
+}
+
+/* Texto solo para lectores de pantalla (oculto a la vista) */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ─── FORMULARIOS ────────────────────────────────────────────────────────────── */
+
+.form-group {
+    margin-bottom: var(--space-lg);
+}
+
+.form-row {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 0;
+}
+
+.input-icon-wrap {
+    position: relative;
+}
+
+.input-icon-wrap input {
+    padding-right: calc(var(--touch-target) + var(--space-xs));
+}
+
+.input-icon-btn {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: var(--touch-target);
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+}
+
+.input-icon-btn:active {
+    color: var(--text-main);
+}
+
+.input-icon-btn:disabled,
+.input-number-group--embed .btn-increment:disabled {
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+.input-number-group--pill {
+    flex-shrink: 0;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+}
+
+#modal-config .config-actions .input-number-group--pill button {
+    justify-content: center;
+    text-align: center;
+}
+
+.input-number-group--pill .btn-increment {
+    width: var(--control-sm);
+    min-width: var(--control-sm);
+    height: var(--control-sm);
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+}
+
+.input-number-group--pill .input-number-display {
+    flex: none;
+    min-width: 4rem;
+}
+
+.input-number-group--embed {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    height: var(--input-height);
+    gap: 0;
+    transition: background var(--transition-ui);
+    overflow: hidden;
+}
+
+.input-number-group--embed:has(.btn-increment:disabled) {
+    background: var(--bg-card);
+    cursor: not-allowed;
+}
+
+.input-number-group--embed .input-number-display {
+    text-align: center;
+    flex: 1;
+}
+
+.input-number-group--embed .btn-increment {
+    background: transparent;
+    border: none;
+    min-width: var(--control-sm);
+    width: var(--control-sm);
+    height: 100%;
+    padding: 0;
+    color: var(--text-main);
+}
+
+.input-number-group--embed .btn-increment:active {
+    color: var(--text-main);
+}
+
+.form-group-pt {
+    padding-top: var(--space-lg);
+}
+
+.form-group-mb-half {
+    margin-bottom: var(--space-sm);
+}
+
+label {
+    display: block;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--text-muted);
+    margin: 0 0 var(--space-xs) var(--space-sm);
+    transition: opacity var(--transition-ui), transform var(--transition-ui), color var(--transition-ui);
+    min-height: 1.2em;
+    line-height: var(--lh-tight);
+}
+
+label.label-feedback--green {
+    color: var(--c-green);
+}
+
+label.label-feedback--red {
+    color: var(--c-red);
+}
+
+input,
+select {
+    width: 100%;
+    padding: var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: var(--text-base);
+    background: var(--input-bg);
+    color: var(--text-main);
+    height: var(--input-height);
+    transition: background var(--transition-ui), color var(--transition-ui), border-color var(--transition-ui);
+}
+
+input:disabled,
+select:disabled {
+    background-color: var(--bg-card);
+    color: var(--text-disabled);
+    opacity: 1;
+    -webkit-text-fill-color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+input:focus,
+select:focus {
+    outline: none;
+}
+
+input.error {
+    border-color: var(--c-red);
+}
+
+.contenedor-fechas .form-group,
+.contenedor-horas .form-group {
+    flex-grow: 1;
+}
+
+.contenedor-fechas .form-group:last-child,
+.contenedor-horas .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.input-number-group input {
+    text-align: center;
+}
+
+.input-number-display {
+    flex: 1;
+    text-align: center;
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--text-main);
+    transition: color var(--transition-ui);
+}
+
+.input-number-display.input-number-inerte {
+    color: var(--text-disabled);
+}
+
+/* Cambio de valor con desplazamiento vertical (ver _animarValor) */
+.valor-roll {
+    display: inline-grid;
+    overflow: hidden;
+    vertical-align: bottom;
+    padding: 0.1em 0;
+    margin: -0.1em 0;
+}
+
+.valor-roll-item {
+    grid-area: 1 / 1;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Contador del botón en modo lote: inline-block para poder desplazarlo al aparecer/salir */
+.btn-cont {
+    display: inline-block;
+}
+
+/* ─── BOTONES ────────────────────────────────────────────────────────────────── */
+
+button {
+    width: 100%;
+    padding: 0.875rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    font-weight: var(--fw-semibold);
+    font-size: var(--text-base);
+    cursor: pointer;
+    transition: transform var(--dur-fast), background var(--transition-ui), color var(--transition-ui);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    color: var(--text-main);
+    background: var(--c-gray-btn);
+}
+
+button:active {
+    transform: scale(1);
+}
+
+button:disabled {
+    background: transparent;
+    cursor: not-allowed;
+    transform: none;
+    color: var(--text-disabled);
+}
+
+.btn-register {
+    width: auto;
+    padding: 17px;
+    margin: -17px;
+    background: transparent;
+    color: var(--text-main);
+}
+
+.btn-color-muted {
+    color: var(--text-muted);
+}
+
+.btn-color-red {
+    color: var(--c-red);
+}
+
+.btn-register .icon {
+    animation: llamarAtencion var(--dur-ambiente) ease-in-out 1.2s 2;
+    transform-origin: bottom;
+}
+
+.btn-delete {
+    background: var(--c-red);
+    color: var(--c-white);
+}
+
+.btn-edit {
+    background: var(--c-blue);
+    color: var(--c-white);
+}
+
+:where(#btn-toggle-ignorar-tf,
+    #btn-toggle-gist-backup,
+    #btn-toggle-gist-merge) {
+    justify-content: center;
+    padding: 0.875rem var(--space-lg);
+    border: 1px solid var(--border);
+    transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+    flex: 1;
+}
+
+.icon-btn,
+.filter-btn,
+.time-btn,
+.btn-increment {
+    width: auto;
+    padding: var(--space-sm);
+    min-width: var(--touch-target);
+    height: var(--touch-target);
+    color: var(--text-main);
+    touch-action: manipulation;
+}
+
+.icon-btn,
+.filter-btn {
+    background: transparent;
+}
+
+/* Llamado de atención del botón de instalar (ver instalador-pwa.js): el destello de barrido y onda, ver .destello-capa en responsivo-movimiento.css */
+#btn-install {
+    position: relative;
+}
+
+#btn-lock-toggle.bloqueado,
+#btn-lock-grupo-toggle.bloqueado {
+    background: var(--c-red);
+}
+
+#btn-lock-toggle:not(.bloqueado),
+#btn-lock-grupo-toggle:not(.bloqueado) {
+    background: var(--c-green);
+}
+
+.filter-btn.filtro-activo {
+    color: var(--c-red);
+    border-color: var(--c-red);
+}
+
+.btn-fantasma {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.btn-group {
+    display: flex;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+    align-items: center;
+}
+
+.btn-activo:not(.settings-list button, .drag-handle) {
+    background: var(--c-active);
+    color: var(--c-white);
+    border-color: transparent;
+    font-weight: var(--fw-bold);
+}
+
+/* ─── COLAPSABLE ─────────────────────────────────────────────────────────────── */
+
+/* Cerrado: visibility:hidden (tras la animación) saca el contenido del orden de Tab
+   y del árbol de accesibilidad sin afectar el layout ni las mediciones en JS. */
+.collapsible {
+    --vis-delay: var(--dur-collapse);
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--transition-collapse), visibility 0s linear var(--vis-delay);
+}
+
+.collapsible.sin-transicion {
+    transition: none;
+}
+
+.collapsible.expanded {
+    --vis-delay: 0s;
+    grid-template-rows: 1fr;
+    opacity: 1;
+    visibility: visible;
+}
+
+.collapsible-inner,
+.form-collapsible>#modo-contenedor,
+.form-collapsible>.detalle-inner,
+#botones-historico>.botones-historico-inner,
+.registro-mes-detalle>.detalle-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.form-collapsible.expanded>.detalle-inner {
+    overflow: visible;
+}
+
+.form-collapsible>.stats-inner {
+    overflow: hidden;
+}
+
+.form-collapsible:not(.expanded)>.stats-inner {
+    min-height: 0;
+}
+
+
+/* ─── MODAL ──────────────────────────────────────────────────────────────────── */
+
+.modal {
+    display: flex;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--modal-overlay);
+    z-index: var(--z-modal);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-xs);
+    backdrop-filter: blur(2px);
+    transition: opacity var(--transition-ui), visibility var(--transition-ui);
+}
+
+.modal.show {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-content {
+    transform: scale(0.15);
+    opacity: 0;
+    max-width: 450px;
+    width: 100%;
+    transform-origin: center center;
+    transition: var(--transition-pop-out);
+}
+
+.modal.show .modal-content {
+    transform: scale(1);
+    opacity: 1;
+    transition: var(--transition-pop-in);
+}
+
+.modal-scrollable>.modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    max-height: 90dvh;
+    overflow: hidden;
+}
+
+.modal-scrollable .modal-panel-header,
+.modal-scrollable .modal-panel-footer {
+    flex-shrink: 0;
+    background: var(--bg-card);
+    z-index: 2;
+}
+
+.modal-scrollable .modal-panel-header {
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-sm);
+}
+
+.modal-scrollable .modal-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: var(--space-xs);
+}
+
+.modal-scrollable .modal-panel-footer {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.ayuda-indice {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-xl);
+    padding-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--border);
+}
+
+.ayuda-indice-item {
+    justify-content: flex-start;
+    text-align: left;
+    padding: var(--space-xs);
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    background: var(--bg-card);
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    transition: filter var(--transition-ui), color var(--transition-ui);
+}
+
+.ayuda-seccion {
+    margin-bottom: var(--space-xl);
+    scroll-margin-top: var(--space-sm);
+}
+
+/* Alto fijo: al filtrar con el buscador el contenido cambia mucho y, con alto automático, el modal se encogería y crecería de golpe */
+#modal-ayuda .modal-content {
+    height: min(90vh, 56rem);
+    height: min(90dvh, 56rem);
+}
+
+/* Buscador de la ayuda: va en el encabezado fijo del modal, así queda a mano en PC y en el móvil mientras se desplaza el contenido */
+#modal-ayuda .modal-panel-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-xs) var(--space-md);
+}
+
+#modal-ayuda .modal-panel-header h3 {
+    margin-bottom: 0;
+}
+
+.ayuda-buscador {
+    flex: 1 1 12rem;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.ayuda-buscador .input-icon-wrap {
+    flex: 1;
+    min-width: 0;
+}
+
+.ayuda-buscador input[type="search"] {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.ayuda-buscador input[type="search"]::-webkit-search-cancel-button {
+    display: none;
+}
+
+.ayuda-buscador .config-hint-text {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* El título de cada sección queda fijo arriba mientras se lee esa sección; al llegar la siguiente, la reemplaza */
+.ayuda-seccion h4 {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 0 var(--space-sm);
+    padding: var(--space-xs) 0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+
+.ayuda-seccion[hidden],
+.ayuda-indice-item[hidden],
+.ayuda-buscador .input-icon-btn[hidden],
+.ayuda-sin-resultados[hidden] {
+    display: none !important;
+}
+
+.ayuda-sin-resultados {
+    color: var(--text-muted);
+}
+
+mark.ayuda-resaltado {
+    background: color-mix(in srgb, var(--c-gold) 40%, transparent);
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 1px;
+}
+
+/* La coincidencia seleccionada (la que recorre Enter) se distingue de las demás */
+mark.ayuda-resaltado--activa {
+    background: var(--c-gold);
+    outline: 2px solid var(--c-gold);
+    outline-offset: 1px;
+}
+
+/* Leyenda de colores de estado en la ayuda: un círculo del color y su descripción */
+.ayuda-color-fila {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+}
+
+.ayuda-color {
+    flex-shrink: 0;
+    width: 0.9em;
+    height: 0.9em;
+    margin-top: 0.3em;
+    border-radius: 50%;
+    background: var(--ayuda-color, var(--text-muted));
+}
+
+.ayuda-color--blue { --ayuda-color: var(--c-blue); }
+.ayuda-color--green { --ayuda-color: var(--c-green); }
+.ayuda-color--red { --ayuda-color: var(--c-red); }
+.ayuda-color--gold { --ayuda-color: var(--c-gold); }
+.ayuda-color--purple { --ayuda-color: var(--c-purple); }
+.ayuda-color--orange { --ayuda-color: var(--c-orange); }
+/* "sin color": el mismo gris de la pista de la barra */
+.ayuda-color--vacio {
+    --ayuda-color: color-mix(in srgb, var(--text-muted) 24%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-muted) 45%, transparent);
+}
+
+.ayuda-seccion h4,
+.ayuda-indice h4 {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--text-md);
+    font-weight: var(--fw-semibold);
+    color: var(--text-main);
+}
+
+.ayuda-seccion p {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--text-base);
+    color: var(--text-muted);
+    line-height: var(--lh-relaxed);
+}
+
+.ayuda-seccion p:last-child {
+    margin-bottom: 0;
+}
+
+#edit-hint-resumen,
+#edit-grupo-hint {
+    margin-left: auto;
+    margin-top: 0;
+    min-height: 1.2em;
+}
+
+#modal-confirmar-texto {
+    color: var(--text-muted);
+    font-size: var(--text-base);
+    line-height: var(--lh-relaxed);
+    margin: var(--space-sm) 0;
+    white-space: pre-line;
+}
+
+/* ─── TOAST ──────────────────────────────────────────────────────────────────── */
+
+.toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    justify-content: center;
+    transform: translateX(-50%) translateY(80px);
+    transition: var(--transition-anim);
+    background: var(--bg-card);
+    color: var(--text-main);
+    border: 2px solid transparent;
+    padding: var(--space-lg) var(--space-xl);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    opacity: 0;
+    z-index: var(--z-toast);
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    white-space: pre-line;
+    pointer-events: none;
+    width: calc(100% - 4rem);
+    max-width: 400px;
+    text-align: center;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+    will-change: transform, opacity;
+}
+
+.toast.success {
+    border-color: var(--c-green);
+}
+
+.toast.error,
+.toast.warning {
+    border-color: var(--c-red);
+}
+
+.toast.info {
+    border-color: var(--c-blue);
+}
+
+.toast.toast-accionable {
+    cursor: pointer;
+}
+
+/* Toast con barra de progreso (p. ej. descarga de una actualización): el mismo toast, con una barra fina debajo del texto */
+.toast.toast-con-progreso {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+}
+
+.toast.toast-con-progreso {
+    width: calc(100% - 2rem);
+    padding-inline: var(--space-lg);
+}
+
+.toast-con-progreso .toast-texto {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;   /* el porcentaje no baja a una segunda línea: el texto se achica antes (ver font-size) */
+    font-size: min(1em, 4.4vw);
+}
+
+.toast-progreso {
+    width: 100%;
+    height: 4px;
+    border: none;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    appearance: none;
+    -webkit-appearance: none;
+    background: color-mix(in srgb, var(--text-muted) 24%, transparent);
+    color: var(--c-blue);
+}
+
+.toast-progreso::-webkit-progress-bar {
+    background: color-mix(in srgb, var(--text-muted) 24%, transparent);
+}
+
+.toast-progreso::-webkit-progress-value {
+    background: var(--c-blue);
+    border-radius: var(--radius-full);
+    transition: width var(--dur-fast) ease;
+}
+
+.toast-progreso::-moz-progress-bar {
+    background: var(--c-blue);
+    border-radius: var(--radius-full);
+}
+
+/* sin valor: barra indeterminada */
+.toast-progreso:indeterminate {
+    background: linear-gradient(90deg, transparent 0 30%, var(--c-blue) 30% 60%, transparent 60%) 0 0 / 200% 100% no-repeat,
+        color-mix(in srgb, var(--text-muted) 24%, transparent);
+    animation: toastBarraIndeterminada var(--dur-barra-indeterminada) linear infinite;
+}
+
+@keyframes toastBarraIndeterminada {
+    from { background-position: 150% 0, 0 0; }
+    to { background-position: -50% 0, 0 0; }
+}
+
+
+/* ─── UTILIDADES Y VISIBILIDAD BASE ──────────────────────────────────────────── */
+
+.flex-shrink-0 {
+    flex-shrink: 0;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.svg-sprite,
+#btn-install,
+#file-import {
+    display: none;
+}
+
+#modo-normal,
+#gist-limite-sync,
+.contenedor-fechas {
+    display: block;
+}
+
+/* Entrada y salida de la tarjeta de fichaje: siempre en la misma línea, mitad y mitad (el modo lote mantiene su propio layout) */
+.contenedor-horas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+}
+
+.contenedor-horas .form-group {
+    min-width: 0;
+    margin-bottom: 0;
+}

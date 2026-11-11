@@ -1,0 +1,256 @@
+/* ==========================================================================
+   1. TOKENS & TEMAS — Variables globales (:root), modo oscuro y temas
+   ========================================================================== */
+/* ─── TIPOGRAFÍA (Inter Variable - Offline) ─────────────────────────────────── */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('../fonts/inter-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ─── VARIABLES ────────────────────────────────────────────────────────────── */
+
+:root {
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    --bg-body: #f5f6fa;
+    --bg-card: #ffffff;
+    --bg-header: #f5f6fa;
+    --text-main: #1f1f1f;
+    --text-muted: #444746;
+    --text-disabled: #444746a2;
+    --text-xs: 0.75rem;
+    --text-sm: 0.85rem;
+    --text-base: 1rem;
+    --text-md: 1.125rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.8rem;
+
+    /* Escala de íconos (todos los símbolos del sprite son 16×16).
+       sm: tamaño fijo para etiquetas y badges chicos. md/lg: en em, acompañan al texto. */
+    --icon-sm: 0.875rem;
+    --icon-md: 1.2em;
+    --icon-lg: 1.8em;
+    --fw-normal: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+    --space-2xs: 0.125rem;
+    --space-xs: 0.25rem;
+    --space-xsm: 0.375rem;
+    --space-sm: 0.5rem;
+    --space-smd: 0.625rem;
+    --space-md: 0.75rem;
+    --space-lg: 1rem;
+    --space-xl: 1.5rem;
+    --border: #dde3ea;
+    --input-bg: #f0f2f8;
+    --surface-row-hover: #e6e9f2;
+    --toggle-track-off: #c7ccd6;
+    --c-blue: rgba(76, 114, 172, 0.8);
+    --c-green: rgba(76, 172, 140, 0.8);
+    --c-green-bg: rgba(96, 172, 148, 0.1);
+    --c-red-bg: rgba(172, 90, 76, 0.1);
+    --c-active: var(--c-blue);
+    --c-blue-bg: rgba(76, 114, 172, 0.1);
+    --c-red: rgba(172, 90, 76, 0.8);
+    --c-purple: rgba(129, 76, 172, 0.8);
+    --c-gold: rgba(172, 155, 76, 0.8);
+    --c-orange: rgba(210, 120, 50, 0.8);
+    --c-gray-btn: #f0f2f8;
+    --c-white: #ffffff;
+    --shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-xl: 28px;
+    --radius-full: 999px;
+    --hover: brightness(0.9);
+    --dur-fast: 200ms;
+    --dur-anim: 300ms;
+    --dur-collapse: 300ms;
+    --dur-calendario: 320ms;
+    --dur-valor: 150ms;
+    --dur-conteo: 500ms;
+    --dur-slow: 0.5s;
+    --dur-cal-espera: 100ms;
+    --dur-cal-entrada: 300ms;
+    --dur-cal-numero: 220ms;
+    --dur-fichaje-ok: 1800ms;
+    --dur-fichaje-salida: 220ms;
+    --dur-fichaje-vuelta: 200ms;
+    --dur-recarga: 150ms;   /* fundido de salida al recargar (solo opacidad: se mantiene con "reducir animaciones") */
+    --dur-entrada: 150ms;   /* fundido de entrada de la página al abrirla */
+    --dur-fade: 150ms;      /* fundidos cortos de opacidad */
+    --dur-flash: 500ms;     /* parpadeo de aviso sobre un campo (2 iteraciones) */
+    --dur-ambiente: 5s;     /* animaciones decorativas lentas en bucle */
+    --dur-giro: 900ms;      /* vuelta completa de un spinner */
+    --dur-barra-indeterminada: 1.2s;   /* barrido de la barra de progreso sin porcentaje */
+    --dur-pulso: 1.1s;      /* anillo que pulsa en el hito enfocado */
+    --dur-barrido: 450ms;   /* barrido de luz del destello de hoy (calendario) y del mosaico de balance */
+    --dur-onda: 850ms;      /* aro que sale y se desvanece en ese mismo destello (empieza tras --demora-onda) */
+    --demora-onda: 250ms;
+    --dur-parpadeo: 3s;     /* parpadeo del badge de estado */
+    --dur-parpadeo-rapido: 1.2s;   /* ídem cuando ya se cumplió el objetivo con la jornada abierta */
+    --delay-linea: 0.3s;    /* escalonado de entrada de la línea del día */
+    --delay-linea-arriba: 0.45s;
+    --ease-anim: ease;
+    --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-conteo: cubic-bezier(0.215, 0.61, 0.355, 1);
+    --transition-anim: opacity var(--dur-anim) var(--ease-anim), transform var(--dur-anim) var(--ease-anim);
+    --transition-collapse: grid-template-rows var(--dur-collapse) ease-out, opacity var(--dur-collapse) ease-out;
+    --transition-ui: var(--dur-anim) ease;
+    --opacity-disabled: 0.35;
+    --modal-overlay: rgba(0, 0, 0, 0.5);
+    --touch-target: 48px;
+    --control-sm: 36px;   /* botones compactos (+/− de los campos numéricos, controles flotantes); su área táctil se amplía a --touch-target */
+    --input-height: var(--touch-target);
+    --app-header-h: 60px;
+    --mes-header-h: 54px;
+    --sticky-mes-top: var(--app-header-h);
+    --lh-tight: 1.2;
+    --lh-normal: 1.35;
+    --lh-relaxed: 1.5;
+    --z-header: 90;
+    --z-popup: 90;
+    --z-modal: 100;
+    --z-toast: 1000;
+    --z-drag: 1100;
+    /* Entrada/salida de modales y popups. El JS depende de estos tiempos: 'listo' a los 280ms
+       y remove() a los 200ms en _registrarCierrePopup. Si se cambian acá, ajustar allá. */
+    --transition-pop-in: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease-out;
+    --transition-pop-out: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.16s ease-in;
+}
+
+html.dark-mode body,
+body.dark-mode {
+    --bg-body: #131314;
+    --bg-card: #1e1f20;
+    --bg-header: #131314;
+    --text-main: #e3e3e3;
+    --text-muted: #b4b4b4;
+    --text-disabled: #b4b4b4a2;
+    --border: #313333;
+    --input-bg: #313333;
+    --surface-row-hover: #3c3e3e;
+    --toggle-track-off: #5b5d5d;
+    --c-gray-btn: #313333;
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    --hover: brightness(1.2);
+}
+
+/* ─── TEMA ROSA (pastel) ───────────────────────────────────────────────── */
+html[data-theme="pink"] body,
+body[data-theme="pink"] {
+    --bg-body: #fdf1f6;
+    --bg-card: #ffffff;
+    --bg-header: #fdf1f6;
+    --text-main: #4a2c39;
+    --text-muted: #8a6572;
+    --text-disabled: #8a657299;
+    --border: #f4d9e5;
+    --input-bg: #fbe7f0;
+    --surface-row-hover: #f6d8e6;
+    --toggle-track-off: #e3b6cd;
+    --c-gray-btn: #fbe7f0;
+    --c-active: rgba(194, 85, 127, 0.9);
+    --shadow: 0 1px 4px rgba(172, 76, 130, 0.1), 0 0 0 1px rgba(172, 76, 130, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA CREMA (Cálido / Vainilla) ───────────────────────────────────── */
+html[data-theme="crema"] body,
+body[data-theme="crema"] {
+    --bg-body: #fbf6ee;
+    --bg-card: #ffffff;
+    --bg-header: #fbf6ee;
+    --text-main: #423223;
+    --text-muted: #85705d;
+    --text-disabled: #85705d99;
+    --border: #ede1cc;
+    --input-bg: #f7eee1;
+    --surface-row-hover: #f0e2cb;
+    --toggle-track-off: #ddc7a0;
+    --c-gray-btn: #f7eee1;
+    --c-active: rgba(176, 106, 50, 0.9);
+    --shadow: 0 1px 4px rgba(140, 100, 60, 0.1), 0 0 0 1px rgba(140, 100, 60, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA VERDE (pastel) ──────────────────────────────────────────────── */
+html[data-theme="green"] body,
+body[data-theme="green"] {
+    --bg-body: #f0f8f2;
+    --bg-card: #ffffff;
+    --bg-header: #f0f8f2;
+    --text-main: #24402c;
+    --text-muted: #53755c;
+    --text-disabled: #628a6d99;
+    --border: #d9ecdd;
+    --input-bg: #e7f5eb;
+    --surface-row-hover: #d8ecde;
+    --toggle-track-off: #a8d2b4;
+    --c-gray-btn: #e7f5eb;
+    --c-active: rgba(63, 143, 99, 0.9);
+    --shadow: 0 1px 4px rgba(76, 152, 100, 0.1), 0 0 0 1px rgba(76, 152, 100, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA AZUL (pastel) ───────────────────────────────────────────────── */
+html[data-theme="blue"] body,
+body[data-theme="blue"] {
+    --bg-body: #eef4fc;
+    --bg-card: #ffffff;
+    --bg-header: #eef4fc;
+    --text-main: #223449;
+    --text-muted: #5f7691;
+    --text-disabled: #5f769199;
+    --border: #d7e6f6;
+    --input-bg: #e5eff9;
+    --surface-row-hover: #d4e5f5;
+    --toggle-track-off: #a7c6e8;
+    --c-gray-btn: #e5eff9;
+    --shadow: 0 1px 4px rgba(76, 114, 172, 0.1), 0 0 0 1px rgba(76, 114, 172, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA VIOLETA PASTEL (Lilac / Lavanda) ───────────────────────────── */
+html[data-theme="lilac"] body,
+body[data-theme="lilac"] {
+    --bg-body: #f6f3fc;
+    --bg-card: #ffffff;
+    --bg-header: #f6f3fc;
+    --text-main: #3a2e4f;
+    --text-muted: #7b6894;
+    --text-disabled: #7b689499;
+    --border: #e6def2;
+    --input-bg: #f0e9fa;
+    --surface-row-hover: #e5d9f3;
+    --toggle-track-off: #c7ace3;
+    --c-gray-btn: #f0e9fa;
+    --c-active: rgba(124, 92, 191, 0.9);
+    --shadow: 0 1px 4px rgba(120, 80, 180, 0.1), 0 0 0 1px rgba(120, 80, 180, 0.05);
+    --hover: brightness(0.95);
+}
+
+/* ─── TEMA MEDIANOCHE (azul marino con cian) ───────────────────────────── */
+html[data-theme="medianoche"] body,
+body[data-theme="medianoche"] {
+    --bg-body: #0b1120;
+    --bg-card: #131c2e;
+    --bg-header: #0b1120;
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-disabled: #94a3b8a2;
+    --border: #1f2a40;
+    --input-bg: #1c2638;
+    --surface-row-hover: #26334a;
+    --toggle-track-off: #3b4a63;
+    --c-gray-btn: #1c2638;
+    --c-active: rgba(8, 145, 178, 0.9);
+    --shadow: 0 4px 20px rgba(2, 6, 23, 0.6), 0 0 0 1px rgba(34, 211, 238, 0.05);
+    --hover: brightness(1.2);
+}
+

@@ -1,0 +1,685 @@
+/* ==========================================================================
+   5. ANIMACIONES, RESPONSIVE Y ACCESIBILIDAD — Keyframes, @media y reduced-motion
+   ========================================================================== */
+/* ─── KEYFRAMES ──────────────────────────────────────────────────────────────── */
+
+@keyframes estadoBadgeParpadeo {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.4;
+    }
+}
+
+@keyframes slideDownFade {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes llamarAtencion {
+    0% {
+        transform: scale(1, 1);
+    }
+
+    5% {
+        transform: scale(1.25, 0.75);
+    }
+
+    10% {
+        transform: scale(0.75, 1.25);
+    }
+
+    15% {
+        transform: scale(1.15, 0.85);
+    }
+
+    20% {
+        transform: scale(1, 1);
+    }
+
+    100% {
+        transform: scale(1, 1);
+    }
+}
+
+@keyframes mutacionSalida {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    to {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+}
+
+/* Cambios de texto al pasar el cursor por los hitos: más cortos que la mutación normal */
+.mutacion-entrante.mutacion-rapida {
+    animation-duration: var(--dur-valor);
+}
+
+@keyframes mutacionEntrada {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        transform: translateX(-160%);
+    }
+
+    20% {
+        transform: translateX(260%);
+    }
+
+    100% {
+        transform: translateX(260%);
+    }
+}
+
+/* El brillo del anillo: la franja (que ocupa 40°, con su centro a 20°) entra por el comienzo del arco, lo recorre hasta su final (el avance, en grados) y descansa; mismo ciclo y mismo 20 % que "shimmer".
+   Con el anillo casi o totalmente lleno la franja no puede pasar de los 320° (si no, su cola reaparecería por el comienzo del arco y quedaría fija ahí): llega al final del arco y se desvanece.
+   En reposo (20 % en adelante) no se ve en ningún caso. */
+@keyframes brillo-anillo {
+    0% {
+        transform: rotate(-40deg);
+        opacity: 1;
+    }
+
+    14% {
+        opacity: 1;
+    }
+
+    20%, 100% {
+        transform: rotate(min(calc((100 - var(--ring-offset, 100)) * 3.6deg), 320deg));
+        opacity: 0;
+    }
+}
+
+/* Latido del remate de la barra, sincronizado con el paso del brillo (ver "shimmer"): sube mientras el brillo lo cruza y vuelve despacio */
+@keyframes remate-latido {
+    0%, 11.4% { scale: 1; }
+    14% { scale: 1.1; }
+    22%, 100% { scale: 1; }
+}
+
+/* Onda que sale del remate con el latido */
+@keyframes remate-onda {
+    0%, 12.6% { scale: 1; opacity: 0; }
+    13.4% { scale: 1; opacity: 0.55; }
+    25% { scale: 2; opacity: 0; }
+    100% { scale: 2; opacity: 0; }
+}
+
+@keyframes campo-flash {
+
+    0%,
+    60%,
+    100% {
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    20%,
+    40% {
+        border-color: var(--text-main);
+        box-shadow: var(--shadow);
+    }
+}
+
+input.campo-flash,
+select.campo-flash,
+button.campo-flash {
+    animation: campo-flash var(--dur-flash) ease-in-out 2;
+}
+
+/* Destello de "hoy" en el calendario (botón Hoy) y del mosaico de balance de la línea de tiempo en la carga: una sola pasada de ~1 s, solo transform/opacity.
+   Lo arma Animaciones._aplicarFlash: agrega al elemento una capa temporal (.destello-capa) con un barrido de luz que cruza el relleno de izquierda a derecha
+   (--dur-barrido) y, a mitad de camino, un aro del color del día (--onda-color) que se agranda y se desvanece (onda). Sin registro no hay relleno que recorrer:
+   solo la onda, con el color del texto. Con "reducir animaciones" no hay barrido y el aro solo se desvanece. */
+.calendario-dia.destello-hoy {
+    --onda-color: var(--cal-color);
+    --onda-escala: 1.5;
+    z-index: 2;
+}
+
+.calendario-dia.destello-hoy:is(.dia-sin-registro, .dia-filtrado) {
+    --onda-color: var(--text-main);
+}
+
+.icon-btn.destello-instalar {
+    --onda-color: var(--c-blue);
+    --onda-escala: 1.5;
+    --franja-color: color-mix(in srgb, var(--c-blue) 55%, transparent);
+    z-index: 2;
+}
+
+.est-mosaico.mosaico-flash {
+    --onda-color: var(--tono);
+    --onda-escala: 1.12;
+    position: relative;
+    z-index: 2;
+}
+
+.destello-capa,
+.destello-recorte,
+.destello-onda {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.destello-recorte {
+    overflow: hidden;
+}
+
+.destello-franja {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 60%;
+    background: linear-gradient(105deg, transparent, var(--franja-color, rgba(255, 255, 255, 0.75)) 50%, transparent);
+    transform: translateX(-100%);
+    will-change: transform;
+    animation: destello-barrido var(--dur-barrido) ease-in-out forwards;
+}
+
+@keyframes destello-barrido {
+    to {
+        transform: translateX(170%);
+    }
+}
+
+.destello-onda {
+    box-sizing: border-box;
+    border: 2px solid var(--onda-color);
+    opacity: 0;
+    will-change: transform, opacity;
+    animation: destello-onda var(--dur-onda) ease-out var(--demora-onda) forwards;
+}
+
+@keyframes destello-onda {
+    from {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+
+    to {
+        transform: scale(var(--onda-escala, 1.4));
+        opacity: 0;
+    }
+}
+
+:root[data-motion="reduce"] .destello-recorte {
+    display: none;
+}
+
+:root[data-motion="reduce"] :is(.calendario-dia.destello-hoy, .est-mosaico.mosaico-flash, .icon-btn.destello-instalar) {
+    --onda-escala: 1;
+}
+
+/* Filas de ajustes: sin borde propio y dentro de un contenedor con overflow hidden,
+   así que el resalte va como sombra interna */
+@keyframes calendarioEntradaDia {
+    from {
+        opacity: 0;
+        transform: scale(0.55);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes calendarioEntradaNumero {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes ajuste-flash {
+
+    0%,
+    60%,
+    100% {
+        box-shadow: none;
+    }
+
+    20%,
+    40% {
+        box-shadow: inset 0 0 0 2px var(--text-main);
+    }
+}
+
+.settings-list>.campo-flash {
+    animation: ajuste-flash var(--dur-flash) ease-in-out 2;
+}
+
+/* La sombra interna sigue el radio de la fila, no el del contenedor */
+.settings-list>.campo-flash:first-child {
+    border-top-left-radius: var(--radius-md);
+    border-top-right-radius: var(--radius-md);
+}
+
+.settings-list>.campo-flash:last-child {
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+}
+
+@keyframes campo-flash-color {
+
+    0%,
+    60%,
+    100% {
+        border-color: transparent;
+        box-shadow: none;
+    }
+
+    20%,
+    40% {
+        border-color: var(--flash-color);
+        box-shadow: var(--shadow);
+    }
+}
+
+button.campo-flash-color {
+    animation: campo-flash-color var(--dur-flash) ease-in-out 2;
+}
+
+/* ─── FICHAJE OK (check de éxito en el botón Fichar) ─────────────────────────── */
+/* Entrada con rebote (0-28%), pausa y salida (86-100%) en una sola animación de
+   --dur-fichaje-ok. Solo transform/opacity. La salida anticipada (error al fichar
+   rápido) y el reemplazo del ícono los resuelve base.js. */
+@keyframes fichaje-ok {
+    0% {
+        transform: scale(0.3) rotate(-25deg);
+        opacity: 0;
+        animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
+    }
+
+    19% {
+        transform: scale(1.22) rotate(6deg);
+        opacity: 1;
+        animation-timing-function: ease-in-out;
+    }
+
+    28% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+        animation-timing-function: linear;
+    }
+
+    86% {
+        transform: scale(1) rotate(0deg);
+        opacity: 1;
+        animation-timing-function: ease-in;
+    }
+
+    100% {
+        transform: scale(0.4) rotate(0deg);
+        opacity: 0;
+    }
+}
+
+@keyframes fichaje-ok-vuelta {
+    from {
+        transform: scale(0.6);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.btn-register .icon.fichaje-ok {
+    color: var(--c-green);
+    transform-origin: center;
+    animation: fichaje-ok var(--dur-fichaje-ok) both;
+}
+
+/* Se deja puesta a propósito: evita que vuelva el llamarAtencion recién fichado */
+.btn-register .icon.fichaje-ok-vuelta {
+    transform-origin: center;
+    animation: fichaje-ok-vuelta var(--dur-fichaje-vuelta) ease-out;
+}
+
+@keyframes icono-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.icono-spin {
+    animation: icono-spin var(--dur-giro) linear infinite;
+}
+
+/* Lo contrario: opciones que solo tienen sentido en un dispositivo táctil (móvil) se ocultan cuando hay mouse */
+@media (hover: hover) and (pointer: fine) {
+    .config-solo-movil {
+        display: none !important;
+    }
+}
+
+/* Opciones que solo tienen sentido con mouse: se ocultan en dispositivos táctiles (mismo criterio que usa calendario.js) */
+@media not all and (hover: hover) and (pointer: fine) {
+    .config-solo-pc {
+        display: none !important;
+    }
+}
+
+/* ─── HOVER (pointer: fine) ──────────────────────────────────────────────────── */
+
+@media (hover: hover) and (pointer: fine) {
+
+    :is([id^="btn-toggle-"],
+        #btn-reporte,
+        .icon-btn, .time-btn, .btn-increment, .filter-btn, .btn-gist, .card-section-title, .cal-popup-btn-accion,
+        .btn-delete, .btn-cancel, .stats-number, .btn-export, .btn-merge, .btn-backup, .btn-edit, .cal-popup-btn-edit,
+        .calendario-nav button, .btn-settings, .ayuda-indice-item, .btn-register, .input-icon-btn):hover:not(:disabled) {
+        filter: var(--hover);
+    }
+
+    :is(.registro-item, .header-profile-btn,
+        .btn-perfil-edit,
+        .registro-mes-header, .btn-mes-calendario,
+        .calendario-titulo):hover {
+        filter: var(--hover);
+    }
+
+    /* dentro del grupo de la semana el día se resalta como una fila de Ajustes (con fondo, no con brillo) */
+    .registro-semana .registro-item:hover {
+        filter: none;
+        background: var(--surface-row-hover);
+    }
+
+    .day-checkbox:hover span {
+        filter: var(--hover);
+    }
+
+    /* Con el mouse se suma el brillo al pasar por encima, sin perder las transiciones del estilo (--cal-dia-transicion, ver tarjetas-vistas.css) */
+    .calendario-dia:not(.vacio, .dia-sin-registro) {
+        transition: var(--cal-dia-transicion), filter var(--transition-ui);
+    }
+
+    .calendario-dia:not(.vacio, .dia-sin-registro):hover {
+        filter: var(--hover);
+        z-index: 2;
+        position: relative;
+    }
+
+    .settings-list>button:hover:not(:disabled),
+    .settings-list>.collapsible>.collapsible-inner>button:hover:not(:disabled),
+    .btn-perfil-select:hover {
+        background: var(--surface-row-hover);
+    }
+}
+
+/* ─── MÓVIL (max-width: 600px): los modales pueden ocupar todo el alto ─────── */
+
+@media (max-width: 600px) {
+    .modal {
+        padding: max(var(--space-xs), env(safe-area-inset-top)) max(var(--space-xs), env(safe-area-inset-right)) max(var(--space-xs), env(safe-area-inset-bottom)) max(var(--space-xs), env(safe-area-inset-left));
+    }
+
+    .modal-scrollable>.modal-content {
+        max-height: 100%;
+    }
+
+    #modal-ayuda .modal-content {
+        height: 100%;
+    }
+}
+
+/* ─── ESCRITORIO (min-width: 1024px) ─────────────────────────────────────────── */
+
+@media (min-width: 1024px) {
+    .container {
+        display: grid;
+        grid-template-columns: repeat(var(--columnas, 2), minmax(350px, 1fr));
+        gap: var(--space-xl);
+        align-items: start;
+        padding: var(--space-xl);
+    }
+
+    /* Con 3 columnas la página gana ancho (en pantallas más chicas el límite lo pone la ventana) */
+    .container[data-columnas="3"] {
+        max-width: 1900px;
+    }
+
+    .calendario-semana-actual {
+    inset: 15px -6px;
+    }
+
+    .calendario-dia {
+        --cal-dia-tam: var(--text-base);
+    }
+
+    .left-column {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #lista-registros {
+        max-height: 1100px;
+        overflow-y: auto;
+        padding-right: var(--space-sm);
+        scrollbar-gutter: stable;
+        --sticky-mes-top: 0px;
+    }
+
+    .card,
+    .modal-content {
+        padding: var(--space-xl) var(--space-lg);
+    }
+
+    .week-selector {
+        gap: var(--space-xs);
+    }
+
+    #modal-config .modal-content {
+        max-width: 800px;
+    }
+
+    #modal-config .modal-config-cols {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0 var(--space-xl);
+        align-items: start;
+    }
+
+    #modal-config .modal-panel-footer .btn-cancel,
+    #modal-ayuda .modal-panel-footer .btn-cancel {
+        width: 50%;
+        margin: 0 auto;
+    }
+
+    #modal-ayuda .modal-content {
+        max-width: 700px;
+    }
+
+    .ayuda-layout {
+        display: grid;
+        grid-template-columns: 190px 1fr;
+        gap: var(--space-xl);
+        align-items: start;
+    }
+
+    .ayuda-indice {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        padding-right: var(--space-md);
+        border-bottom: none;
+        border-right: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        max-height: calc(100vh - 260px);
+        overflow-y: auto;
+    }
+
+    .contenedor-fechas,
+    .contenedor-horas {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-md);
+    }
+
+    .contenedor-fechas .form-group,
+    .contenedor-horas .form-group {
+        min-width: 0;
+        margin-bottom: 0;
+    }
+
+    .header-profile-btn {
+        max-width: 300px;
+    }
+
+    #calendario-selector-meses {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .registro-info {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: baseline;
+        column-gap: 0.75rem;
+    }
+
+    .registro-fecha {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .registro-horas {
+        grid-column: 2;
+        grid-row: 1;
+        text-align: right;
+    }
+
+    .registro-badges {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-self: start;
+    }
+}
+
+/* ─── REDUCED MOTION ─────────────────────────────────────────────────────────── */
+
+:root[data-motion="reduce"] {
+    --dur-fast: 1ms;
+    --dur-anim: 1ms;
+    --dur-collapse: 1ms;
+    --dur-calendario: 1ms;
+    --dur-valor: 1ms;
+    --dur-conteo: 1ms;
+    --dur-slow: 1ms;
+    --dur-cal-espera: 1ms;
+    --dur-cal-entrada: 1ms;
+    --dur-cal-numero: 1ms;
+    --dur-fichaje-salida: 1ms;
+    --dur-fichaje-vuelta: 1ms;
+    /* Sin movimiento el check queda fijo: este es solo el tiempo que se muestra */
+    --dur-fichaje-ok: 1500ms;
+}
+
+:root[data-motion="reduce"] :is(.modal-content, .cal-popup, .stat-popup, .filtro-popup) {
+    transform: none;
+    transition: opacity var(--dur-fade) ease;
+}
+
+/* Overlay de los modales: mismo fade corto que .modal-content */
+:root[data-motion="reduce"] .modal {
+    transition: opacity var(--dur-fade) ease, visibility var(--dur-fade) ease;
+}
+
+/* Decorativas o llamadores de atención en bucle: se quitan. El estado sigue
+   comunicado por texto y color (badges, botón rojo del timer). */
+:root[data-motion="reduce"] .btn-register .icon,
+:root[data-motion="reduce"] .tf-badge,
+:root[data-motion="reduce"] .estado-badge--en-curso,
+:root[data-motion="reduce"] .timer-btn.running {
+    animation: none;
+}
+
+:root[data-motion="reduce"] .calendario-dia.cal-entrada,
+:root[data-motion="reduce"] .calendario-dia.cal-entrada-remate,
+:root[data-motion="reduce"] .calendario-dia.cal-entrada .calendario-dia-num,
+:root[data-motion="reduce"] .calendario-dia.cal-entrada.tiene-comentario::after {
+    animation: none;
+}
+
+/* El brillo es un ::after visible de por sí: sin animación quedaría fijo */
+:root[data-motion="reduce"] .progress-fill.shimmer::after,
+:root[data-motion="reduce"] .est-anillo-brillo {
+    display: none;
+}
+
+/* Sin brillo no hay latido del remate (el selector repite el del latido para ganarle en especificidad) */
+:root[data-motion="reduce"] .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado),
+:root[data-motion="reduce"] .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
+    animation: none;
+}
+
+
+/* El brillo del tramo azul de la línea de tiempo: sin movimiento queda el azul liso */
+:root[data-motion="reduce"] .est-nodos.en-curso::after,
+:root[data-motion="reduce"] .est-nodos.en-curso :is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto,
+:root[data-motion="reduce"] .est-nodos.en-curso :is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto::after {
+    animation: none;
+}
+
+/* El pulso del hito enfocado es un anillo en bucle corto: sin movimiento queda solo el resalte de la píldora */
+:root[data-motion="reduce"] .linea-tick.foco::after,
+:root[data-motion="reduce"] .progress-punto.foco::after {
+    animation: none;
+    opacity: 0;
+}
+
+/* Con un modal abierto el brillo y el latido de la barra quedan detrás del overlay: se pausan para no mantener el pipeline de frames (ni el desenfoque del overlay) trabajando por algo que no se ve */
+body.modal-open .est-nodos.en-curso::after,
+body.modal-open .est-nodos.en-curso :is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto,
+body.modal-open .est-nodos.en-curso :is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto::after,
+body.modal-open .progress-fill.shimmer::after,
+body.modal-open .est-anillo-brillo::after,
+body.modal-open .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado),
+body.modal-open .progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
+    animation-play-state: paused;
+}
+
+/* Reducir animaciones: la barra indeterminada del toast de progreso queda quieta */
+:root[data-motion="reduce"] .toast-progreso:indeterminate {
+    animation: none;
+}

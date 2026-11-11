@@ -1,0 +1,2683 @@
+/* ==========================================================================
+   3. TARJETAS Y VISTAS — Fichaje, estadísticas, histórico, calendario y popups
+   ========================================================================== */
+/* ─── TARJETA DE ESTADÍSTICAS ────────────────────────────────────────────────── */
+
+.stats-card {
+    cursor: pointer;
+    border: 1px solid transparent;
+    border-left: 3px solid transparent;
+    transition: transform var(--dur-fast) ease-out, opacity var(--dur-fast) ease-out, box-shadow var(--transition-ui), border-color var(--transition-ui),
+        height var(--dur-collapse) ease-out;   /* el alto solo cambia al pasar de un estilo a otro: lo anima _animarAlturaCard (tarjeta-fichaje.js) */
+    height: 16rem;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-card-bg {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    transition: transform calc(var(--dur-anim)*5) ease;
+}
+
+.stats-card-bg--zoom {
+    transform: scale(1.1);
+}
+
+.stats-card-bg__layer {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity calc(var(--dur-anim)*2) ease;
+}
+
+.stats-card-bg__layer.visible {
+    opacity: 1;
+}
+
+.stats-card-bg svg {
+    width: 100%;
+    height: 100%;
+}
+
+.stats-card-content {
+    position: relative;
+    z-index: 1;
+    transition: var(--transition-anim);
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+#toggle-hint {
+    margin-top: auto;
+}
+
+.stats-card.border-blue {
+    border-left-color: var(--c-blue);
+}
+
+.stats-card.border-green {
+    border-left-color: var(--c-green);
+}
+
+.stats-card.border-red,
+#stats-card.timer-running {
+    border-left-color: var(--c-red);
+}
+
+.stats-card.border-purple {
+    border-left-color: var(--c-purple);
+}
+
+.stats-card.border-gold {
+    border-left-color: var(--c-gold);
+}
+
+.stats-card.border-orange {
+    border-left-color: var(--c-orange);
+}
+
+.stats-card.border-transparent {
+    border-left-color: transparent;
+}
+
+.stats-number,
+.card-anim,
+#modo-normal,
+#modo-lote {
+    transition: var(--transition-anim);
+}
+
+.stats-number {
+    font-size: var(--text-xl);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--fw-bold);
+    margin: var(--space-sm) 0;
+    line-height: var(--lh-tight);
+    min-height: 1.2em;
+    display: flex;
+    align-items: center;
+}
+
+.stats-inner {
+    min-height: 31rem;
+    display: flex;
+    flex-direction: column;
+    transition: min-height var(--dur-collapse) ease-out;
+}
+
+.stats-inner .btn-group {
+    margin-top: auto;
+}
+
+.stats-inner .btn-agregar {
+    width: 50%;
+    margin: 0 auto;
+}
+
+/* ─── BARRA DE PROGRESO ──────────────────────────────────────────────────────── */
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background: transparent;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+}
+
+/* El número de arriba lleva su propio margen inferior y más aire interno que el mensaje de abajo: el margen inferior de la pista
+   suma esa diferencia (medida: 12 px) para que la distancia visual de la barra a ambos textos sea la misma */
+.progress-pista {
+    --ajuste-optico: 0.75rem;
+    --margen-x: var(--space-sm);   /* los puntos de los extremos sobresalen medio círculo de la barra: sin este margen quedaban casi pegados al borde de la tarjeta */
+    position: relative;
+    margin: var(--space-lg) var(--margen-x) calc(var(--space-lg) + var(--ajuste-optico));
+}
+
+.progress-punto {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 14px;
+    height: 14px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 3px solid var(--c-blue);
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease, border-color var(--dur-slow) ease, background var(--dur-slow) ease;
+}
+
+.progress-punto.visible {
+    opacity: 1;
+}
+
+/* Latido del remate cuando el brillo de la barra lo alcanza.
+   Mismo ciclo (5 s) que el brillo, y arranca junto con él (se activa con la clase .shimmer): el brillo llega al remate a ~11 % del ciclo y lo deja a ~15 %; el latido sube con él y vuelve hasta ~22 %. */
+.progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado) {
+    animation: remate-latido var(--dur-ambiente) ease-in-out infinite;
+}
+
+.progress-pista:has(.progress-fill.shimmer) .progress-punto:not(.progress-punto--inicio, .cerrado)::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    box-sizing: border-box;
+    border: 2px solid;
+    border-color: inherit;
+    border-radius: 50%;
+    opacity: 0;
+    animation: remate-onda var(--dur-ambiente) ease-out infinite;
+}
+
+.progress-punto[data-color="green"] { border-color: var(--c-green); }
+.progress-punto[data-color="red"] { border-color: var(--c-red); }
+.progress-punto[data-color="purple"] { border-color: var(--c-purple); }
+.progress-punto[data-color="orange"] { border-color: var(--c-orange); }
+.progress-punto[data-color="gold"] { border-color: var(--c-gold); }
+.progress-punto[data-color="blue"] { border-color: var(--c-blue); }
+/* Remate sobre una franja vacía (vista semanal): neutro, como la pista */
+.progress-punto[data-color="vacio"] { border-color: color-mix(in srgb, var(--text-muted) 45%, var(--bg-card)); }
+
+.progress-punto.cerrado {
+    border: none;
+}
+
+.progress-punto.cerrado[data-color="green"] { background: linear-gradient(var(--c-green), var(--c-green)), var(--bg-card); }
+.progress-punto.cerrado[data-color="red"] { background: linear-gradient(var(--c-red), var(--c-red)), var(--bg-card); }
+.progress-punto.cerrado[data-color="purple"] { background: linear-gradient(var(--c-purple), var(--c-purple)), var(--bg-card); }
+.progress-punto.cerrado[data-color="orange"] { background: linear-gradient(var(--c-orange), var(--c-orange)), var(--bg-card); }
+.progress-punto.cerrado[data-color="gold"] { background: linear-gradient(var(--c-gold), var(--c-gold)), var(--bg-card); }
+.progress-punto.cerrado[data-color="vacio"] { background: linear-gradient(color-mix(in srgb, var(--text-muted) 45%, var(--bg-card)), color-mix(in srgb, var(--text-muted) 45%, var(--bg-card))), var(--bg-card); }
+.progress-punto.cerrado[data-color="blue"] { background: linear-gradient(var(--c-blue), var(--c-blue)), var(--bg-card); }
+
+.progress-fill {
+    height: 100%;
+    background: var(--bg-card);
+    border-radius: var(--radius-full);
+    transition: width var(--dur-slow), background-color var(--dur-slow) ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-fill.shimmer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    animation: shimmer var(--dur-ambiente) ease-in-out infinite;
+    will-change: transform;
+}
+
+#progress-bar {
+    width: 0%;
+}
+
+/* El último tramo de la parte llena se degrada hacia el color del remate */
+.stats-card .progress-fill.con-remate {
+    background: linear-gradient(90deg, var(--color-barra) calc(100% - 2rem), var(--color-remate));
+}
+
+/* Conteo inicial del valor: la barra llena con la misma duración y curva que el número */
+.stats-card.conteo-inicial .progress-fill {
+    transition: width var(--dur-conteo) var(--ease-conteo), background-color var(--dur-slow) ease;
+}
+
+/* ─── LÍNEA DEL DÍA: entrada, salida estimada y salida con buffer ───────────── */
+
+.toggle-hint:empty {
+    display: none;
+}
+
+.progress-pista {
+    --centro-etiqueta: 25.5px;   /* distancia del borde de la barra al centro de las etiquetas de la vista diaria (donde termina la línea diagonal) */
+    transition: margin var(--dur-slow) var(--ease-conteo);
+}
+
+/* Hint integrado: la pista reserva el alto de la línea (vista diaria o semanal) */
+.progress-pista.reserva-linea,
+.progress-pista.con-linea {
+    margin: calc(var(--space-lg) + 1.2rem) var(--margen-x) calc(var(--space-lg) + 1.2rem + var(--ajuste-optico));
+}
+
+/* Al aparecer (display none → block) los elementos de la línea entran con fundido; el estado final es el natural de cada uno */
+@keyframes linea-aparece {
+    from { opacity: 0; }
+}
+
+@keyframes linea-etiqueta-aparece {
+    from { opacity: 0; translate: 0 0.35rem; }
+}
+
+.progress-pista.con-linea::before {
+    animation: linea-aparece var(--dur-slow) ease backwards;
+}
+
+.progress-pista.con-linea .linea-banda {
+    animation: linea-aparece var(--dur-slow) ease 0.25s backwards;
+}
+
+.progress-pista.con-linea .linea-tick {
+    animation: linea-aparece var(--dur-slow) ease 0.15s backwards;
+}
+
+.progress-pista.con-linea .linea-tick--buffer {
+    animation-delay: var(--delay-linea);
+}
+
+.progress-pista.con-linea .linea-etiqueta {
+    animation: linea-etiqueta-aparece var(--dur-slow) var(--ease-conteo) var(--delay-linea) backwards;
+}
+
+.progress-pista.con-linea .linea-etiqueta--arriba {
+    animation-delay: var(--delay-linea-arriba);
+}
+
+.progress-pista.con-linea::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--text-muted) 15%, transparent);
+}
+
+.progress-pista.con-linea .progress-bar {
+    position: relative;
+}
+
+.progress-pista.con-linea .progress-fill.segmentado {
+    background-image: linear-gradient(90deg, var(--seg-1) 0 var(--seg-a), var(--seg-2) var(--seg-a) var(--seg-b), var(--seg-3) var(--seg-b) 100%);
+    background-size: var(--ancho-pista, 100%) 100%;
+    background-repeat: no-repeat;
+    background-color: transparent;
+}
+
+.linea-banda,
+.linea-tick,
+.linea-etiqueta {
+    display: none;
+    position: absolute;
+    pointer-events: none;
+}
+
+.progress-pista.con-linea .linea-banda,
+.progress-pista.con-linea .linea-tick,
+.progress-pista.con-linea .linea-etiqueta {
+    display: block;
+}
+
+/* Vista semanal: se ocultan los elementos de la línea del día; los hitos de cada día (clase "dia") viven dentro de #linea-semana */
+.linea-semana { display: none; }
+
+.progress-pista.linea-semanal .linea-semana { display: contents; }
+
+.progress-pista.linea-semanal > .linea-banda,
+.progress-pista.linea-semanal > .linea-tick,
+.progress-pista.linea-semanal > .linea-etiqueta {
+    display: none;
+}
+
+.linea-etiqueta--arriba.dia { font-weight: 400; }
+
+/* Vista semanal: la sigla va en diagonal, siguiendo la línea de su marca (ver geometriaDiagonal). Abajo la línea sube hacia la derecha (-45°) y arriba baja (+45°).
+   El giro es sobre el extremo que toca la línea, que queda a ~13 px de la barra; espejada (sin lugar a la izquierda) gira sobre el otro extremo. */
+.linea-etiqueta.dia {
+    transform-origin: 100% 50%;
+}
+
+.linea-etiqueta--abajo.dia {
+    top: calc(100% + 13px - var(--text-sm) / 2);
+    transform: rotate(-45deg);
+}
+
+.linea-etiqueta--arriba.dia {
+    bottom: calc(100% + 13px - var(--text-sm) / 2);
+    transform: rotate(45deg);
+}
+
+.linea-etiqueta--espejada.dia { transform-origin: 0 50%; }
+.linea-etiqueta--espejada.linea-etiqueta--abajo.dia { transform: rotate(45deg); }
+.linea-etiqueta--espejada.linea-etiqueta--arriba.dia { transform: rotate(-45deg); }
+
+/* Línea diagonal de las marcas de la vista semanal: fina */
+.hito-diagonal {
+    stroke-width: 1.3;
+}
+
+/* Hoy: la sigla resaltada (neutra: no se confunde con los colores de estado de la barra) */
+.linea-etiqueta--hoy.dia {
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+}
+
+/* Sigla que no entra: queda solo el punto de anclaje sobre la barra */
+.linea-etiqueta--oculta { display: none !important; }
+.linea-tick.solo-punto .hito-diagonal { display: none; }
+
+.linea-banda {
+    top: 0;
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: var(--banda-color, transparent);
+    opacity: 0.35;
+    transition: left var(--dur-slow), width var(--dur-slow), background var(--dur-slow) ease;
+}
+
+/* Marca de la barra: punto sobre la barra y una línea diagonal a 45° que sale hacia el lado de su etiqueta (abajo o arriba) y termina a su costado.
+   El dibujo (svg de 26 x 20, con el punto en x=24) es el de la etiqueta a la izquierda; las demás variantes son espejos. */
+.linea-tick {
+    --tick-color: var(--text-muted);
+    top: 100%;
+    width: 26px;
+    height: 20px;   /* igual al viewBox del svg: escala 1:1 */
+    margin-left: -24px;
+    transform-origin: 24px 50%;
+    color: var(--tick-color);
+    z-index: 1;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease;
+}
+
+.linea-tick svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: color var(--dur-slow) ease;
+}
+
+/* Contorno del punto de anclaje (en el sprite no puede ir como atributo style: la CSP no permite estilos en línea) */
+#hito-ancla circle {
+    fill: var(--ancla-relleno, currentColor);
+    stroke: var(--ancla-borde, var(--bg-card));
+    stroke-width: var(--ancla-grosor, 1.2);
+}
+
+/* Marca que el tiempo todavía no alcanzó (salida estimada o con buffer por delante de "ahora"; día futuro de la semana): punto hueco, solo el aro.
+   Se rellena cuando "ahora" llega a su posición. Las variables llegan al círculo del sprite porque se heredan a través del <use>. */
+.linea-tick.pendiente {
+    --ancla-relleno: var(--bg-card);
+    --ancla-borde: currentColor;
+    --ancla-grosor: 1.5;
+}
+
+/* Las marcas de la vista diaria tienen la diagonal 8 px más larga que las de la semanal (svg de 26 x 28 en vez de 26 x 20): así la hora queda más separada de la barra */
+#linea-tick-salida,
+#linea-tick-buffer {
+    height: 28px;
+}
+
+.linea-tick--buffer {
+    top: auto;
+    bottom: 100%;
+    transform: scaleY(-1);
+}
+
+.linea-tick.espejado { transform: scaleX(-1); }
+.linea-tick--buffer.espejado { transform: scale(-1, -1); }
+
+/* Móvil: la diagonal de la vista diaria es 4 px más corta (24 en vez de 28) y las etiquetas suben lo mismo, para que su centro siga donde termina la línea.
+   Solo cambia el alto: el svg se estira un poco en vertical, así que el ángulo queda cerca de 45° pero no exacto */
+@media (max-width: 767px) {
+    .progress-pista {
+        --centro-etiqueta: 21.5px;
+    }
+
+    #linea-tick-salida,
+    #linea-tick-buffer {
+        height: 24px;
+    }
+}
+
+.linea-tick--buffer.positivo { --tick-color: var(--c-green); }
+.linea-tick--buffer.negativo { --tick-color: var(--c-red); }
+
+.linea-etiqueta {
+    font-size: var(--text-sm);
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease;
+}
+
+/* El centro de la etiqueta queda a la altura donde termina la línea diagonal de su marca */
+.linea-etiqueta--abajo { top: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); }
+.linea-etiqueta--abajo.linea-etiqueta--entrada-arriba { top: auto; bottom: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); }
+.linea-etiqueta--arriba { bottom: calc(100% + var(--centro-etiqueta) - var(--text-sm) / 2); font-weight: 600; }
+.linea-etiqueta--arriba.positivo { color: var(--c-green); }
+.linea-etiqueta--arriba.negativo { color: var(--c-red); }
+
+/* La hora de salida con buffer lleva al comienzo el mismo triángulo que el texto del buffer semanal: ▲ si el buffer suma, ▼ si resta (del color de la etiqueta) */
+#linea-et-buffer::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: var(--space-xs);
+    background-color: currentColor;
+}
+
+#linea-et-buffer.positivo::before {
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+#linea-et-buffer.negativo::before {
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+/* ─── FOCO DE HITOS (ciclo del número grande, ver foco-hitos.js) ─────────────────
+   La etiqueta de la fase que muestra el número grande se resalta en una píldora y despliega su descripción; el resto se atenúa y el punto pulsa.
+   La descripción es absoluta: no cambia el ancho de la etiqueta, así la posición que calcula barra-hitos.js no se mueve.
+   Se despliega hacia la izquierda (a la derecha si la marca está espejada, y siempre a la derecha en la entrada) y barra-hitos.js deja en cada etiqueta
+   data-desc ("larga", "corta" o "ninguna") y --desc-ancho (lo que ocupa desplegada) según el lugar libre. */
+.linea-etiqueta {
+    --foco-color: var(--text-muted);
+    --separacion-desc: 6px;
+    isolation: isolate;
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease, color var(--dur-anim) ease, filter var(--dur-anim) ease;
+}
+
+.linea-etiqueta--arriba.positivo { --foco-color: var(--c-green); }
+.linea-etiqueta--arriba.negativo { --foco-color: var(--c-red); }
+.linea-etiqueta[data-desc="ninguna"] { --separacion-desc: 0px; }
+
+.linea-et-desc {
+    position: absolute;
+    top: 50%;
+    right: calc(100% + var(--separacion-desc));
+    translate: 0 -50%;
+    max-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    transition: max-width var(--dur-slow) var(--ease-conteo), opacity var(--dur-anim) ease;
+}
+
+.linea-etiqueta--espejada .linea-et-desc,
+#linea-et-entrada .linea-et-desc {
+    right: auto;
+    left: calc(100% + var(--separacion-desc));
+}
+
+/* Píldora detrás de la hora (y de la descripción desplegada) */
+.linea-etiqueta::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: -4px -7px;
+    border: 1px solid color-mix(in srgb, var(--foco-color) 48%, transparent);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--foco-color) 17%, var(--bg-card));
+    opacity: 0;
+    transition: left var(--dur-slow) var(--ease-conteo), right var(--dur-slow) var(--ease-conteo), opacity var(--dur-anim) ease;
+}
+
+.linea-etiqueta.foco { color: var(--text-main); z-index: 2; }   /* por encima de las vecinas atenuadas, que puede tapar */
+.linea-etiqueta--arriba.foco { color: var(--foco-color); }
+
+.linea-etiqueta.foco::after {
+    opacity: 1;
+    left: calc(-7px - var(--desc-ancho, 0px) - var(--separacion-desc));
+}
+
+.linea-etiqueta--espejada.foco::after,
+#linea-et-entrada.foco::after {
+    left: -7px;
+    right: calc(-7px - var(--desc-ancho, 0px) - var(--separacion-desc));
+}
+
+.linea-etiqueta.foco:not([data-desc="ninguna"]) .linea-et-desc {
+    max-width: var(--desc-ancho, 0px);
+    opacity: 1;
+}
+
+.progress-pista.hay-foco .linea-etiqueta:not(.foco),
+.progress-pista.hay-foco .linea-tick:not(.foco) {
+    filter: opacity(0.3);
+}
+
+.linea-tick {
+    transition: left var(--dur-slow), opacity var(--dur-fast) ease, filter var(--dur-anim) ease;
+}
+
+/* Variante B del hint integrado: en el ciclo, el número grande lleva el nombre del hito enfocado y la barra solo resalta la hora, sin desplegar su descripción.
+   Al pasar el cursor por un hito (.hover-hito) siempre se despliega en la barra y el número queda con las horas */
+.stats-card.desc-en-numero:not(.hover-hito) .linea-et-desc {
+    display: none;
+}
+
+.stats-card.desc-en-numero:not(.hover-hito) .linea-etiqueta {
+    --desc-ancho: 0px !important;
+    --separacion-desc: 0px !important;
+}
+
+/* Pulso del punto enfocado: anillo centrado en el punto de anclaje (24, -3) del svg de la marca; en los remates, un anillo alrededor */
+@keyframes hito-pulso {
+    from { transform: scale(1); opacity: 0.75; }
+    to { transform: scale(3.4); opacity: 0; }
+}
+
+.linea-tick::after {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: -7px;
+    width: 8px;
+    height: 8px;
+    box-sizing: border-box;
+    border: 2px solid var(--tick-color);
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.linea-tick.foco::after {
+    animation: hito-pulso var(--dur-pulso) ease-out 2;
+}
+
+.progress-punto.foco::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    box-sizing: border-box;
+    border: 2px solid var(--text-main);
+    border-radius: 50%;
+    animation: hito-pulso var(--dur-pulso) ease-out 2;
+}
+
+.progress-punto--inicio.foco::after {
+    border-color: var(--c-blue);
+}
+
+.stats-card.conteo-inicial .progress-punto {
+    transition: left var(--dur-conteo) var(--ease-conteo), opacity var(--dur-fast) ease, border-color var(--dur-slow) ease, background var(--dur-slow) ease;
+}
+
+/* ─── REGISTROS ──────────────────────────────────────────────────────────────── */
+
+.registro-item {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    cursor: pointer;
+    background: var(--input-bg);
+    content-visibility: auto;
+    contain-intrinsic-size: 85px;
+}
+
+/* Cada semana del histórico es un grupo, como las listas de Ajustes (.settings-list): un contenedor redondeado con sus días adentro, sin tarjeta propia y separados por una línea */
+.registro-semana {
+    background: var(--input-bg);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-bottom: var(--space-sm);
+}
+
+.registro-semana:not(:last-child) {
+    margin-bottom: var(--space-xl);
+}
+
+.registro-semana .registro-item {
+    border: none;
+    border-radius: 0;
+    margin-bottom: 0;
+    background: transparent;
+}
+
+.registro-semana>:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+}
+
+.registro-semana .registro-item:active {
+    background: var(--surface-row-hover);
+}
+
+.registro-item.hoy::before {
+    content: "HOY";
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    border: 2px solid var(--text-main);
+    color: var(--text-main);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-bold);
+    padding: var(--space-2xs) var(--space-lg);
+    border-radius: var(--radius-md);
+    letter-spacing: 0.05em;
+}
+
+.registro-fecha {
+    font-weight: var(--fw-semibold);
+    margin-bottom: var(--space-xs);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.registro-fecha-texto {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.registro-comentario {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xsm);
+    font-weight: var(--fw-normal);
+    min-width: 0;
+    max-width: 65%;
+}
+
+.icon-comentario,
+.cal-popup-caja-icono {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+    color: var(--text-muted);
+}
+
+.registro-comentario-texto {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.registro-horas,
+.registro-comentario,
+.cal-popup-3l,
+.cal-popup-caja,
+.btn-perfil-detalle {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.registro-total {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--c-white);
+    display: inline-block;
+    border-radius: var(--radius-full);
+    padding: var(--space-2xs) var(--space-lg);
+}
+
+.registro-total.neutro-text {
+    color: var(--text-muted);
+    padding: var(--space-2xs) 0;
+}
+
+.registro-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-xs);
+}
+
+.registro-mes-container {
+    margin: 0;
+    scroll-margin-top: 5rem;
+}
+
+.registro-mes-header {
+    color: var(--text-muted);
+    font-size: var(--text-md);
+    transition: color var(--dur-fast);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: var(--space-lg);
+    position: sticky;
+    top: var(--sticky-mes-top);
+    z-index: 5;
+    background: var(--bg-card);
+    border-radius: var(--radius-md);
+}
+
+.registro-mes-detalle .registro-mes-header {
+    top: calc(var(--sticky-mes-top) + var(--mes-header-h));
+    z-index: 4;
+}
+
+.registro-mes-detalle.expanded>.detalle-inner {
+    overflow: visible;
+}
+
+/* Con overflow visible el contenido ya no puede encogerse por debajo de su ancho natural: la columna del grid (auto) crecía hasta el texto más largo y las tarjetas
+   del mes expandido se salían de la lista (los meses cerrados no, porque su inner tiene overflow hidden). La columna se limita al ancho disponible. */
+.registro-mes-detalle {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+/* Días no laborables sin registro (según los días laborales vigentes en cada fecha) */
+.calendario-dia.dia-sin-registro.no-laborable {
+    opacity: 0.5;
+}
+
+/* ─── COLORES COMPARTIDOS ────────────────────────────────────────────────────── */
+
+.registro-total.green-text,
+.calendario-dia.dia-normal,
+.cal-semana-punto--green,
+.cal-popup-badge--green,
+.progress-fill.green {
+    background: var(--c-green);
+}
+
+.registro-total.red-text,
+.calendario-dia.dia-incompleto,
+.calendario-dia.dia-especial-red,
+.progress-fill.red,
+.cal-semana-punto--red,
+.cal-popup-badge--red {
+    background: var(--c-red);
+}
+
+.registro-total.purple-text,
+.calendario-dia.dia-especial-purple,
+.cal-semana-punto--purple,
+.cal-popup-badge--purple,
+.progress-fill.purple {
+    background: var(--c-purple);
+}
+
+.registro-total.orange-text,
+.calendario-dia.dia-especial-orange,
+.cal-semana-punto--orange,
+.cal-popup-badge--orange,
+.progress-fill.orange {
+    background: var(--c-orange);
+}
+
+.calendario-dia.dia-cubierto,
+.registro-total.gold-text,
+.calendario-dia.dia-especial-gold,
+.cal-semana-punto--gold,
+.cal-popup-badge--gold,
+.progress-fill.gold {
+    background: var(--c-gold);
+}
+
+.calendario-dia.dia-especial-blue,
+.registro-total.blue-text,
+.calendario-dia.dia-en-curso,
+.cal-semana-punto--blue,
+.cal-popup-badge--blue,
+.progress-fill.blue {
+    background: var(--c-blue);
+}
+
+
+/* ─── CALENDARIO ─────────────────────────────────────────────────────────────── */
+
+#calendario-selector-meses {
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    align-content: start;
+    gap: var(--space-sm);
+    margin-top: var(--space-md);
+}
+
+.btn-mes-calendario {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-weight: var(--fw-semibold);
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+    height: var(--touch-target);
+    font-size: var(--text-sm);
+}
+
+.btn-mes-calendario.activo {
+    border-color: var(--c-active);
+    background: var(--c-blue);
+    color: var(--c-white);
+}
+
+.selector-meses-anio-header {
+    grid-column: 1 / -1;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-bold);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: var(--space-xsm) var(--space-xs) var(--space-2xs);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--space-2xs);
+}
+
+.calendario-grid {
+    position: relative;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: var(--space-xs);
+    margin-top: var(--space-md);
+    grid-template-rows: auto repeat(6, 1fr);
+}
+
+/* Banda de la semana actual: absoluta dentro de la fila de la grilla, detrás de las celdas */
+.calendario-semana-actual {
+    position: absolute;
+    inset: 6px -6px;
+    border-radius: var(--radius-full);
+    background: var(--input-bg);
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.calendario-semana-actual.abierta-izq {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.calendario-semana-actual.abierta-der {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.calendario-dia-nombre {
+    text-align: center;
+    font-weight: var(--fw-semibold);
+    color: var(--text-main);
+    padding: var(--space-xs) 0;
+    font-size: var(--text-sm);
+}
+
+.calendario-dia {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    --cal-dia-tam: var(--text-sm);
+    font-size: var(--cal-dia-tam);
+    font-weight: var(--fw-medium);
+    cursor: pointer;
+    position: relative;
+    /* Cambiar de estilo (o de color del día) es una transición: todo lo que cambia se interpola, y se retoma desde donde esté si se vuelve a cambiar enseguida */
+    --cal-dia-transicion: opacity var(--dur-fast), background-color var(--dur-anim), box-shadow var(--dur-anim), color var(--dur-anim),
+        border-radius var(--dur-anim), padding var(--dur-anim);
+    transition: var(--cal-dia-transicion);
+}
+
+/* Marca de algunos estilos (barra o punto). Existe siempre, invisible, para que al cambiar de estilo aparezca, se deforme y desaparezca en vez de cortarse */
+.calendario-dia::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 19%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--cal-color, transparent);
+    transform: translateX(-50%);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--dur-anim), width var(--dur-anim), height var(--dur-anim), bottom var(--dur-anim),
+        border-radius var(--dur-anim), background-color var(--dur-anim);
+}
+
+.calendario-dia.dia-filtrado,
+.calendario-filtro-activo .calendario-dia.dia-sin-registro {
+    opacity: 0.25;
+}
+
+.calendario-dia.vacio {
+    visibility: hidden;
+    cursor: default;
+}
+
+/* Hoy se marca con el número más grande (en todos los estilos y con o sin registro); sin registro, además, con el color del texto en vez del atenuado */
+.calendario-dia.hoy {
+    font-size: calc(var(--cal-dia-tam) * 1.25);
+    font-weight: var(--fw-bold);
+}
+
+.calendario-dia.hoy.dia-sin-registro {
+    color: var(--text-main);
+}
+
+.calendario-dia.tiene-comentario::after {
+    content: '';
+    position: absolute;
+    top: calc(6% - 2.5px);
+    right: calc(6% - 2.5px);
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--text-main);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
+.calendario-dia.dia-sin-registro {
+    color: var(--text-muted);
+}
+
+/* ─── ESTILOS DE LOS DÍAS (opción "Estilo de los días" en ajustes) ───────────────────────────────
+   'legacy' es el original (círculo relleno, definido arriba). Los demás se activan con <html data-estilo-calendario="...">
+   (lo pone core/estilo-calendario.js) y parten del color del día en --cal-color. Los días sin registro no se tocan. */
+.calendario-dia.dia-normal { --cal-color: var(--c-green); }
+.calendario-dia.dia-incompleto,
+.calendario-dia.dia-especial-red { --cal-color: var(--c-red); }
+.calendario-dia.dia-especial-purple { --cal-color: var(--c-purple); }
+.calendario-dia.dia-especial-orange { --cal-color: var(--c-orange); }
+.calendario-dia.dia-cubierto,
+.calendario-dia.dia-especial-gold { --cal-color: var(--c-gold); }
+.calendario-dia.dia-especial-blue,
+.calendario-dia.dia-en-curso { --cal-color: var(--c-blue); }
+
+/* Todos los estilos se arman con propiedades que se interpolan (color de fondo, sombra interna, radio, relleno) y el fondo se recorta al área de contenido:
+   así el hueco entre un aro y su relleno es el relleno interno (padding) y cambiar de estilo es una transición suave */
+.calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    padding: 0;
+    background-clip: content-box;
+}
+
+/* Contorno con brillo: aro fino del color del día con un resplandor suave; hoy en negrita */
+:root[data-estilo-calendario="contorno-brillo"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 2px var(--cal-color), 0 0 10px color-mix(in srgb, var(--cal-color) 45%, transparent);
+}
+
+/* Aro con tinte: círculo entero (sin hueco) con un relleno oscuro teñido del color del día y un aro del mismo color; el número queda con su color normal */
+:root[data-estilo-calendario="aro-tinte"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: color-mix(in srgb, var(--cal-color) 20%, transparent);
+    box-shadow: inset 0 0 0 2.5px var(--cal-color);
+}
+
+/* Aro grueso: aro ancho del color del día y el número del mismo color */
+:root[data-estilo-calendario="aro-grueso"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 4px var(--cal-color);
+    color: color-mix(in srgb, var(--cal-color) 55%, var(--text-main));
+    font-weight: var(--fw-semibold);
+}
+
+/* Relleno con aro: disco más chico (algo más oscuro que el color) y, separado por un hueco, un aro fino del color del día */
+:root[data-estilo-calendario="relleno-aro"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    padding: 4px;
+    background-color: color-mix(in srgb, var(--cal-color) 80%, var(--bg-card));
+    box-shadow: inset 0 0 0 1.5px var(--cal-color);
+}
+
+/* Cuadrado con aro: el mismo concepto de relleno con aro, pero en cuadrado de esquinas redondeadas */
+:root[data-estilo-calendario="cuadrado-aro"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    border-radius: 24%;
+    padding: 4px;
+    background-color: color-mix(in srgb, var(--cal-color) 80%, var(--bg-card));
+    box-shadow: inset 0 0 0 1.5px var(--cal-color);
+}
+
+/* Subrayado: sin círculo, el número con una barrita del color del día debajo */
+:root[data-estilo-calendario="subrayado"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+}
+
+:root[data-estilo-calendario="subrayado"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue)::before {
+    opacity: 1;
+    bottom: 17%;
+    width: 38%;
+    height: 3px;
+    border-radius: var(--radius-full);
+}
+
+/* Punto: sin círculo, el número con un puntito del color del día debajo; hoy lleva el número del color del día y en negrita */
+:root[data-estilo-calendario="punto"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue) {
+    background-color: transparent;
+}
+
+:root[data-estilo-calendario="punto"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue)::before {
+    opacity: 1;
+}
+
+:root[data-estilo-calendario="punto"] .calendario-dia:is(.dia-normal, .dia-incompleto, .dia-cubierto, .dia-en-curso, .dia-especial-red, .dia-especial-purple, .dia-especial-orange, .dia-especial-gold, .dia-especial-blue).hoy {
+    color: color-mix(in srgb, var(--cal-color) 55%, var(--text-main));
+}
+
+/* Entrada inicial (una sola vez al cargar): pop escalonado en los días con registro,
+   el número sube un instante después y el remate (punto y hoy) cierra la secuencia.
+   Las clases las pone y las saca Calendario.animarEntradaInicial(); solo transform/opacity. */
+.calendario-grid {
+    --cal-fin: calc(var(--dur-cal-espera) + var(--cal-n, 0) * var(--cal-paso, 0ms) + var(--dur-cal-entrada));
+}
+
+.calendario-dia.cal-entrada {
+    animation-name: calendarioEntradaDia;
+    animation-duration: var(--dur-cal-entrada);
+    animation-timing-function: var(--ease-pop);
+    animation-delay: calc(var(--dur-cal-espera) + var(--i, 0) * var(--cal-paso, 0ms));
+    animation-fill-mode: backwards;
+}
+
+.calendario-dia.cal-entrada .calendario-dia-num {
+    display: inline-block;
+    animation-name: calendarioEntradaNumero;
+    animation-duration: var(--dur-cal-numero);
+    animation-timing-function: ease-out;
+    animation-delay: calc(var(--dur-cal-espera) + var(--i, 0) * var(--cal-paso, 0ms) + 100ms);
+    animation-fill-mode: backwards;
+}
+
+.calendario-dia.cal-entrada.tiene-comentario::after {
+    animation-name: calendarioEntradaDia;
+    animation-duration: var(--dur-anim);
+    animation-timing-function: var(--ease-pop);
+    animation-delay: var(--cal-fin);
+    animation-fill-mode: backwards;
+}
+
+.calendario-dia.cal-entrada-remate {
+    animation-name: calendarioEntradaDia;
+    animation-duration: var(--dur-cal-entrada);
+    animation-timing-function: var(--ease-pop);
+    animation-delay: var(--cal-fin);
+    animation-fill-mode: backwards;
+}
+
+.stat-label {
+    color: var(--text-muted);
+}
+
+.stat-value {
+    color: var(--text-main);
+    font-size: var(--text-base);
+    font-variant-numeric: tabular-nums;
+}
+
+
+.stat-value.saldo-positivo {
+    color: var(--c-green);
+}
+
+.stat-value.saldo-negativo {
+    color: var(--c-red);
+}
+
+.stat-value.saldo-neutro {
+    color: var(--text-main);
+}
+
+.calendario-titulo {
+    font-size: var(--text-base);
+    font-weight: var(--fw-semibold);
+    color: var(--text-main);
+    text-transform: capitalize;
+    cursor: pointer;
+    padding-left: var(--space-lg);
+}
+
+.calendario-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-sm);
+    min-height: var(--touch-target);
+}
+
+.calendario-nav button {
+    background: none;
+    flex-shrink: 0;
+    width: var(--touch-target);
+    height: var(--touch-target);
+    padding: var(--space-xs);
+    padding-left: var(--space-lg);
+    font-size: var(--text-base);
+    text-transform: capitalize;
+    transition: filter var(--transition-ui);
+}
+
+.cal-popup,
+.stat-popup,
+.filtro-popup {
+    position: fixed;
+    z-index: var(--z-popup);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    padding: var(--space-md) var(--space-lg);
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+    transform: scale(0.15);
+    opacity: 0;
+    transform-origin: center center;
+    transition: var(--transition-pop-out);
+    will-change: transform, opacity;
+}
+
+.cal-popup.show,
+.stat-popup.show,
+.filtro-popup.show {
+    transform: scale(1);
+    opacity: 1;
+    transition: var(--transition-pop-in);
+}
+
+.cal-popup {
+    min-width: 160px;
+    max-width: 220px;
+    gap: var(--space-xsm);
+}
+
+.cal-popup.listo,
+.stat-popup.listo,
+.filtro-popup.listo {
+    pointer-events: all;
+}
+
+.cal-popup-fecha {
+    font-weight: var(--fw-bold);
+    color: var(--text-muted);
+}
+
+.cal-popup-info {
+    font-size: var(--text-base);
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+}
+
+.cal-popup-badge {
+    display: inline-block;
+    font-size: var(--text-sm);
+    font-weight: var(--fw-semibold);
+    color: var(--c-white);
+    border-radius: var(--radius-full);
+    padding: var(--space-2xs) var(--space-smd);
+    width: fit-content;
+}
+
+.cal-popup-caja {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-xsm);
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-xsm) var(--space-sm);
+    margin-top: var(--space-2xs);
+    word-break: break-word;
+    line-height: var(--lh-normal);
+}
+
+.cal-popup-caja-icono {
+    margin-top: 2px;
+}
+
+.cal-popup-caja-texto {
+    flex: 1;
+}
+
+.cal-popup-btn-edit {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--c-gray-btn);
+    font-size: var(--text-sm);
+}
+
+.cal-popup-info--blue {
+    color: var(--c-blue);
+}
+
+.cal-popup-info--green {
+    color: var(--c-green);
+}
+
+.cal-popup-info--gold {
+    color: var(--c-gold);
+}
+
+.cal-popup-info--red {
+    color: var(--c-red);
+}
+
+.cal-popup-sin-reg {
+    font-size: var(--text-sm);
+    color: var(--text-disabled);
+    font-style: italic;
+}
+
+.cal-popup-btn-accion {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin-top: var(--space-2xs);
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-sm);
+    font-weight: var(--fw-medium);
+    border-radius: var(--radius-full);
+    width: 100%;
+    text-align: left;
+    transition: opacity var(--dur-anim) var(--ease-anim);
+}
+
+.cal-popup-btn-accion--normal,
+.cal-popup-btn-accion--especial {
+    color: var(--text-main);
+}
+
+/* ─── POPUP DE ESTADÍSTICA ───────────────────────────────────────────────────── */
+
+.stat-item {
+    cursor: pointer;
+}
+
+.stat-popup {
+    min-width: 160px;
+    max-width: 240px;
+    gap: var(--space-xs);
+}
+
+.stat-popup-titulo {
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+}
+
+.stat-popup-desc {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    line-height: var(--lh-normal);
+}
+
+.stat-popup-sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-smd) 0;
+}
+
+.stat-popup-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+.stat-popup-metric span {
+    color: var(--text-muted);
+}
+
+.stat-popup-metric strong {
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.stat-popup-metric+.stat-popup-metric {
+    margin-top: var(--space-xs);
+}
+
+/* ─── FILTRO POPUP ───────────────────────────────────────────────────────────── */
+
+.filtro-popup {
+    width: 250px;
+    max-width: calc(100vw - 16px);
+    gap: 0;
+}
+
+.filtro-popup-titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xsm);
+    font-weight: var(--fw-bold);
+    color: var(--text-main);
+    margin-bottom: var(--space-md);
+}
+
+.filtro-popup .form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* ─── SECCIONES COLAPSABLES ──────────────────────────────────────────────────── */
+
+#botones-historico {
+    transition: var(--transition-collapse), padding var(--dur-anim) ease-out, margin var(--dur-anim) ease-out, visibility 0s linear var(--vis-delay);
+    padding-top: 0;
+    margin-bottom: 0;
+}
+
+#botones-historico.expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    padding-top: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+/* ─── ANIMACIONES ────────────────────────────────────────────────────────────── */
+
+.nuevo-registro-animacion {
+    transform-origin: center;
+    z-index: 3;
+    position: relative;
+    animation: mutacionEntrada var(--dur-anim) ease-out;
+}
+
+.animated-card {
+    animation: slideDownFade var(--dur-slow) cubic-bezier(0.25, 0.46, 0.45, 0.94) backwards;
+}
+
+#calendario-grid,
+#lista-registros,
+#vista-calendario-historico,
+#calendario-selector-meses {
+    transition: var(--transition-collapse);
+}
+
+.mutacion-saliente {
+    animation: mutacionSalida var(--dur-anim) ease forwards;
+}
+
+.mutacion-entrante {
+    animation: mutacionEntrada var(--dur-anim) ease forwards;
+}
+
+#lista-registros {
+    overflow: visible;
+}
+
+/* ─── COMPONENTES VARIOS ─────────────────────────────────────────────────────── */
+
+.card-header-clickable {
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    position: relative;
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: transform var(--transition-ui);
+}
+
+.card-header-clickable * {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+}
+
+.chevron {
+    transition: transform var(--transition-ui);
+    position: absolute;
+    right: 0;
+}
+
+.chevron.rotated,
+.chevron-mes.rotated {
+    transform: rotate(180deg);
+}
+
+.chevron-mes {
+    width: 1em;
+    height: 1em;
+    fill: currentColor;
+    stroke: none;
+    stroke-width: 0;
+    flex-shrink: 0;
+    transition: transform var(--transition-ui);
+    order: 1;
+}
+
+.timer-btn.running {
+    color: var(--c-red);
+    border-color: var(--c-red);
+
+}
+
+.timer-btn.running:not(:disabled) {
+    animation: estadoBadgeParpadeo var(--dur-parpadeo) ease-in-out infinite;
+}
+
+.toggle-hint,
+.config-hint-text,
+.version-text {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    text-align: right;
+    display: block;
+    margin-top: var(--space-xs);
+}
+
+.empty-state {
+    text-align: center;
+    padding: 3rem var(--space-lg);
+    color: var(--text-muted);
+}
+
+
+.empty-state__btn-restaurar {
+    width: auto;
+    margin: var(--space-lg) auto 0;
+    font-size: var(--text-sm);
+}
+
+.empty-state--calendario {
+    grid-column: span 3;
+    padding: var(--space-lg);
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-lg);
+    margin-top: var(--space-lg);
+}
+
+#stats-mensaje {
+    color: var(--text-muted);
+}
+
+.stats-periodo-row select,
+.flex-1,
+.registro-info {
+    flex: 1;
+}
+
+/* Sin esto el ancho mínimo de la info es el de su contenido (título + comentario completo, sin recortar): la tarjeta se ensancha y se sale de la lista.
+   Con 0 la info se ajusta al ancho de la tarjeta y el comentario se recorta con puntos suspensivos. */
+.registro-info {
+    min-width: 0;
+}
+
+
+.botones-historico-group {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+/* El texto del buffer ocupa una sola línea: la parte principal ("... faltantes") se recorta con puntos suspensivos si hace falta,
+   y " esta semana" se muestra solo si entra a continuación (si no entra pasa a una segunda línea que queda recortada) */
+#stats-buffer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    font-size: var(--text-base);
+    line-height: var(--lh-normal);
+    min-height: 1.2rem;
+    max-height: calc(1em * var(--lh-normal));
+    overflow: hidden;
+}
+
+#stats-buffer .buffer-semanal-texto:not(.buffer-semanal-sufijo) {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#stats-buffer .buffer-semanal-sufijo {
+    margin-left: 0.3em;
+    white-space: nowrap;
+}
+
+.card-registrar-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
+}
+
+.card-registrar-header * {
+    touch-action: pan-y;
+    -webkit-touch-callout: none;
+}
+
+#btn-timer-main {
+    padding: var(--space-sm);
+    position: absolute;
+    left: 0;
+    touch-action: manipulation;
+    transition: opacity var(--transition-ui), visibility var(--transition-ui);
+}
+
+#btn-timer-main * {
+    touch-action: manipulation;
+}
+
+#btn-timer-main:disabled {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+#icon-indicator-form {
+    position: absolute;
+    right: 0;
+    cursor: pointer;
+}
+
+.btn-toggle-periodo {
+    width: 100px;
+    height: var(--input-height);
+    padding: var(--space-xs) 0;
+    font-size: var(--text-sm);
+    gap: var(--space-xs);
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.btn-toggle-periodo .icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.botones-historico-inner {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    padding: 0 var(--space-sm);
+    margin-top: var(--space-sm);
+}
+
+.buffer-semanal-punto {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: var(--space-xsm);
+}
+
+.buffer-semanal-punto.positivo {
+    background-color: var(--c-green);
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.buffer-semanal-punto.negativo {
+    background-color: var(--c-red);
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+.push-permiso-estado {
+    display: flex;
+    align-items: center;
+    font-size: var(--text-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.buffer-semanal-punto.neutral {
+    background-color: var(--c-orange);
+    border-radius: 50%;
+}
+
+.buffer-semanal-texto {
+    font-weight: var(--fw-medium);
+}
+
+.buffer-semanal-texto.positivo {
+    color: var(--c-green);
+}
+
+.buffer-semanal-texto.negativo {
+    color: var(--c-red);
+}
+
+.hint-buffer-color {
+    color: var(--text-main);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.hint-buffer-color::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: currentColor;
+    flex-shrink: 0;
+}
+
+.hint-buffer-color--green::before {
+    clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+}
+
+.hint-buffer-color--red::before {
+    clip-path: polygon(50% 100%, 0% 0%, 100% 0%);
+}
+
+.hint-buffer-color--green {
+    color: var(--c-green);
+}
+
+.hint-buffer-color--red {
+    color: var(--c-red);
+}
+
+.break-counter-label {
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    color: var(--c-red);
+    margin-left: var(--space-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2em;
+}
+
+.break-counter-label .icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+/* Los estilos con diseño propio (línea de tiempo, anillo y lista de filas) ya muestran el tiempo fuera en su propio dato:
+   el badge del título (el consolidado, no el de "Tiempo fuera" en curso, que va dentro de .tf-badge) sobra */
+:root:is([data-estilo-tarjeta="linea"], [data-estilo-tarjeta="anillo"], [data-estilo-tarjeta="filas"]) #stats-titulo > .break-counter-label {
+    display: none;
+}
+
+.tf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    background: var(--c-red);
+    color: var(--c-white);
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    padding: var(--space-2xs) var(--space-smd);
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+    animation: estadoBadgeParpadeo var(--dur-parpadeo) ease-in-out infinite;
+}
+
+.tf-badge .icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+}
+
+.tf-badge .break-counter-label {
+    color: inherit;
+    margin-left: 0.2em;
+}
+
+.estado-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    font-size: var(--text-base);
+    font-weight: var(--fw-medium);
+    line-height: 1;
+    padding: var(--space-2xs) var(--space-smd);
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+}
+
+.estado-badge--en-curso {
+    background: var(--c-blue);
+    color: var(--c-white);
+    animation: estadoBadgeParpadeo var(--dur-parpadeo) ease-in-out infinite;
+}
+
+/* Objetivo diario cumplido con la jornada todavía abierta: el mismo parpadeo, más rápido */
+.estado-badge--en-curso.estado-badge--cumplido {
+    animation-duration: var(--dur-parpadeo-rapido);
+}
+
+.estado-badge--finalizado {
+    color: var(--c-white);
+}
+
+.estado-badge--finalizado.estado-badge--green {
+    background: var(--c-green);
+}
+
+.estado-badge--finalizado.estado-badge--red {
+    background: var(--c-red);
+}
+
+.estado-badge--finalizado.estado-badge--gold {
+    background: var(--c-gold);
+}
+
+
+/* ─── POPUP DE LA SEMANA (long press / click secundario sobre el calendario) ─── */
+
+
+.cal-popup.cal-popup-semana {
+    min-width: 250px;
+    max-width: min(340px, calc(100vw - 16px));
+}
+
+.cal-semana-total {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.cal-popup-semana .registro-total {
+    padding: var(--space-2xs) var(--space-smd);
+}
+
+.cal-semana-lista {
+    /* punto | día | horario | total | diferencia: una sola grilla para alinear todas las filas */
+    display: grid;
+    grid-template-columns: auto auto 1fr auto auto;
+    align-items: center;
+    gap: var(--space-sm) var(--space-md, 0.75rem);
+    font-size: var(--text-sm);
+}
+
+.cal-semana-lista > * {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cal-semana-punto {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.cal-semana-punto--neutro {
+    background: var(--text-muted);
+}
+
+.cal-semana-dia,
+.cal-semana-hs {
+    color: var(--text-main);
+}
+
+.cal-semana-dia {
+    font-weight: var(--fw-semibold);
+    min-width: 3.4em;
+}
+
+.cal-semana-hs {
+    text-align: right;
+}
+
+.cal-semana-diff {
+    text-align: right;
+    font-weight: var(--fw-semibold);
+}
+
+
+/* ─── HOVER SOBRE LA BARRA (solo escritorio: ver hover-barra.js) ─────────────────
+   Los hitos y remates ignoran el puntero (pointer-events: none); con un puntero que puede hacer hover pasan a recibirlo.
+   En la vista semanal la zona sensible se amplía unos px sobre y bajo la barra (por detrás del contenido: z-index -1). */
+@media (hover: hover) and (pointer: fine) {
+    .progress-pista.con-linea .linea-etiqueta:not(.linea-etiqueta--oculta),
+    .progress-pista.con-linea .linea-tick,
+    .progress-pista.con-linea #progress-punto-inicio,
+    .progress-pista.con-linea #progress-punto.visible {
+        pointer-events: auto;
+    }
+
+    .progress-pista.linea-semanal::after {
+        content: '';
+        position: absolute;
+        inset: -14px 0;
+        z-index: -1;
+    }
+}
+
+/* Vista semanal: el tramo del día enfocado queda a plena opacidad y el resto de la barra se atenúa (la máscara usa el rango que escribe foco-hitos.js) */
+.progress-fill.foco-tramo {
+    -webkit-mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3) var(--foco-desde), #000 var(--foco-desde) var(--foco-hasta), rgba(0, 0, 0, 0.3) var(--foco-hasta));
+    mask-image: linear-gradient(90deg, rgba(0, 0, 0, 0.3) var(--foco-desde), #000 var(--foco-desde) var(--foco-hasta), rgba(0, 0, 0, 0.3) var(--foco-hasta));
+}
+
+/* ─── ESTILOS DE LA TARJETA DE ESTADO (anillo, línea de tiempo y lista de filas) ─────────────────────
+   Los dibuja ui/tarjeta-estilos.js dentro de #stats-estilo (vista diaria). Con .estilo-propio el número, la barra y los textos de abajo se ocultan
+   (siguen existiendo: el render los actualiza igual) y la tarjeta crece a su contenido en vez de tener el alto fijo de la barra.
+   Dos atributos de datos mandan los colores: data-tono (neutro | apagado | green | red | gold) pinta textos y mosaicos, y data-color (el color del
+   estado: blue, green, red, gold, orange, purple) pinta el anillo, la regla y los avisos de los días especiales. */
+.stats-estilo {
+    container-type: inline-size;   /* los diseños miden el ancho de la tarjeta (no el de la ventana) para decidir su disposición */
+    --tono: var(--text-main);
+    --est-color: var(--c-blue);
+}
+
+/* Sin diseño propio el contenedor queda vacío (no ocupa nada); nada depende de un ancestro para mostrarse porque el fantasma de las animaciones
+   (copia de #stats-card-content o de #stats-estilo colgada del body) no lo tiene */
+.stats-estilo:empty {
+    display: none;
+}
+
+/* El alto sigue al contenido (el día, la semana y cada estado miden distinto) y los cambios se animan desde tarjeta-fichaje.js (_animarAlturaCard) */
+.stats-card.estilo-propio {
+    height: auto;
+}
+
+.stats-card-content.estilo-propio :is(#stats-semana, .progress-pista, #stats-mensaje, #stats-buffer, #toggle-hint) {
+    display: none !important;
+}
+
+.stats-estilo [data-tono="neutro"] { --tono: var(--text-main); }
+.stats-estilo [data-tono="apagado"] { --tono: var(--text-muted); }
+.stats-estilo [data-tono="green"] { --tono: var(--c-green); }
+.stats-estilo [data-tono="red"] { --tono: var(--c-red); }
+.stats-estilo [data-tono="gold"] { --tono: var(--c-gold); }
+
+.stats-estilo [data-color="blue"] { --est-color: var(--c-blue); }
+.stats-estilo [data-color="green"] { --est-color: var(--c-green); }
+.stats-estilo [data-color="red"] { --est-color: var(--c-red); }
+.stats-estilo [data-color="gold"] { --est-color: var(--c-gold); }
+.stats-estilo [data-color="orange"] { --est-color: var(--c-orange); }
+.stats-estilo [data-color="purple"] { --est-color: var(--c-purple); }
+.stats-estilo [data-color="neutro"] { --est-color: var(--text-muted); }
+
+/* Duración con la unidad chica: "7 h 45 min" */
+.est-duracion {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25em;
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+    line-height: var(--lh-tight);
+    color: var(--text-main);
+}
+
+.est-unidad {
+    font-size: var(--text-base);
+    font-weight: var(--fw-normal);
+    color: var(--text-muted);
+}
+
+.est-duracion--media .est-num { font-size: 2rem; }
+.est-duracion--grande .est-num { font-size: 2.6rem; }
+.est-duracion--enorme .est-num { font-size: 3.4rem; }
+.est-duracion--enorme .est-unidad { font-size: var(--text-lg); }
+
+.est-emoji {
+    font-size: 1.8rem;
+    line-height: 1;
+}
+
+.est-emoji--grande { font-size: 2.6rem; }
+
+.est-dato {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.est-dato-etiqueta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+.est-dato-valor {
+    font-size: var(--text-base);
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+    color: var(--tono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── B · Anillo ── */
+.est-anillo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.est-anillo-principal {
+    display: flex;
+    align-items: center;
+    gap: var(--space-lg);
+}
+
+.est-anillo-aro {
+    position: relative;
+    flex: none;
+    width: 100%;   /* el aro ocupa todo el ancho de su columna; el margen mínimo lo da el radio del trazo dentro del viewBox */
+    aspect-ratio: 1;
+}
+
+.est-anillo-svg {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.est-anillo-pista,
+.est-anillo-arco,
+.est-anillo-tramo {
+    fill: none;
+    stroke-width: 9;
+}
+
+.est-anillo-pista {
+    stroke: color-mix(in srgb, var(--text-muted) 22%, transparent);
+    transition: stroke-dasharray var(--transition-ui);
+}
+
+/* Esperando registro: el aro es una corona de marcas en vez de un trazo continuo */
+.est-anillo-aro.espera .est-anillo-pista {
+    stroke-dasharray: 0.9 2.6;
+}
+
+/* El arco no se ve: es la máscara (blanca) que deja pasar los tramos de color hasta donde llega el avance. Su transición es la del conteo */
+.est-anillo-arco {
+    stroke: #fff;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: var(--ring-offset, 100);
+    transition: stroke-dashoffset var(--dur-conteo) var(--ease-conteo), opacity var(--transition-ui);
+}
+
+.est-anillo-arco.vacio { opacity: 0; }
+
+/* Cada tramo toma su color de data-color (--est-color); el punto del comienzo repite el del primer tramo para redondear el arranque del aro */
+.est-anillo-tramo {
+    stroke: var(--est-color);
+    transition: stroke var(--dur-anim) ease, stroke-dasharray var(--transition-ui), stroke-dashoffset var(--transition-ui);
+}
+
+.est-anillo-inicio {
+    fill: var(--est-color);
+    transform-origin: 50px 50px;
+    transition: fill var(--dur-anim) ease, opacity var(--transition-ui), transform var(--transition-ui);
+}
+
+.est-anillo-inicio.vacio { opacity: 0; }
+
+/* Hitos: marcas en los cortes entre tramos. El giro parte del centro del aro (el origen es en unidades del viewBox) y se anima como el resto */
+.est-anillo-hito {
+    stroke: var(--text-main);
+    stroke-width: 1.6;
+    opacity: 0.9;
+    transform-origin: 50px 50px;
+    transition: transform var(--transition-ui), opacity var(--transition-ui) var(--retraso-hito, 0ms);
+}
+
+.est-anillo-hito.pendiente { opacity: 0.35; }
+
+/* Brillo del registro en curso (como el de la barra): una franja que recorre el arco lleno y descansa el resto del ciclo. El contenedor solo deja ver la corona del trazo
+   dentro del sector ya recorrido (el avance sale de --ring-offset); el ::after gira por transform, sin repintar. */
+.est-anillo-brillo {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    mask-image:
+        radial-gradient(closest-side, transparent 79%, #000 79.5%, #000 96.5%, transparent 97%),
+        conic-gradient(#000 calc((100 - var(--ring-offset, 100)) * 3.6deg), transparent 0);
+    mask-composite: intersect;
+    -webkit-mask-composite: source-in;
+}
+
+.est-anillo-aro:not(.en-curso) .est-anillo-brillo {
+    display: none;
+}
+
+.est-anillo-brillo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: conic-gradient(transparent 0deg, rgba(255, 255, 255, 0.35) 20deg, transparent 40deg, transparent 360deg);
+    animation: brillo-anillo var(--dur-ambiente) ease-in-out infinite;
+    will-change: transform;
+}
+
+.est-anillo-centro {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.1;
+}
+
+.est-anillo-valor {
+    font-size: clamp(1.9rem, 12cqw, 3rem);   /* crece con la tarjeta (cqw: ancho de #stats-estilo) para acompañar al aro */
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+}
+
+.est-anillo[data-tipo="espera"] .est-anillo-valor,
+.est-anillo[data-tipo="especial"] .est-anillo-valor {
+    font-size: clamp(3rem, 20cqw, 4.5rem);
+}
+
+.est-anillo-unidad {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.est-anillo-datos {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    flex: 1;
+    min-width: 0;
+    align-self: start;   /* los mosaicos arrancan arriba, no centrados en el alto del aro */
+}
+
+.est-anillo-mensaje {
+    font-size: var(--text-lg);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+}
+
+.est-anillo-sub {
+    font-size: var(--text-sm);
+    color: var(--tono);
+}
+
+.est-anillo[data-tipo="espera"] .est-anillo-mensaje { color: var(--text-muted); }
+
+.est-anillo-pie {
+    display: flex;
+    gap: var(--space-sm);
+}
+
+/* El aro ocupa el 60 % y los mosaicos (Faltan / Banco de horas) el 40 % restante, en el móvil y en la PC. El pie no sigue ese reparto: sus datos (los que haya) se reparten el ancho por igual, cada uno centrado. */
+.est-anillo-principal {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--space-sm);
+}
+
+.est-anillo-pie > .est-dato {
+    flex: 1 1 0;
+    align-items: center;
+    text-align: center;
+}
+
+/* Variantes del anillo (html[data-disposicion-anillo], ver core/estilo-tarjeta.js): "derecha" intercambia las columnas (los mosaicos al 40 % a la izquierda, el aro al 60 %
+   a la derecha) y "arriba-*" sube la fila de Entrada / Salida / Con banco (y la de los días en la semana) por encima de todo. */
+html:is([data-disposicion-anillo="derecha"], [data-disposicion-anillo="arriba-derecha"]) .est-anillo-principal {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+html:is([data-disposicion-anillo="derecha"], [data-disposicion-anillo="arriba-derecha"]) .est-anillo-aro {
+    order: 2;
+}
+
+html:is([data-disposicion-anillo="arriba-izquierda"], [data-disposicion-anillo="arriba-derecha"]) :is(.est-anillo-pie, .est-dias) {
+    order: -1;
+}
+
+/* Día especial con la tarjeta angosta (móvil): el nombre del día ("Compensatorio", "Vacaciones"...) no entra en el 40 % que queda junto al aro y se corta, así que va debajo del aro,
+   centrado. Se mide el ancho de la tarjeta (contenedor #stats-estilo), como el resto de las disposiciones. Con "html" delante gana a las variantes "derecha" de más arriba. */
+@container (max-width: 27.99rem) {
+    html .est-anillo[data-tipo="especial"] .est-anillo-principal {
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: center;
+    }
+
+    html .est-anillo[data-tipo="especial"] .est-anillo-aro {
+        order: 0;
+        width: min(100%, 11rem);
+    }
+
+    html .est-anillo[data-tipo="especial"] .est-anillo-datos {
+        align-self: center;
+        text-align: center;
+    }
+}
+
+/* ── C · Línea de tiempo vertical ── */
+.est-linea,
+.est-linea-cuerpo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+/* Tarjeta ancha (PC): según la disposición elegida (html[data-disposicion-linea]) el tiempo trabajado va a la izquierda o a la derecha de la línea
+   en vez de arriba; los mosaicos (Faltan, Banco de horas...) y la nota quedan siempre abajo, a todo el ancho. Se mide el ancho de la tarjeta
+   (contenedor #stats-estilo), no el de la ventana: en un móvil, o con la tarjeta angosta, todo queda en una columna. */
+/* Tarjeta ancha (PC) con los mosaicos a un costado: "Faltan" y "Banco de horas" (y "Tiempo fuera") quedan apilados en una columna a la izquierda o a la derecha, y el tiempo
+   trabajado y la línea ocupan el resto. Solo con registro o en la semana (sin registro los textos pendientes necesitan el ancho). */
+@container (min-width: 28rem) {
+    html:is([data-disposicion-linea="mosaicos-izquierda"], [data-disposicion-linea="mosaicos-derecha"]) .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(9rem, 12rem);
+        grid-template-areas: "cabecera pie" "linea pie";
+        align-items: start;
+        align-content: start;   /* con el alto reservado de más, las filas no se estiran: la línea queda justo debajo de "Llevás trabajado" */
+        gap: var(--space-md) var(--space-sm);
+    }
+
+    /* Con los mosaicos a la izquierda, el tiempo y la línea forman un bloque centrado en el espacio que queda a su derecha: dos espacios iguales (1fr) a los lados
+       de una columna del ancho justo del contenido, así los textos de la cabecera y de los días siguen arrancando en la misma vertical */
+    html[data-disposicion-linea="mosaicos-izquierda"] .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) {
+        grid-template-columns: minmax(9rem, 12rem) minmax(var(--space-sm), 1fr) minmax(0, max-content) minmax(var(--space-sm), 1fr);
+        grid-template-areas: "pie . cabecera ." "pie . linea .";
+        column-gap: 0;
+        align-content: start;
+    }
+
+    html:is([data-disposicion-linea="mosaicos-izquierda"], [data-disposicion-linea="mosaicos-derecha"]) .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) .est-linea-cabecera { grid-area: cabecera; }
+    html:is([data-disposicion-linea="mosaicos-izquierda"], [data-disposicion-linea="mosaicos-derecha"]) .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) .est-linea-cuerpo { grid-area: linea; }
+
+    html:is([data-disposicion-linea="mosaicos-izquierda"], [data-disposicion-linea="mosaicos-derecha"]) .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) .est-mosaicos {
+        grid-area: pie;
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        align-self: start;
+        margin-top: 0;   /* arriba de su columna, no al pie */
+    }
+}
+
+@container (min-width: 28rem) {
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) .est-linea {
+        display: grid;
+        /* dos mitades iguales (50/50), con el mismo espacio entre ellas que los mosaicos de abajo, los dos pegados arriba */
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas: "cabecera linea" "pie pie";
+        grid-template-rows: auto 1fr;   /* el alto sobrante es de la fila de los mosaicos, que quedan al pie de la tarjeta */
+        align-items: start;
+        gap: var(--space-md) var(--space-sm);
+    }
+
+    html[data-disposicion-linea="derecha"] .est-linea {
+        grid-template-areas: "linea cabecera" "pie pie";
+    }
+
+    /* el mismo margen interno que el texto de los mosaicos, para que el texto de arriba y el de abajo arranquen en la misma vertical del borde de la tarjeta */
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) .est-linea:not(.sin-cuerpo) :is(.est-linea-cabecera, .est-linea-cuerpo) {
+        padding-inline: var(--space-sm);
+    }
+
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) .est-linea.sin-cuerpo {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: "cabecera" "pie";
+    }
+
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) .est-linea-cabecera { grid-area: cabecera; }
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) .est-linea-cuerpo { grid-area: linea; }
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) :is(.est-mosaicos, .est-linea-nota) { grid-area: pie; }
+    html:is([data-disposicion-linea="izquierda"], [data-disposicion-linea="derecha"]) :is(.est-mosaicos, .est-linea-nota) { align-self: end; }
+
+    html[data-disposicion-linea="derecha"] .est-linea:not(.sin-cuerpo) .est-linea-cabecera {
+        align-items: flex-end;
+        text-align: right;
+    }
+}
+
+/* Tarjeta angosta (móvil) con los mosaicos a la derecha: "Faltan" y "Banco de horas" (y "Tiempo fuera") quedan apilados en una columna al costado del tiempo y la línea,
+   que ocupan el resto del ancho. Solo con registro o en la semana (sin registro los textos pendientes necesitan el ancho). Con la tarjeta ancha manda la otra disposición (arriba). */
+@container (max-width: 27.99rem) {
+    html[data-mosaicos-linea="derecha"] .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(7rem, 8.5rem);
+        grid-template-areas: "cabecera pie" "linea pie";
+        align-items: start;
+        align-content: start;   /* con el alto reservado de más, las filas no se estiran: la línea queda justo debajo de "Llevás trabajado" */
+        gap: var(--space-md) var(--space-sm);
+    }
+
+    html[data-mosaicos-linea="derecha"] .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) .est-linea-cabecera { grid-area: cabecera; }
+    html[data-mosaicos-linea="derecha"] .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) .est-linea-cuerpo { grid-area: linea; }
+
+    html[data-mosaicos-linea="derecha"] .est-linea:is([data-tipo="registro"], [data-tipo="semana"]) .est-mosaicos {
+        grid-area: pie;
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        align-self: start;   /* arrancan a la altura de "Llevás trabajado", arriba de la columna */
+        margin-top: 0;
+    }
+}
+
+.est-linea-cabecera {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.est-linea-etiqueta {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.est-linea-titulo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    font-size: 2rem;
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+}
+
+.est-linea[data-tipo="espera"] .est-linea-titulo {
+    font-size: 1.5rem;
+    color: var(--text-muted);
+}
+
+.est-linea[data-tipo="especial"] .est-linea-titulo .est-emoji {
+    display: grid;
+    place-items: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--est-color) 22%, transparent);
+}
+
+.est-nodos {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+}
+
+.est-nodo {
+    --nodo: var(--text-muted);
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-height: var(--alto-nodo, 30px);   /* la capa del brillo mide los tramos con este alto: los textos de las listas en curso no se parten */
+    font-size: var(--text-sm);
+}
+
+.est-nodo-punto {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    width: 12px;
+    height: 12px;
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid var(--nodo);
+    background: var(--bg-card);
+    transition: background var(--transition-ui);
+}
+
+/* El conector llega desde el nodo anterior: azul hasta donde ya se llegó, gris lo que falta */
+.est-nodo::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: -50%;
+    width: 2px;
+    height: 100%;
+    background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+}
+
+.est-nodo.primero::before { display: none; }
+
+.est-nodo.pasado::before,
+.est-nodo--ahora::before { background: var(--c-blue); }
+
+/* Con la jornada abierta cada conector lleva el color de la zona donde termina (data-tramo, ver pintarNodos): el mismo reparto del anillo y de la barra con hitos */
+.est-nodo:is(.pasado, .est-nodo--ahora)[data-tramo="green"]::before { background: var(--c-green); }
+.est-nodo:is(.pasado, .est-nodo--ahora)[data-tramo="gold"]::before { background: var(--c-gold); }
+.est-nodo:is(.pasado, .est-nodo--ahora)[data-tramo="red"]::before { background: var(--c-red); }
+
+/* Entrada de la línea (la carga de la página o el paso automático de semana a día; la clase `entrando` la pone animarEntradaLinea): cada conector se llena de arriba abajo
+   en su turno (también los apagados, los que todavía no se alcanzaron) y los textos de cada hito suben desde abajo cuando la línea llega a él. Mismo gesto que la barra con hitos. */
+@keyframes linea-conector-llena {
+    from { scale: 1 0; }
+}
+
+.est-linea.entrando .est-nodo::before {
+    transform-origin: 50% 0;
+    animation: linea-conector-llena var(--con-dur, 1ms) linear var(--con-ret, 0ms) backwards;
+}
+
+.est-linea.entrando .est-nodo :is(.est-nodo-etiqueta, .est-nodo-hora) {
+    animation: linea-etiqueta-aparece var(--dur-slow) var(--ease-conteo) var(--ret, 0ms) backwards;
+}
+
+.est-linea.entrando .est-nodo .est-nodo-punto,
+.est-linea.entrando .est-nodo:is(.est-nodo--ahora, .est-nodo--dia.hoy)::after {
+    animation: linea-aparece var(--dur-slow) ease var(--ret, 0ms) backwards;
+}
+
+/* el punto de "ahora" (o de hoy en la semana) ya late (animación en bucle): se le suma la aparición */
+.est-linea.entrando .est-nodos.en-curso .est-nodo:is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto {
+    animation: linea-aparece var(--dur-slow) ease var(--ret, 0ms) backwards, punto-linea-latido var(--dur-ambiente) ease-in-out infinite;
+}
+
+.est-linea.entrando .est-mosaico:not(.mosaico-flash) {
+    animation: linea-etiqueta-aparece var(--dur-slow) var(--ease-conteo) var(--ret-mosaicos, 0ms) backwards;
+}
+
+/* Brillo de la línea de progreso (de la entrada hasta ahora, o del primer día hasta hoy), el mismo de la barra de "Barra con hitos": una sola franja de luz que recorre de
+   arriba abajo TODO el tramo azul (no uno por cada tramo entre nodos) en el primer 20 % del ciclo (--dur-ambiente) y descansa el resto. Es una capa que cubre desde el
+   centro del primer nodo hasta el nodo de "ahora" (--segmentos tramos de --alto-nodo, que fija tarjeta-estilos.js). Solo con la jornada (o la semana) abierta. */
+@keyframes brillo-linea {
+    0% { background-position: 0 -100%, 0 0; }
+    20%, 100% { background-position: 0 200%, 0 0; }
+}
+
+.est-nodos {
+    position: relative;
+    --alto-nodo: 30px;
+}
+
+.est-nodos.en-curso::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: calc(var(--alto-nodo) / 2);
+    width: 2px;
+    height: calc(var(--segmentos, 0) * var(--alto-nodo));
+    background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.55), transparent) 0 -100% / 100% 50% no-repeat;
+    animation: brillo-linea var(--dur-ambiente) ease-in-out infinite;
+    pointer-events: none;
+}
+
+/* Latido y onda del punto de "ahora" (o de hoy en la semana) cuando el brillo lo alcanza, como el remate de la barra con hitos. El brillo recorre el tramo en el primer 20 %
+   del ciclo y su centro llega al punto a ~17 %: el latido sube con él y vuelve hasta ~25 %, y la onda sale un instante después. */
+@keyframes punto-linea-latido {
+    0%, 15% { scale: 1; }
+    17.5% { scale: 1.15; }
+    25%, 100% { scale: 1; }
+}
+
+@keyframes punto-linea-onda {
+    0%, 16% { scale: 1; opacity: 0; }
+    17% { scale: 1; opacity: 0.55; }
+    29%, 100% { scale: 2.2; opacity: 0; }
+}
+
+.est-nodos.en-curso :is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto {
+    animation: punto-linea-latido var(--dur-ambiente) ease-in-out infinite;
+}
+
+.est-nodos.en-curso :is(.est-nodo--ahora, .est-nodo--dia.hoy) .est-nodo-punto::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    box-sizing: border-box;
+    border: 2px solid var(--est-color);
+    border-radius: 50%;
+    opacity: 0;
+    animation: punto-linea-onda var(--dur-ambiente) ease-out infinite;
+}
+
+.est-nodo-etiqueta { color: var(--text-muted); }
+
+.est-nodo-hora {
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-main);
+}
+
+.est-nodo--entrada { --nodo: var(--c-blue); }
+.est-nodo--entrada .est-nodo-punto { background: var(--nodo); }
+
+.est-nodo--ahora { --nodo: var(--est-color); }
+.est-nodo--ahora .est-nodo-etiqueta { color: var(--est-color); font-weight: var(--fw-semibold); }
+
+/* El indicador de hoy ("Ahora" en la vista diaria, el día de hoy en la semana) va en un badge con el color del estado, como los mosaicos: abarca el remate y el texto.
+   El fondo es un pseudo-elemento que sobresale a la izquierda, así el remate, el conector y la alineación del resto de los nodos no se mueven, y la casilla mide lo mismo. */
+.est-nodo:is(.est-nodo--ahora, .est-nodo--dia.hoy) {
+    align-self: flex-start;   /* el badge abarca solo su contenido, no toda la fila */
+    padding-right: var(--space-sm);
+    isolation: isolate;
+}
+
+.est-nodo:is(.est-nodo--ahora, .est-nodo--dia.hoy)::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 1px 0 1px calc(-1 * var(--space-sm));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--est-color) 12%, transparent);
+}
+
+/* El punto se rellena cuando "ahora" llega a su hora (.pasado, que pone pintarNodos): hasta entonces queda hueco. La entrada siempre está pasada. */
+.est-nodo--banco { --nodo: var(--tono); }
+.est-nodo--banco.pasado .est-nodo-punto { background: var(--tono); }
+.est-nodo--salida.pasado .est-nodo-punto { background: var(--nodo); }
+.est-nodo.cerrado { --nodo: var(--est-color); }
+/* con el registro en curso la salida estimada ya alcanzada se rellena con el color del conector que llega a ella (data-tramo; todavía no es el cierre) */
+.est-nodo--salida.pasado:not(.cerrado)[data-tramo="blue"] { --nodo: var(--c-blue); }
+.est-nodo--salida.pasado:not(.cerrado)[data-tramo="green"] { --nodo: var(--c-green); }
+.est-nodo--salida.pasado:not(.cerrado)[data-tramo="gold"] { --nodo: var(--c-gold); }
+.est-nodo--salida.pasado:not(.cerrado)[data-tramo="red"] { --nodo: var(--c-red); }
+.est-nodo--banco :is(.est-nodo-etiqueta, .est-nodo-hora) { color: var(--tono); }
+
+.est-nodo.pendiente .est-nodo-punto { border-style: dashed; background: transparent; }
+.est-nodo.pendiente .est-nodo-etiqueta { color: var(--text-muted); }
+
+.est-mosaicos {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--space-sm);
+}
+
+/* Los mosaicos quedan pegados al borde inferior de la tarjeta: la línea ocupa todo el alto reservado (ver .est-capa > .est-linea) y el sobrante queda
+   encima de ellos (margen automático en columna; en la cuadrícula de la tarjeta ancha, la fila 1fr y align-self: end) */
+.est-linea .est-mosaicos {
+    margin-top: auto;
+}
+
+/* Esperando registro: el único mosaico (el banco de horas de la semana) también se ajusta a su texto */
+.est-linea[data-tipo="espera"] .est-mosaicos {
+    width: fit-content;
+    max-width: 100%;
+    align-self: flex-start;
+    justify-self: start;
+}
+
+.est-mosaico {
+    padding: var(--space-sm);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--tono) 12%, transparent);
+}
+
+.est-dato-detalle {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    line-height: 1.2;
+}
+
+.est-dato-detalle:empty {
+    display: none;
+}
+
+.est-mosaico .est-dato-valor {
+    font-size: var(--text-sm);
+    overflow: visible;   /* con tres mosaicos en un móvil angosto el valor tiene que entrar entero */
+}
+
+.est-linea-nota {
+    width: fit-content;   /* el sombreado abarca solo el texto, no toda la fila */
+    max-width: 100%;
+    align-self: flex-start;
+    justify-self: start;
+    margin-top: auto;   /* pegada al borde inferior de la tarjeta, como los mosaicos (en la cuadrícula de la tarjeta ancha, align-self: end) */
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-md);
+    font-weight: var(--fw-medium);
+    color: var(--est-color);
+    background: color-mix(in srgb, var(--est-color) 18%, transparent);
+}
+
+/* ── E · Lista de filas ── */
+.est-filas {
+    display: flex;
+    flex-direction: column;
+}
+
+.est-fila {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-sm) 0;
+}
+
+/* Raya entre filas visibles (las ocultas siguen en el DOM, por eso no sirve :first-child / :last-child) */
+.est-fila:not(.hidden) ~ .est-fila:not(.hidden) {
+    border-top: 1px solid var(--border);
+}
+
+.est-fila--cabecera {
+    align-items: center;
+    padding-top: 0;
+}
+
+.est-fila-etiqueta {
+    flex: none;
+    font-size: var(--text-base);
+    color: var(--text-main);
+}
+
+.est-fila-etiqueta--chica { font-size: var(--text-sm); }
+
+.est-fila-valor {
+    min-width: 0;
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+    color: var(--tono);
+    text-align: right;
+}
+
+.est-fila[data-tono="green"] .est-fila-etiqueta,
+.est-fila[data-tono="red"] .est-fila-etiqueta,
+.est-fila[data-tono="gold"] .est-fila-etiqueta { color: var(--tono); }
+
+.est-fila[data-tono="apagado"] .est-fila-etiqueta { color: var(--text-muted); }
+
+.est-fila-grande {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    min-width: 0;
+}
+
+.est-fila-texto {
+    font-size: 2rem;
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-tight);
+    color: var(--tono);
+}
+
+.est-fila-valor[data-color] { color: var(--est-color); }
+
+.est-filas[data-tipo="espera"] .est-fila-texto {
+    font-size: 1.15rem;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+/* ── Alto reservado (anillo: el del estado más alto; línea de tiempo: el de la vista semanal): capa visible + capas de medida ocultas en la misma celda, la cuadrícula toma el alto de la más alta ── */
+.est-capas {
+    display: grid;
+}
+
+.est-capa {
+    grid-area: 1 / 1;
+    min-width: 0;
+}
+
+/* la línea de tiempo llena el alto de la capa (el reservado por la más alta), así lo que va al final (el banco de horas esperando registro) llega al borde inferior */
+.est-capa > .est-linea {
+    height: 100%;
+}
+
+.est-capa--medida {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* la copia de medida no se ve: sin brillos ni latidos (animaciones infinitas) que gasten en vano */
+.est-capa--medida,
+.est-capa--medida *,
+.est-capa--medida *::before,
+.est-capa--medida *::after {
+    animation: none !important;
+}
+
+/* ── Semana ── */
+.est-dias {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--space-xs);
+}
+
+.est-dia {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--space-xs) 0;
+    border-radius: var(--radius-sm);
+    min-width: 0;
+}
+
+.est-dia.hoy {
+    background: color-mix(in srgb, var(--est-color) 16%, transparent);
+}
+
+.est-dia-sigla {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: capitalize;
+}
+
+.est-dia.hoy .est-dia-sigla {
+    color: var(--text-main);
+    font-weight: var(--fw-semibold);
+}
+
+.est-dia-valor {
+    font-size: var(--text-sm);
+    font-weight: var(--fw-bold);
+    font-variant-numeric: tabular-nums;
+    color: var(--est-color);
+    white-space: nowrap;
+}
+
+.est-dia[data-estado="futuro"] .est-dia-valor,
+.est-dia[data-estado="sin-registro"] .est-dia-valor { color: var(--text-muted); font-weight: var(--fw-normal); }
+
+/* Línea de tiempo: un nodo por día */
+.est-nodo--dia { --nodo: var(--est-color); }
+.est-nodo--dia .est-nodo-etiqueta { min-width: 2.4rem; text-transform: capitalize; }
+.est-nodo--dia.lleno .est-nodo-punto { background: var(--est-color); }
+.est-nodo--dia.hoy .est-nodo-punto { background: var(--bg-card); }
+.est-nodo--dia.hoy .est-nodo-etiqueta { color: var(--est-color); font-weight: var(--fw-semibold); }
+.est-nodo--dia.pendiente { --nodo: var(--text-muted); }
+.est-nodo--dia .est-nodo-hora { color: var(--est-color); }
+.est-nodo--dia.pendiente .est-nodo-hora { color: var(--text-muted); font-weight: var(--fw-normal); }
+.est-nodo--dia[data-color="neutro"] .est-nodo-hora { color: var(--text-muted); font-weight: var(--fw-normal); }
+
+/* Lista de filas: el nombre del día */
+.est-fila-etiqueta--dia { text-transform: capitalize; }
+
