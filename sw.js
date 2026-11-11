@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'horarios-';
-const CACHE_NAME = `${CACHE_PREFIX}v261111.1400-cache`;
+const CACHE_NAME = `${CACHE_PREFIX}v261111.2031-cache`;
 const urlsToCache = [
   './',
   './index.html',
@@ -114,10 +114,13 @@ function avisarAClientes(mensaje) {
     .catch(() => { });
 }
 
-// Instalación: descarga todos los archivos en paralelo (sin usar la caché HTTP) e informa el avance.
-// Es todo o nada: si falla uno, la instalación falla y se conserva la versión anterior.
-self.addEventListener('install', event => {
-  event.waitUntil((async () => {
+// Descarga todos los archivos de esta versión en paralelo (sin usar la caché HTTP), informa el avance y, al terminar, toma el control.
+// Es todo o nada: si falla uno, este worker queda en espera sin activarse y se conserva la versión anterior.
+// Una sola descarga a la vez: los pedidos repetidos se suman a la que está en curso; si falla, se puede volver a pedir.
+let descargaEnCurso = null;
+function descargarVersion() {
+  if (descargaEnCurso) return descargaEnCurso;
+  descargaEnCurso = (async () => {
     const cache = await caches.open(CACHE_NAME);
     const total = urlsToCache.length;
     let descargados = 0;
@@ -138,12 +141,23 @@ self.addEventListener('install', event => {
         informar();
       }));
     } catch (err) {
-      console.error('CRÍTICO: Falló la carga de archivos en el install:', err);
+      console.error('CRÍTICO: Falló la descarga de archivos de la versión nueva:', err);
       await avisarAClientes({ tipo: 'sw-error', version: CACHE_NAME });
       throw err;
     }
     await self.skipWaiting();
-  })());
+  })();
+  descargaEnCurso.catch(() => { descargaEnCurso = null; });
+  return descargaEnCurso;
+}
+
+// Instalación: termina enseguida y la descarga corre DESPUÉS del evento, no dentro de él.
+// Chromium (Chrome, Brave, Edge) limita a 3 los pedidos simultáneos de un worker mientras está instalándose: con ~100 archivos
+// la descarga dentro del install tardaba varios segundos en el celular; fuera del evento van todos en paralelo.
+// El worker arranca la descarga por su cuenta (sirve también para páginas abiertas con código anterior, que no la piden)
+// y la página la pide además con 'sw-descargar' (ver el manejador de 'message'), lo que la mantiene viva y permite reintentar.
+self.addEventListener('install', () => {
+  setTimeout(() => { descargarVersion().catch(() => { }); }, 0);
 });
 
 // Activación — limpieza de cachés viejas
@@ -228,10 +242,18 @@ self.addEventListener('push', event => {
   event.waitUntil(mostrarRecordatorio(data));
 });
 
-// Notificación de prueba pedida desde Ajustes → Notificaciones. Se muestra con una demora
-// (máx. 60 s) para poder cerrar la app antes y comprobar qué abre el click.
+// Mensajes de la página:
+// - 'sw-descargar': la página vio este worker ya instalado (en espera) y pide la descarga de la versión; si quedó a medias
+//   o falló en una apertura anterior, se reintenta acá.
+// - 'notificacion-prueba': pedida desde Ajustes → Notificaciones. Se muestra con una demora (máx. 60 s) para poder cerrar
+//   la app antes y comprobar qué abre el click.
 self.addEventListener('message', event => {
-  if (!event.data || event.data.tipo !== 'notificacion-prueba') return;
+  if (!event.data) return;
+  if (event.data.tipo === 'sw-descargar') {
+    event.waitUntil(descargarVersion().catch(() => { }));
+    return;
+  }
+  if (event.data.tipo !== 'notificacion-prueba') return;
   const demora = Math.min(Math.max(Number(event.data.demoraMs) || 0, 0), 60000);
   event.waitUntil(
     new Promise(resolve => setTimeout(resolve, demora))

@@ -95,21 +95,38 @@ function registrarServiceWorker() {
         else if (datos?.tipo === 'sw-error') AvisoActualizacion.error();
     });
 
+    // Sigue a un worker nuevo hasta que queda activo. La descarga de archivos no ocurre dentro de su `install` (Chromium la limita
+    // a 3 pedidos simultáneos ahí, ver sw.js) sino después: al quedar instalado (en espera) se le pide con 'sw-descargar',
+    // y recién cuando termina se activa. Por eso "lista" es al activarse, no al instalarse.
+    /** @param {ServiceWorkerRegistration} registration @param {ServiceWorker} worker @param {boolean} avisar */
+    const _seguirVersionNueva = (registration, worker, avisar) => {
+        if (avisar) {
+            _actualizando = true;
+            // aviso inmediato: ya se sabe que hay una versión nueva aunque todavía se esté descargando
+            AvisoActualizacion.iniciar();
+        }
+        const pedirDescarga = () => worker.postMessage({ tipo: 'sw-descargar' });
+        if (worker.state === 'installed') pedirDescarga();
+        worker.addEventListener('statechange', () => {
+            if (worker.state === 'installed') pedirDescarga();
+            if (!avisar) return;
+            if (worker.state === 'activated') { _actualizando = false; AvisoActualizacion.listo(); }
+            // descartado: es un error salvo que lo haya reemplazado una versión todavía más nueva (esa tiene su propio seguimiento)
+            else if (worker.state === 'redundant' && !registration.installing && !registration.waiting) { _actualizando = false; AvisoActualizacion.error(); }
+        });
+    };
+
     const _registrar = () => {
         navigator.serviceWorker.register(urlScriptConfiable('./sw.js'))
             .then(registration => {
                 registration.addEventListener('updatefound', () => {
                     const nuevo = registration.installing;
-                    // sin versión activa es la primera instalación: no hay nada que avisar
-                    if (!nuevo || !registration.active) return;
-                    _actualizando = true;
-                    // aviso inmediato: ya se sabe que hay una versión nueva aunque todavía se esté descargando
-                    AvisoActualizacion.iniciar();
-                    nuevo.addEventListener('statechange', () => {
-                        if (nuevo.state === 'installed') { _actualizando = false; AvisoActualizacion.listo(); }
-                        else if (nuevo.state === 'redundant') { _actualizando = false; AvisoActualizacion.error(); }
-                    });
+                    if (!nuevo) return;
+                    // sin versión activa es la primera instalación: se pide la descarga pero no hay nada que avisar
+                    _seguirVersionNueva(registration, nuevo, !!registration.active);
                 });
+                // Quedó una versión en espera de una apertura anterior (la descarga se cortó o falló): se retoma
+                if (registration.waiting) _seguirVersionNueva(registration, registration.waiting, !!registration.active);
                 _buscarActualizacionAlVolver(registration);
             })
             .catch(err => console.error('❌ Error SW:', err));
